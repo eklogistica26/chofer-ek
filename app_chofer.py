@@ -1,3 +1,4 @@
+import os
 import flet as ft
 from sqlalchemy import create_engine, text
 from datetime import datetime
@@ -359,6 +360,9 @@ def main(page: ft.Page):
     cargar_lista_choferes()
 
 if __name__ == "__main__":
-    print("🚀 App web iniciada. Revisa tu IP para entrar.")
-    # MODO WEB PARA LLEGAR AL LUNES
-    ft.app(target=main, view=ft.AppView.WEB_BROWSER, port=8000, host="0.0.0.0")
+    # Esta linea es la clave: lee el puerto de Render o usa 8000 si falla
+    port = int(os.environ.get("PORT", 8000))
+    print(f"🚀 Iniciando App en puerto: {port}")
+    
+    # IMPORTANTE: host="0.0.0.0" es obligatorio para que se vea en internet
+    ft.app(target=main, view=ft.AppView.WEB_BROWSER, port=port, host="0.0.0.0")
