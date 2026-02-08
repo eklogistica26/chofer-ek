@@ -1,0 +1,3 @@
+flet
+sqlalchemy
+psycopg2-binary
