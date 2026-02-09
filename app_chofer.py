@@ -2,7 +2,7 @@ import flet as ft
 from sqlalchemy import create_engine, text
 from datetime import datetime
 import os
-import urllib.parse # Para que el link del mapa funcione bien
+import urllib.parse 
 
 # --- CONFIGURACIÓN DB ---
 DATABASE_URL = "postgresql://postgres.gwdypvvyjuqzvpbbzchk:Eklogisticasajetpaq@aws-0-us-west-2.pooler.supabase.com:6543/postgres"
@@ -21,29 +21,26 @@ def get_db_connection():
     return None
 
 def main(page: ft.Page):
-    print("🚀 INICIANDO V19 (DISEÑO PULIDO + MAPA)...")
+    print("🚀 INICIANDO V20 (FIX ICONOS)...")
     
-    # CONFIGURACIÓN VISUAL PARA QUE SE LEA BIEN
     page.title = "Choferes"
     page.bgcolor = "white"
-    page.theme_mode = ft.ThemeMode.LIGHT # Fuerza modo claro
+    page.theme_mode = ft.ThemeMode.LIGHT 
     page.scroll = "auto"
     
-    # ESTADO
     state = {"id": None, "guia": "", "tiene_foto": False}
 
     # ---------------------------------------------------------
     # FUNCIONES UTILES
     # ---------------------------------------------------------
     def abrir_mapa(domicilio, localidad):
-        # Preparamos la dirección para Google Maps
         direccion_full = f"{domicilio}, {localidad}"
         query = urllib.parse.quote(direccion_full)
         url = f"https://www.google.com/maps/search/?api=1&query={query}"
         page.launch_url(url)
 
     # ---------------------------------------------------------
-    # PANTALLA 1: INICIO (Conectar)
+    # PANTALLA 1: INICIO
     # ---------------------------------------------------------
     def conectar(e):
         btn_inicio.text = "Cargando..."
@@ -80,10 +77,10 @@ def main(page: ft.Page):
     )
 
     # ---------------------------------------------------------
-    # PANTALLA 2: LISTA (Compacta y con Mapa)
+    # PANTALLA 2: LISTA
     # ---------------------------------------------------------
     dd_chofer = ft.Dropdown(label="Selecciona tu nombre", bgcolor="#f0f2f5", label_style=ft.TextStyle(color="black"))
-    lista_viajes = ft.Column(spacing=5) # Menos espacio entre tarjetas
+    lista_viajes = ft.Column(spacing=5)
 
     def cargar_ruta(e):
         chofer = dd_chofer.value
@@ -101,7 +98,6 @@ def main(page: ft.Page):
         
         if conn:
             try:
-                # Traemos todo
                 sql = text("""
                     SELECT id, guia_remito, destinatario, domicilio, localidad, bultos, estado 
                     FROM operaciones 
@@ -116,32 +112,30 @@ def main(page: ft.Page):
                 for row in rows:
                     id_op, guia, dest, dom, loc, bultos, estado = row
                     
-                    # Colores de estado
                     color_est = "grey"
                     if estado == "En Reparto": color_est = "blue"
                     if estado == "ENTREGADO": color_est = "green"
                     if estado == "Reprogramado": color_est = "purple"
                     if estado == "Pendiente": color_est = "orange"
 
-                    # TARJETA COMPACTA
                     tarjeta = ft.Container(
                         bgcolor="white",
-                        padding=10, # Menos relleno
-                        border=ft.border.all(1, "#dddddd"), # Borde finito
+                        padding=10, 
+                        border=ft.border.all(1, "#dddddd"),
                         border_radius=8,
                         content=ft.Column([
-                            # Fila 1: Nombre y Estado
                             ft.Row([
-                                ft.Text(dest[:20], weight="bold", size=14, color="black"), # Nombre cortado si es largo
+                                ft.Text(dest[:20], weight="bold", size=14, color="black"),
                                 ft.Container(content=ft.Text(estado[:10], color="white", size=10), bgcolor=color_est, padding=3, border_radius=3)
                             ], alignment="spaceBetween"),
                             
-                            # Fila 2: Dirección y Botón Mapa
                             ft.Row([
-                                ft.Icon(ft.icons.LOCATION_ON, size=16, color="red"),
+                                # CORRECCIÓN 1: Usamos string "location_on" en lugar de constante
+                                ft.Icon(name="location_on", size=16, color="red"),
                                 ft.Text(f"{dom}", size=12, color="#333333", expand=True),
                                 ft.IconButton(
-                                    icon=ft.icons.MAP, 
+                                    # CORRECCIÓN 2: Usamos string "map" en lugar de constante
+                                    icon="map", 
                                     icon_color="blue", 
                                     icon_size=20, 
                                     tooltip="Abrir Mapa",
@@ -149,19 +143,17 @@ def main(page: ft.Page):
                                 )
                             ]),
                             
-                            # Fila 3: Datos extra
                             ft.Text(f"Guía: {guia} | Bultos: {bultos}", size=11, color="black"),
                             
-                            # Botón Gestionar
                             ft.Container(height=5),
                             ft.ElevatedButton(
                                 "GESTIONAR", 
                                 bgcolor="blue", color="white", 
-                                height=35, # Boton mas fino
+                                height=35,
                                 style=ft.ButtonStyle(shape=ft.RoundedRectangleBorder(radius=5)),
                                 on_click=lambda _,x=id_op,g=guia: ir_a_gestion(x,g)
                             )
-                        ], spacing=2) # Todo mas juntito
+                        ], spacing=2)
                     )
                     lista_viajes.controls.append(tarjeta)
             except Exception as ex:
@@ -186,10 +178,12 @@ def main(page: ft.Page):
         )
 
     # ---------------------------------------------------------
-    # PANTALLA 3: GESTION (Con Reprogramar y Foto)
+    # PANTALLA 3: GESTION
     # ---------------------------------------------------------
     txt_recibe = ft.TextField(label="Quien recibe", text_size=14, border_color="grey", label_style=ft.TextStyle(color="black"))
     txt_motivo = ft.TextField(label="Motivo (Pendiente/Reprog)", text_size=14, border_color="grey", label_style=ft.TextStyle(color="black"))
+    
+    # Aquí ya usábamos "camera_alt" como string y funcionaba, así que está perfecto
     btn_foto = ft.ElevatedButton("📷 FOTO (Opcional)", icon="camera_alt", bgcolor="grey", color="white")
 
     def tomar_foto(e):
@@ -202,19 +196,16 @@ def main(page: ft.Page):
         id_op = state["id"]
         if not id_op: return
         
-        # Validaciones
         if estado == "ENTREGADO" and not txt_recibe.value: 
             txt_recibe.error_text = "Requerido"
             txt_recibe.update()
             return
         
-        # Motivo requerido para Pendiente O Reprogramado
         if (estado == "Pendiente" or estado == "Reprogramado") and not txt_motivo.value:
             txt_motivo.error_text = "Escribe el motivo"
             txt_motivo.update()
             return
 
-        # Preparamos el detalle
         det = ""
         if estado == "ENTREGADO":
             det = f"Recibio: {txt_recibe.value}"
@@ -239,16 +230,15 @@ def main(page: ft.Page):
 
     def ir_a_gestion(id_op, guia):
         state["id"] = id_op
-        state["tiene_foto"] = False # Reset foto
+        state["tiene_foto"] = False
         
-        # Reset campos visuales
         txt_recibe.value = ""
         txt_motivo.value = ""
         txt_recibe.error_text = None
         txt_motivo.error_text = None
         btn_foto.text = "📷 FOTO (Opcional)"
         btn_foto.bgcolor = "grey"
-        btn_foto.on_click = tomar_foto # Asignamos la funcion
+        btn_foto.on_click = tomar_foto
         
         page.clean()
         page.add(
@@ -264,7 +254,7 @@ def main(page: ft.Page):
                 
                 ft.Text("NO ENTREGADO:", weight="bold", color="black"),
                 txt_motivo,
-                btn_foto, # Boton de foto
+                btn_foto,
                 ft.Container(height=5),
                 
                 ft.Row([
@@ -277,9 +267,6 @@ def main(page: ft.Page):
             ])
         )
 
-    # ---------------------------------------------------------
-    # INICIO
-    # ---------------------------------------------------------
     page.add(vista_inicio)
 
 if __name__ == "__main__":
