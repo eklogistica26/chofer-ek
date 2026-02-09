@@ -20,77 +20,73 @@ def get_db_connection():
     return None
 
 def main(page: ft.Page):
-    print("🚀 INICIANDO V16 (MODO DETECTIVE)...")
+    print("🚀 INICIANDO V17 (HIBRIDO SEGURO)...")
     
-    page.title = "E.K. Choferes"
+    # Configuración ULTRA BASICA (Igual a V15)
+    page.title = "Choferes"
     page.bgcolor = "white"
     page.scroll = "auto"
     
+    # ESTADO
     state = {"id": None, "guia": ""}
 
     # ---------------------------------------------------------
-    # PANTALLA 1: CONEXIÓN
+    # PANTALLA 1: BOTON DE INICIO (ESTO FUNCIONABA EN V15)
     # ---------------------------------------------------------
     def conectar(e):
-        btn_inicio.text = "⏳ Buscando choferes..."
+        btn_inicio.text = "Cargando..."
         btn_inicio.disabled = True
         page.update()
         
         conn = get_db_connection()
         if conn:
             try:
-                # Cargamos TODOS los choferes
                 res = conn.execute(text("SELECT nombre FROM choferes ORDER BY nombre")).fetchall()
                 dd_chofer.options = []
                 for r in res:
                     dd_chofer.options.append(ft.dropdown.Option(r[0]))
                 
-                # Si cargó bien, vamos a la principal
                 ir_a_principal()
             except Exception as ex:
-                btn_inicio.text = f"❌ Error SQL: {ex}"
-                btn_inicio.disabled = False
+                btn_inicio.text = f"Error: {ex}"
             finally:
                 conn.close()
         else:
-            btn_inicio.text = "❌ Error Conexión DB"
-            btn_inicio.disabled = False
+            btn_inicio.text = "Error de Conexión DB"
         page.update()
 
-    btn_inicio = ft.ElevatedButton("CONECTAR SISTEMA", on_click=conectar, bgcolor="blue", color="white", height=50)
+    btn_inicio = ft.ElevatedButton("CONECTAR", on_click=conectar, bgcolor="blue", color="white")
     
+    # Usamos Column simple, sin alineaciones complejas
     vista_inicio = ft.Column(
         [
-            ft.Icon("local_shipping", size=60, color="blue"),
-            ft.Text("BIENVENIDO", size=24, weight="bold"),
+            ft.Text("BIENVENIDO", size=30, color="black"),
+            ft.Text("App Choferes V17", size=20, color="grey"),
             ft.Container(height=20),
             btn_inicio
-        ],
-        horizontal_alignment="center",
+        ]
     )
 
     # ---------------------------------------------------------
-    # PANTALLA 2: LISTA (El problema estaba aquí)
+    # PANTALLA 2: LISTA (Logica mejorada V16, Diseño simple V15)
     # ---------------------------------------------------------
-    dd_chofer = ft.Dropdown(label="Selecciona Chofer", width=300, bgcolor="#f0f2f5")
-    lista_viajes = ft.Column(spacing=10)
-    lbl_debug = ft.Text("", color="red") # Para ver mensajes de error
+    dd_chofer = ft.Dropdown(label="Selecciona tu nombre")
+    lista_viajes = ft.Column()
 
     def cargar_ruta(e):
         chofer = dd_chofer.value
         if not chofer: return
         
-        # 1. Limpiamos y mostramos mensaje de carga
         lista_viajes.controls.clear()
-        lbl_debug.value = f"🔎 Buscando guías de: {chofer}..."
+        lista_viajes.controls.append(ft.Text(f"Buscando guías para: {chofer}..."))
         page.update()
         
         conn = get_db_connection()
+        lista_viajes.controls.clear()
         
         if conn:
             try:
-                # 🛑 QUITE EL FILTRO 'En Reparto' PARA VER TODO 🛑
-                # Así veremos si las guías existen pero tienen otro estado
+                # 🛑 LOGICA V16: TRAEMOS TODO (SIN FILTRO DE ESTADO)
                 sql = text("""
                     SELECT id, guia_remito, destinatario, domicilio, localidad, bultos, estado 
                     FROM operaciones 
@@ -99,49 +95,33 @@ def main(page: ft.Page):
                 """)
                 rows = conn.execute(sql, {"c": chofer}).fetchall()
                 
-                lbl_debug.value = f"Resultados encontrados: {len(rows)}"
-                
                 if not rows:
-                    lista_viajes.controls.append(ft.Container(
-                        padding=20, bgcolor="#ffebee",
-                        content=ft.Text("❌ No encontré NINGUNA guía asignada a este nombre exacta.", color="red")
-                    ))
+                    lista_viajes.controls.append(ft.Text("❌ No hay guías asignadas a este nombre exacto.", color="red"))
                 
                 for row in rows:
                     id_op, guia, dest, dom, loc, bultos, estado = row
                     
-                    # Coloreamos según estado para entender qué pasa
-                    color_estado = "grey"
-                    if estado == "En Reparto": color_estado = "blue"
-                    elif estado == "Entregado" or estado == "ENTREGADO": color_estado = "green"
-                    elif estado == "Pendiente": color_estado = "orange"
+                    # Mostramos el ESTADO para saber qué pasa
+                    texto_estado = f"Estado: {estado}"
                     
-                    # Tarjeta simple y robusta
                     tarjeta = ft.Container(
-                        bgcolor="white",
-                        padding=15,
-                        border=ft.border.all(1, "grey"),
-                        border_radius=10,
+                        bgcolor="#eeeeee",
+                        padding=10,
+                        border_radius=5,
                         content=ft.Column([
-                            ft.Row([
-                                ft.Text(dest, weight="bold", size=16),
-                                ft.Container(content=ft.Text(estado, color="white", size=10), bgcolor=color_estado, padding=5, border_radius=5)
-                            ], alignment="spaceBetween"),
-                            ft.Text(f"📍 {dom} ({loc})"),
-                            ft.Text(f"📦 Guía: {guia} | Bultos: {bultos}"),
-                            ft.Container(height=5),
-                            ft.ElevatedButton("GESTIONAR", bgcolor="blue", color="white", on_click=lambda _,x=id_op,g=guia: ir_a_gestion(x,g))
+                            ft.Text(dest, weight="bold", size=16),
+                            ft.Text(texto_estado, color="blue", weight="bold"), # <--- AQUI VEMOS EL ESTADO
+                            ft.Text(f"{dom} ({loc})"),
+                            ft.Text(f"Guía: {guia}"),
+                            ft.ElevatedButton("GESTIONAR", on_click=lambda _,x=id_op,g=guia: ir_a_gestion(x,g))
                         ])
                     )
                     lista_viajes.controls.append(tarjeta)
-
+                    lista_viajes.controls.append(ft.Container(height=10))
             except Exception as ex:
-                lbl_debug.value = f"❌ Error al traer datos: {ex}"
+                lista_viajes.controls.append(ft.Text(f"Error: {ex}"))
             finally:
                 conn.close()
-        else:
-            lbl_debug.value = "❌ Se perdió la conexión al buscar."
-        
         page.update()
 
     dd_chofer.on_change = cargar_ruta
@@ -150,16 +130,15 @@ def main(page: ft.Page):
         page.clean()
         page.add(
             ft.Column([
-                ft.Text("MI RUTA (MODO DEBUG)", size=20, weight="bold", color="red"),
+                ft.Text("MI RUTA", size=20, weight="bold"),
                 dd_chofer,
-                lbl_debug, # Aquí veremos qué pasa
                 ft.Divider(),
                 lista_viajes
             ])
         )
 
     # ---------------------------------------------------------
-    # PANTALLA 3: GESTION
+    # PANTALLA 3: GESTION (Igual a V15)
     # ---------------------------------------------------------
     txt_recibe = ft.TextField(label="Quien recibe")
     txt_motivo = ft.TextField(label="Motivo (si falla)")
@@ -168,17 +147,19 @@ def main(page: ft.Page):
         id_op = state["id"]
         if not id_op: return
         
-        det = f"Recibio: {txt_recibe.value}" if estado == "ENTREGADO" else f"Motivo: {txt_motivo.value}"
+        if estado == "ENTREGADO" and not txt_recibe.value: return
+        if estado == "Pendiente" and not txt_motivo.value: return
+
+        detalle = f"Recibio: {txt_recibe.value}" if estado == "ENTREGADO" else f"Motivo: {txt_motivo.value}"
         
         conn = get_db_connection()
         if conn:
             try:
                 conn.execute(text("UPDATE operaciones SET estado=:e, fecha_entrega=:f WHERE id=:i"), {"e": estado, "f": datetime.now(), "i": id_op})
-                conn.execute(text("INSERT INTO historial_movimientos (operacion_id, usuario, accion, detalle, fecha_hora) VALUES (:o, :u, 'APP', :d, :f)"), {"o": id_op, "u": dd_chofer.value, "d": det, "f": datetime.now()})
+                conn.execute(text("INSERT INTO historial_movimientos (operacion_id, usuario, accion, detalle, fecha_hora) VALUES (:o, :u, 'APP', :d, :f)"), {"o": id_op, "u": dd_chofer.value, "d": detalle, "f": datetime.now()})
                 conn.commit()
                 ir_a_principal()
-                # Forzamos recarga simulando el evento
-                cargar_ruta(None)
+                cargar_ruta(None) # Recargar lista simulando evento
             except:
                 pass
             finally:
@@ -192,9 +173,10 @@ def main(page: ft.Page):
         page.clean()
         page.add(
             ft.Column([
-                ft.Text(f"Gestionando: {guia}", size=18, weight="bold"),
-                ft.Divider(),
+                ft.Text(f"Guia: {guia}", size=20, weight="bold"),
+                ft.Text("Datos de Entrega:"),
                 txt_recibe,
+                ft.Text("Si falla:"),
                 txt_motivo,
                 ft.Container(height=20),
                 ft.Row([
@@ -214,6 +196,7 @@ def main(page: ft.Page):
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8000))
     ft.app(target=main, view=ft.AppView.WEB_BROWSER, port=port, host="0.0.0.0")
+
 
 
 
