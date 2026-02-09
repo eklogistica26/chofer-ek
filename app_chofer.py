@@ -21,7 +21,7 @@ def get_db_connection():
     return None
 
 def main(page: ft.Page):
-    print("🚀 INICIANDO V25 (FIX CAMARA)...")
+    print("🚀 INICIANDO V27 (MODO COMPATIBILIDAD)...")
     
     page.title = "Choferes"
     page.bgcolor = "white"
@@ -31,11 +31,10 @@ def main(page: ft.Page):
     state = {"id": None, "guia": "", "tiene_foto": False}
 
     # ---------------------------------------------------------
-    # 1. COMPONENTE PARA LA CÁMARA (FilePicker Simplificado)
+    # 1. COMPONENTE CAMARA (CORREGIDO PARA VERSIONES VIEJAS)
     # ---------------------------------------------------------
     
-    # CORRECCIÓN AQUÍ: Quitamos ": ft.FilePickerResultEvent" para que no falle
-    def on_foto_seleccionada(e): 
+    def on_foto_seleccionada(e):
         if e.files:
             state["tiene_foto"] = True
             btn_foto.text = f"✅ FOTO LISTA ({len(e.files)})"
@@ -44,7 +43,12 @@ def main(page: ft.Page):
         else:
             print("Foto cancelada")
 
-    file_picker = ft.FilePicker(on_result=on_foto_seleccionada)
+    # CORRECCIÓN: Creamos el FilePicker VACÍO primero
+    file_picker = ft.FilePicker()
+    
+    # Y asignamos el evento DESPUÉS (Esto no falla nunca)
+    file_picker.on_result = on_foto_seleccionada
+    
     page.overlay.append(file_picker)
 
     # ---------------------------------------------------------
@@ -196,7 +200,7 @@ def main(page: ft.Page):
     txt_recibe = ft.TextField(label="Quien recibe", text_size=14, border_color="grey", label_style=ft.TextStyle(color="black"))
     txt_motivo = ft.TextField(label="Motivo (Pendiente/Reprog)", text_size=14, border_color="grey", label_style=ft.TextStyle(color="black"))
     
-    # CORRECCIÓN: Botón de foto simplificado (sin especificar tipo de archivo para evitar otro error)
+    # DEFINIMOS EL BOTÓN, PERO LA ACCIÓN SE LA DAMOS AL CLICK
     btn_foto = ft.ElevatedButton(
         "📷 FOTO (Cámara)", 
         bgcolor="grey", color="white", height=45,
@@ -250,9 +254,9 @@ def main(page: ft.Page):
         
         btn_foto.text = "📷 FOTO (Cámara)"
         btn_foto.bgcolor = "grey"
-        # Re-asignamos la función por seguridad
+        # Asignar acción al botón
         btn_foto.on_click = lambda _: file_picker.pick_files(allow_multiple=False)
-
+        
         page.clean()
         page.add(
             ft.Column([
