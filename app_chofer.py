@@ -3,10 +3,9 @@ from sqlalchemy import create_engine, text
 from datetime import datetime
 import os
 
-# CONFIGURACION DB
+# --- CONFIGURACIÓN DB ---
 DATABASE_URL = "postgresql://postgres.gwdypvvyjuqzvpbbzchk:Eklogisticasajetpaq@aws-0-us-west-2.pooler.supabase.com:6543/postgres"
 
-# Intentamos crear el motor, si falla, engine queda como None
 engine = None
 try:
     engine = create_engine(DATABASE_URL, pool_pre_ping=True, pool_recycle=3600)
@@ -21,103 +20,128 @@ def get_db_connection():
     return None
 
 def main(page: ft.Page):
-    print("🚀 INICIANDO V15 (MODO SEGURO)...")
+    print("🚀 INICIANDO V16 (MODO DETECTIVE)...")
     
-    # Configuración ULTRA BASICA
-    page.title = "Choferes"
+    page.title = "E.K. Choferes"
     page.bgcolor = "white"
     page.scroll = "auto"
     
-    # ESTADO
     state = {"id": None, "guia": ""}
 
     # ---------------------------------------------------------
-    # PANTALLA 1: BOTON GIGANTE DE INICIO (Sin alineaciones raras)
+    # PANTALLA 1: CONEXIÓN
     # ---------------------------------------------------------
     def conectar(e):
-        btn_inicio.text = "Cargando..."
+        btn_inicio.text = "⏳ Buscando choferes..."
         btn_inicio.disabled = True
         page.update()
         
-        # Probamos conexión
         conn = get_db_connection()
         if conn:
             try:
-                # Cargamos choferes
+                # Cargamos TODOS los choferes
                 res = conn.execute(text("SELECT nombre FROM choferes ORDER BY nombre")).fetchall()
                 dd_chofer.options = []
                 for r in res:
                     dd_chofer.options.append(ft.dropdown.Option(r[0]))
                 
-                # Pasamos a la siguiente pantalla
+                # Si cargó bien, vamos a la principal
                 ir_a_principal()
             except Exception as ex:
-                btn_inicio.text = f"Error: {ex}"
+                btn_inicio.text = f"❌ Error SQL: {ex}"
+                btn_inicio.disabled = False
             finally:
                 conn.close()
         else:
-            btn_inicio.text = "Error de Conexión DB"
+            btn_inicio.text = "❌ Error Conexión DB"
+            btn_inicio.disabled = False
         page.update()
 
-    btn_inicio = ft.ElevatedButton("CONECTAR", on_click=conectar, bgcolor="blue", color="white")
+    btn_inicio = ft.ElevatedButton("CONECTAR SISTEMA", on_click=conectar, bgcolor="blue", color="white", height=50)
     
-    # Usamos una Columna para centrar, NO un Container con alignment
     vista_inicio = ft.Column(
         [
-            ft.Text("BIENVENIDO", size=30, color="black"),
-            ft.Text("App Choferes", size=20, color="grey"),
-            ft.Container(height=20), # Espacio vacio
+            ft.Icon("local_shipping", size=60, color="blue"),
+            ft.Text("BIENVENIDO", size=24, weight="bold"),
+            ft.Container(height=20),
             btn_inicio
         ],
-        horizontal_alignment="center", # Esto alinea lo de adentro al centro horizontalmente
+        horizontal_alignment="center",
     )
 
     # ---------------------------------------------------------
-    # PANTALLA 2: LISTA DE VIAJES
+    # PANTALLA 2: LISTA (El problema estaba aquí)
     # ---------------------------------------------------------
-    dd_chofer = ft.Dropdown(label="Selecciona tu nombre")
-    lista_viajes = ft.Column()
+    dd_chofer = ft.Dropdown(label="Selecciona Chofer", width=300, bgcolor="#f0f2f5")
+    lista_viajes = ft.Column(spacing=10)
+    lbl_debug = ft.Text("", color="red") # Para ver mensajes de error
 
     def cargar_ruta(e):
         chofer = dd_chofer.value
         if not chofer: return
         
+        # 1. Limpiamos y mostramos mensaje de carga
         lista_viajes.controls.clear()
-        lista_viajes.controls.append(ft.Text("Buscando..."))
+        lbl_debug.value = f"🔎 Buscando guías de: {chofer}..."
         page.update()
         
         conn = get_db_connection()
-        lista_viajes.controls.clear()
         
         if conn:
             try:
-                sql = text("SELECT id, guia_remito, destinatario, domicilio, localidad, bultos FROM operaciones WHERE estado = 'En Reparto' AND chofer_asignado = :c")
+                # 🛑 QUITE EL FILTRO 'En Reparto' PARA VER TODO 🛑
+                # Así veremos si las guías existen pero tienen otro estado
+                sql = text("""
+                    SELECT id, guia_remito, destinatario, domicilio, localidad, bultos, estado 
+                    FROM operaciones 
+                    WHERE chofer_asignado = :c 
+                    ORDER BY id ASC
+                """)
                 rows = conn.execute(sql, {"c": chofer}).fetchall()
                 
+                lbl_debug.value = f"Resultados encontrados: {len(rows)}"
+                
                 if not rows:
-                    lista_viajes.controls.append(ft.Text("No hay viajes pendientes"))
+                    lista_viajes.controls.append(ft.Container(
+                        padding=20, bgcolor="#ffebee",
+                        content=ft.Text("❌ No encontré NINGUNA guía asignada a este nombre exacta.", color="red")
+                    ))
                 
                 for row in rows:
-                    id_op, guia, dest, dom, loc, bultos = row
+                    id_op, guia, dest, dom, loc, bultos, estado = row
                     
-                    # Tarjeta simple hecha con Column y Container (sin Card compleja)
+                    # Coloreamos según estado para entender qué pasa
+                    color_estado = "grey"
+                    if estado == "En Reparto": color_estado = "blue"
+                    elif estado == "Entregado" or estado == "ENTREGADO": color_estado = "green"
+                    elif estado == "Pendiente": color_estado = "orange"
+                    
+                    # Tarjeta simple y robusta
                     tarjeta = ft.Container(
-                        bgcolor="#eeeeee",
-                        padding=10,
-                        border_radius=5,
+                        bgcolor="white",
+                        padding=15,
+                        border=ft.border.all(1, "grey"),
+                        border_radius=10,
                         content=ft.Column([
-                            ft.Text(dest, weight="bold", size=16),
-                            ft.Text(f"{dom} ({loc})"),
-                            ft.Text(f"Bultos: {bultos}"),
-                            ft.ElevatedButton("GESTIONAR", on_click=lambda _,x=id_op,g=guia: ir_a_gestion(x,g))
+                            ft.Row([
+                                ft.Text(dest, weight="bold", size=16),
+                                ft.Container(content=ft.Text(estado, color="white", size=10), bgcolor=color_estado, padding=5, border_radius=5)
+                            ], alignment="spaceBetween"),
+                            ft.Text(f"📍 {dom} ({loc})"),
+                            ft.Text(f"📦 Guía: {guia} | Bultos: {bultos}"),
+                            ft.Container(height=5),
+                            ft.ElevatedButton("GESTIONAR", bgcolor="blue", color="white", on_click=lambda _,x=id_op,g=guia: ir_a_gestion(x,g))
                         ])
                     )
                     lista_viajes.controls.append(tarjeta)
-                    lista_viajes.controls.append(ft.Container(height=10)) # Separador
+
             except Exception as ex:
-                lista_viajes.controls.append(ft.Text(f"Error: {ex}"))
+                lbl_debug.value = f"❌ Error al traer datos: {ex}"
             finally:
                 conn.close()
+        else:
+            lbl_debug.value = "❌ Se perdió la conexión al buscar."
+        
         page.update()
 
     dd_chofer.on_change = cargar_ruta
@@ -126,8 +150,9 @@ def main(page: ft.Page):
         page.clean()
         page.add(
             ft.Column([
-                ft.Text("MI RUTA", size=20, weight="bold"),
+                ft.Text("MI RUTA (MODO DEBUG)", size=20, weight="bold", color="red"),
                 dd_chofer,
+                lbl_debug, # Aquí veremos qué pasa
                 ft.Divider(),
                 lista_viajes
             ])
@@ -143,19 +168,16 @@ def main(page: ft.Page):
         id_op = state["id"]
         if not id_op: return
         
-        # Validacion basica
-        if estado == "ENTREGADO" and not txt_recibe.value: return
-        if estado == "Pendiente" and not txt_motivo.value: return
-
-        detalle = f"Recibio: {txt_recibe.value}" if estado == "ENTREGADO" else f"Motivo: {txt_motivo.value}"
+        det = f"Recibio: {txt_recibe.value}" if estado == "ENTREGADO" else f"Motivo: {txt_motivo.value}"
         
         conn = get_db_connection()
         if conn:
             try:
                 conn.execute(text("UPDATE operaciones SET estado=:e, fecha_entrega=:f WHERE id=:i"), {"e": estado, "f": datetime.now(), "i": id_op})
-                conn.execute(text("INSERT INTO historial_movimientos (operacion_id, usuario, accion, detalle, fecha_hora) VALUES (:o, :u, 'APP', :d, :f)"), {"o": id_op, "u": dd_chofer.value, "d": detalle, "f": datetime.now()})
+                conn.execute(text("INSERT INTO historial_movimientos (operacion_id, usuario, accion, detalle, fecha_hora) VALUES (:o, :u, 'APP', :d, :f)"), {"o": id_op, "u": dd_chofer.value, "d": det, "f": datetime.now()})
                 conn.commit()
                 ir_a_principal()
+                # Forzamos recarga simulando el evento
                 cargar_ruta(None)
             except:
                 pass
@@ -170,10 +192,9 @@ def main(page: ft.Page):
         page.clean()
         page.add(
             ft.Column([
-                ft.Text(f"Guia: {guia}", size=20, weight="bold"),
-                ft.Text("Datos de Entrega:"),
+                ft.Text(f"Gestionando: {guia}", size=18, weight="bold"),
+                ft.Divider(),
                 txt_recibe,
-                ft.Text("Si falla:"),
                 txt_motivo,
                 ft.Container(height=20),
                 ft.Row([
@@ -188,7 +209,6 @@ def main(page: ft.Page):
     # ---------------------------------------------------------
     # INICIO
     # ---------------------------------------------------------
-    # Agregamos la vista de inicio directamente
     page.add(vista_inicio)
 
 if __name__ == "__main__":
