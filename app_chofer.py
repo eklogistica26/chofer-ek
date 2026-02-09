@@ -23,7 +23,7 @@ def get_db_connection():
         return None
 
 def main(page: ft.Page):
-    print("🚀 Iniciando App Chofer (v7.0 - Estructura Manual)...")
+    print("🚀 Iniciando App Chofer (v8.0 - Safe Tabs)...")
     page.title = "E.K. Choferes"
     page.theme_mode = "light"
     page.bgcolor = "#f0f2f5"
@@ -43,6 +43,7 @@ def main(page: ft.Page):
     txt_recibe = ft.TextField(label="Nombre / DNI de quien recibe ✍️", bgcolor="white")
     txt_motivo = ft.TextField(label="Motivo (Solo si es Pendiente) ⚠️", bgcolor="white")
     
+    # Botón sin 'text=' para evitar errores
     btn_foto = ft.ElevatedButton(
         "📷 TOMAR FOTO EVIDENCIA",
         icon="camera_alt",
@@ -193,7 +194,7 @@ def main(page: ft.Page):
             finally: conn.close()
 
     # =========================================================================
-    # 4. ARMADO DE PANTALLA (SIN USAR 'content=' EN LAS TABS)
+    # 4. ARMADO DE PANTALLA (CONSTRUCCIÓN SEGURA SIN KEYWORDS)
     # =========================================================================
 
     vista_edicion = ft.Container(
@@ -219,16 +220,14 @@ def main(page: ft.Page):
 
     dd_chofer.on_change = cargar_hoja_de_ruta
     
-    # --- AQUI ESTA EL ARREGLO FINAL PARA EL ERROR "CONTENT" ---
+    # --- ARREGLO FINAL: NO USAMOS 'tabs=' EN EL CONSTRUCTOR ---
     
-    # 1. Definimos los contenidos por separado
     contenido_ruta = ft.Container(content=columna_ruta, padding=5)
     contenido_buscar = ft.Container(content=ft.Column([txt_buscar, ft.ElevatedButton("Buscar", on_click=buscar_manual), ft.Divider(), col_resultado_busqueda]), padding=20)
     
-    # 2. Contenedor que cambiará dinámicamente (Cuerpo de la pestaña)
+    # Contenedor dinámico
     cuerpo_pestana = ft.Container(content=contenido_ruta, expand=True)
 
-    # 3. Función para cambiar manualmente
     def cambiar_tab(e):
         indice = e.control.selected_index
         if indice == 0:
@@ -237,22 +236,26 @@ def main(page: ft.Page):
             cuerpo_pestana.content = contenido_buscar
         cuerpo_pestana.update()
 
-    # 4. Tabs SOLO con texto e icono (SIN CONTENT ADENTRO)
+    # 1. Creamos las pestañas vacías (sin argumentos problemáticos)
     tabs = ft.Tabs(
         selected_index=0,
-        on_change=cambiar_tab, # Nosotros manejamos el cambio
-        tabs=[
-            ft.Tab("Mi Ruta", icon="list"),      # Sin content=
-            ft.Tab("Escáner", icon="qr_code"),   # Sin content=
-        ],
-        expand=0 # Que no ocupe todo, solo su altura
+        on_change=cambiar_tab,
+        expand=0
     )
+    
+    # 2. Agregamos las Tabs manualmente a la lista interna
+    # (Usamos argumentos posicionales para evitar problemas con 'text=')
+    tab1 = ft.Tab("Mi Ruta", icon="list")
+    tab2 = ft.Tab("Escáner", icon="qr_code")
+    
+    tabs.tabs.append(tab1)
+    tabs.tabs.append(tab2)
 
     vista_principal = ft.Column([
         ft.Row([ft.Icon("local_shipping", color="blue", size=30), ft.Text("E.K. LOGISTICA", size=20, weight="bold")], alignment=ft.MainAxisAlignment.CENTER),
         ft.Container(content=dd_chofer, alignment=ft.alignment.center),
-        tabs,           # La barra de pestañas arriba
-        cuerpo_pestana  # El contenido abajo
+        tabs,           # La barra de pestañas
+        cuerpo_pestana  # El contenido cambiante
     ], expand=True)
 
     page.add(ft.Column([vista_principal, vista_edicion], expand=True))
@@ -261,4 +264,5 @@ def main(page: ft.Page):
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8000))
     ft.app(target=main, view=ft.AppView.WEB_BROWSER, port=port, host="0.0.0.0")
+
 
