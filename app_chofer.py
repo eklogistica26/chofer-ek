@@ -23,7 +23,7 @@ def get_db_connection():
         return None
 
 def main(page: ft.Page):
-    print("🚀 Iniciando App Chofer (v8.0 - Safe Tabs)...")
+    print("🚀 Iniciando App Chofer (v9.0 - Sin Tabs)...")
     page.title = "E.K. Choferes"
     page.theme_mode = "light"
     page.bgcolor = "#f0f2f5"
@@ -43,7 +43,6 @@ def main(page: ft.Page):
     txt_recibe = ft.TextField(label="Nombre / DNI de quien recibe ✍️", bgcolor="white")
     txt_motivo = ft.TextField(label="Motivo (Solo si es Pendiente) ⚠️", bgcolor="white")
     
-    # Botón sin 'text=' para evitar errores
     btn_foto = ft.ElevatedButton(
         "📷 TOMAR FOTO EVIDENCIA",
         icon="camera_alt",
@@ -56,11 +55,15 @@ def main(page: ft.Page):
     # 2. UI: ELEMENTOS PRINCIPALES
     # =========================================================================
     dd_chofer = ft.Dropdown(label="¿Quién eres?", bgcolor="white", width=300, options=[])
-    columna_ruta = ft.Column(scroll=ft.ScrollMode.AUTO, expand=True)
-    lbl_sin_datos = ft.Text("No tienes entregas pendientes 🎉", visible=False, size=16, color="green")
     
+    # Contenedores de las "Pestañas" (Ahora son vistas simples)
+    columna_ruta = ft.Column(scroll=ft.ScrollMode.AUTO, expand=True)
+    
+    # Buscador
     txt_buscar = ft.TextField(label="Escanear/Escribir Guía", bgcolor="white")
     col_resultado_busqueda = ft.Column()
+    
+    lbl_sin_datos = ft.Text("No tienes entregas pendientes 🎉", visible=False, size=16, color="green")
 
     # =========================================================================
     # 3. FUNCIONES LÓGICAS
@@ -108,7 +111,6 @@ def main(page: ft.Page):
                 res = conn.execute(text("SELECT id, guia_remito, estado FROM operaciones WHERE guia_remito ILIKE :g"), {"g": f"%{term}%"}).fetchone()
                 if res:
                     id_op, guia, est = res
-                    # Botón creado dinámicamente
                     btn_gestion = ft.ElevatedButton(
                         f"GESTIONAR {guia}", 
                         bgcolor="blue", color="white", 
@@ -127,7 +129,7 @@ def main(page: ft.Page):
                 conn.execute(text("UPDATE operaciones SET estado = :e, fecha_entrega = :fe WHERE id = :id"), {"e": est, "fe": datetime.now(), "id": id_op})
                 conn.execute(text("INSERT INTO historial_movimientos (operacion_id, usuario, accion, detalle, fecha_hora) VALUES (:oid, :usr, 'APP CHOFER', :det, :fh)"), {"oid": id_op, "usr": dd_chofer.value, "det": det, "fh": datetime.now()})
                 conn.commit()
-                page.open(ft.SnackBar(ft.Text(f"Guía {guia} actualizada")))
+                page.open(ft.SnackBar(ft.Text(f"Guía {n_guia} actualizada")))
                 cargar_hoja_de_ruta()
             except Exception as ex: page.open(ft.SnackBar(ft.Text(f"Error: {ex}")))
             finally: conn.close()
@@ -172,7 +174,6 @@ def main(page: ft.Page):
                         info = ft.Container(content=ft.Text(f"💰 ${m}", color="white", weight="bold"), bgcolor="red", padding=5, border_radius=5) if cr else ft.Container(content=ft.Text("✅ OK", color="white", weight="bold"), bgcolor="green", padding=5, border_radius=5)
                         btn_wa = ft.IconButton(ft.icons.MESSAGE, icon_color="green", icon_size=30, on_click=lambda _, c=cel, g=guia, d=dest: abrir_whatsapp(c, g, d))
                         if not cel or len(str(cel)) < 6: btn_wa.disabled = True; btn_wa.icon_color = "grey"
-                        
                         card = ft.Card(content=ft.Container(padding=10, content=ft.Column([
                             ft.ListTile(leading=ft.Icon("local_shipping", color="blue"), title=ft.Text(dest, weight="bold"), subtitle=ft.Text(f"{dom}\n({loc})")),
                             ft.Row([ft.Text("Ir:"), ft.IconButton("map", icon_color="red", on_click=lambda _,d=dom,l=loc: abrir_mapa(d,l)), ft.VerticalDivider(width=10), ft.Text("Chat:"), btn_wa], alignment=ft.MainAxisAlignment.CENTER),
@@ -194,7 +195,7 @@ def main(page: ft.Page):
             finally: conn.close()
 
     # =========================================================================
-    # 4. ARMADO DE PANTALLA (CONSTRUCCIÓN SEGURA SIN KEYWORDS)
+    # 4. ARMADO DE PANTALLA (SIN TABS - SOLO BOTONES)
     # =========================================================================
 
     vista_edicion = ft.Container(
@@ -220,42 +221,43 @@ def main(page: ft.Page):
 
     dd_chofer.on_change = cargar_hoja_de_ruta
     
-    # --- ARREGLO FINAL: NO USAMOS 'tabs=' EN EL CONSTRUCTOR ---
+    # --- SISTEMA DE CAMBIO DE VISTA CON BOTONES (INFALIBLE) ---
     
+    # Contenidos
     contenido_ruta = ft.Container(content=columna_ruta, padding=5)
     contenido_buscar = ft.Container(content=ft.Column([txt_buscar, ft.ElevatedButton("Buscar", on_click=buscar_manual), ft.Divider(), col_resultado_busqueda]), padding=20)
     
-    # Contenedor dinámico
-    cuerpo_pestana = ft.Container(content=contenido_ruta, expand=True)
+    # Contenedor dinámico (Empieza mostrando la ruta)
+    cuerpo_dinamico = ft.Container(content=contenido_ruta, expand=True)
 
-    def cambiar_tab(e):
-        indice = e.control.selected_index
-        if indice == 0:
-            cuerpo_pestana.content = contenido_ruta
-        else:
-            cuerpo_pestana.content = contenido_buscar
-        cuerpo_pestana.update()
+    def mostrar_ruta(e):
+        cuerpo_dinamico.content = contenido_ruta
+        btn_menu_ruta.style = ft.ButtonStyle(bgcolor="blue", color="white") # Activo
+        btn_menu_escaner.style = ft.ButtonStyle(bgcolor="white", color="blue") # Inactivo
+        cuerpo_dinamico.update()
+        btn_menu_ruta.update()
+        btn_menu_escaner.update()
 
-    # 1. Creamos las pestañas vacías (sin argumentos problemáticos)
-    tabs = ft.Tabs(
-        selected_index=0,
-        on_change=cambiar_tab,
-        expand=0
-    )
-    
-    # 2. Agregamos las Tabs manualmente a la lista interna
-    # (Usamos argumentos posicionales para evitar problemas con 'text=')
-    tab1 = ft.Tab("Mi Ruta", icon="list")
-    tab2 = ft.Tab("Escáner", icon="qr_code")
-    
-    tabs.tabs.append(tab1)
-    tabs.tabs.append(tab2)
+    def mostrar_escaner(e):
+        cuerpo_dinamico.content = contenido_buscar
+        btn_menu_ruta.style = ft.ButtonStyle(bgcolor="white", color="blue") # Inactivo
+        btn_menu_escaner.style = ft.ButtonStyle(bgcolor="blue", color="white") # Activo
+        cuerpo_dinamico.update()
+        btn_menu_ruta.update()
+        btn_menu_escaner.update()
+
+    # Botones de navegación
+    btn_menu_ruta = ft.ElevatedButton("MI RUTA", expand=True, on_click=mostrar_ruta, bgcolor="blue", color="white")
+    btn_menu_escaner = ft.ElevatedButton("ESCANER", expand=True, on_click=mostrar_escaner, bgcolor="white", color="blue")
+
+    barra_navegacion = ft.Row([btn_menu_ruta, btn_menu_escaner], alignment=ft.MainAxisAlignment.CENTER)
 
     vista_principal = ft.Column([
         ft.Row([ft.Icon("local_shipping", color="blue", size=30), ft.Text("E.K. LOGISTICA", size=20, weight="bold")], alignment=ft.MainAxisAlignment.CENTER),
         ft.Container(content=dd_chofer, alignment=ft.alignment.center),
-        tabs,           # La barra de pestañas
-        cuerpo_pestana  # El contenido cambiante
+        ft.Divider(),
+        barra_navegacion, # Aquí están los botones en lugar de las pestañas
+        cuerpo_dinamico
     ], expand=True)
 
     page.add(ft.Column([vista_principal, vista_edicion], expand=True))
@@ -264,5 +266,6 @@ def main(page: ft.Page):
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8000))
     ft.app(target=main, view=ft.AppView.WEB_BROWSER, port=port, host="0.0.0.0")
+
 
 
