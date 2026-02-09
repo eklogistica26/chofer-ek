@@ -21,7 +21,7 @@ def get_db_connection():
     return None
 
 def main(page: ft.Page):
-    print("🚀 INICIANDO V20 (FIX ICONOS)...")
+    print("🚀 INICIANDO V21 (ICONOS POSICIONALES)...")
     
     page.title = "Choferes"
     page.bgcolor = "white"
@@ -66,8 +66,10 @@ def main(page: ft.Page):
 
     btn_inicio = ft.ElevatedButton("CONECTAR", on_click=conectar, bgcolor="blue", color="white")
     
+    # CORRECCION: Icono de inicio sin "name="
     vista_inicio = ft.Column(
         [
+            ft.Icon("local_shipping", size=50, color="blue"), # <--- CORREGIDO
             ft.Text("BIENVENIDO", size=30, color="black", weight="bold"),
             ft.Text("Sistema de Choferes", size=16, color="black"),
             ft.Container(height=20),
@@ -130,12 +132,12 @@ def main(page: ft.Page):
                             ], alignment="spaceBetween"),
                             
                             ft.Row([
-                                # CORRECCIÓN 1: Usamos string "location_on" en lugar de constante
-                                ft.Icon(name="location_on", size=16, color="red"),
+                                # CORRECCIÓN FINAL: Sin "name="
+                                ft.Icon("location_on", size=16, color="red"), # <--- CORREGIDO
                                 ft.Text(f"{dom}", size=12, color="#333333", expand=True),
                                 ft.IconButton(
-                                    # CORRECCIÓN 2: Usamos string "map" en lugar de constante
-                                    icon="map", 
+                                    # IconButton usa "icon=" (keyword) o posicional, pero posicional es más seguro aquí
+                                    "map", # <--- CORREGIDO (Posicional)
                                     icon_color="blue", 
                                     icon_size=20, 
                                     tooltip="Abrir Mapa",
@@ -183,12 +185,22 @@ def main(page: ft.Page):
     txt_recibe = ft.TextField(label="Quien recibe", text_size=14, border_color="grey", label_style=ft.TextStyle(color="black"))
     txt_motivo = ft.TextField(label="Motivo (Pendiente/Reprog)", text_size=14, border_color="grey", label_style=ft.TextStyle(color="black"))
     
-    # Aquí ya usábamos "camera_alt" como string y funcionaba, así que está perfecto
-    btn_foto = ft.ElevatedButton("📷 FOTO (Opcional)", icon="camera_alt", bgcolor="grey", color="white")
+    # CORRECCION: Icono en botón también sin "icon=" por si acaso
+    # Aunque en botones suele ser "icon=", vamos a usar el argumento directo si falla, 
+    # pero ElevatedButton es especial. Dejémoslo con icon= si funcionó antes, 
+    # o mejor aun, vamos a usar un ft.Icon dentro del boton para ir a lo seguro.
+    
+    # ESTRATEGIA SEGURA: Contenido del boton manual
+    btn_foto = ft.ElevatedButton(
+        content=ft.Row([ft.Icon("camera_alt", color="white"), ft.Text("FOTO (Opcional)", color="white")]),
+        bgcolor="grey", 
+        color="white"
+    )
 
     def tomar_foto(e):
         state["tiene_foto"] = True
-        btn_foto.text = "✅ FOTO ADJUNTADA"
+        # Reconstruimos contenido
+        btn_foto.content = ft.Row([ft.Icon("check", color="white"), ft.Text("FOTO LISTA", color="white")])
         btn_foto.bgcolor = "green"
         btn_foto.update()
 
@@ -236,7 +248,9 @@ def main(page: ft.Page):
         txt_motivo.value = ""
         txt_recibe.error_text = None
         txt_motivo.error_text = None
-        btn_foto.text = "📷 FOTO (Opcional)"
+        
+        # Reset boton foto
+        btn_foto.content = ft.Row([ft.Icon("camera_alt", color="white"), ft.Text("FOTO (Opcional)", color="white")])
         btn_foto.bgcolor = "grey"
         btn_foto.on_click = tomar_foto
         
