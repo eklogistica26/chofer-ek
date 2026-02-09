@@ -21,7 +21,7 @@ def get_db_connection():
     return None
 
 def main(page: ft.Page):
-    print("🚀 INICIANDO V24 (MAPA REAL + CAMARA REAL)...")
+    print("🚀 INICIANDO V25 (FIX CAMARA)...")
     
     page.title = "Choferes"
     page.bgcolor = "white"
@@ -31,32 +31,29 @@ def main(page: ft.Page):
     state = {"id": None, "guia": "", "tiene_foto": False}
 
     # ---------------------------------------------------------
-    # 1. COMPONENTE PARA LA CÁMARA (FilePicker)
+    # 1. COMPONENTE PARA LA CÁMARA (FilePicker Simplificado)
     # ---------------------------------------------------------
-    def on_foto_seleccionada(e: ft.FilePickerResultEvent):
+    
+    # CORRECCIÓN AQUÍ: Quitamos ": ft.FilePickerResultEvent" para que no falle
+    def on_foto_seleccionada(e): 
         if e.files:
-            # Si el usuario seleccionó una foto o sacó una
             state["tiene_foto"] = True
             btn_foto.text = f"✅ FOTO LISTA ({len(e.files)})"
             btn_foto.bgcolor = "green"
             btn_foto.update()
         else:
-            # Si canceló
             print("Foto cancelada")
 
-    # Creamos el selector de archivos (invisible, se activa con el botón)
     file_picker = ft.FilePicker(on_result=on_foto_seleccionada)
-    page.overlay.append(file_picker) # IMPORTANTE: Agregarlo a la página
+    page.overlay.append(file_picker)
 
     # ---------------------------------------------------------
     # 2. FUNCIONES UTILES
     # ---------------------------------------------------------
     def abrir_mapa(domicilio, localidad):
-        # Usamos la URL Universal de Google Maps
         direccion_full = f"{domicilio}, {localidad}"
         query = urllib.parse.quote(direccion_full)
         url = f"https://www.google.com/maps/search/?api=1&query={query}"
-        # web_window_name="_blank" obliga a abrir pestaña nueva o App
         page.launch_url(url, web_window_name="_blank")
 
     # ---------------------------------------------------------
@@ -78,10 +75,10 @@ def main(page: ft.Page):
                 ir_a_principal()
             except Exception as ex:
                 btn_inicio.text = f"Error: {ex}"
-            finally:
-                conn.close()
+                btn_inicio.disabled = False
         else:
             btn_inicio.text = "Error de Conexión DB"
+            btn_inicio.disabled = False
         page.update()
 
     btn_inicio = ft.ElevatedButton("CONECTAR", on_click=conectar, bgcolor="blue", color="white", height=50)
@@ -152,7 +149,6 @@ def main(page: ft.Page):
                             ft.Row([
                                 ft.Text("📍", size=20),
                                 ft.Text(f"{dom}", size=12, color="#333333", expand=True),
-                                # BOTON MAPA (Ahora abre Google Maps real)
                                 ft.ElevatedButton(
                                     "🗺️ MAPA", 
                                     bgcolor="#e3f2fd", color="blue", 
@@ -200,11 +196,11 @@ def main(page: ft.Page):
     txt_recibe = ft.TextField(label="Quien recibe", text_size=14, border_color="grey", label_style=ft.TextStyle(color="black"))
     txt_motivo = ft.TextField(label="Motivo (Pendiente/Reprog)", text_size=14, border_color="grey", label_style=ft.TextStyle(color="black"))
     
-    # BOTON FOTO (Ahora llama al FilePicker)
+    # CORRECCIÓN: Botón de foto simplificado (sin especificar tipo de archivo para evitar otro error)
     btn_foto = ft.ElevatedButton(
         "📷 FOTO (Cámara)", 
         bgcolor="grey", color="white", height=45,
-        on_click=lambda _: file_picker.pick_files(allow_multiple=False, file_type=ft.FilePickerFileType.IMAGE)
+        on_click=lambda _: file_picker.pick_files(allow_multiple=False)
     )
 
     def guardar(estado):
@@ -252,11 +248,11 @@ def main(page: ft.Page):
         txt_recibe.error_text = None
         txt_motivo.error_text = None
         
-        # Reset visual del botón foto
         btn_foto.text = "📷 FOTO (Cámara)"
         btn_foto.bgcolor = "grey"
-        # La acción ya está configurada arriba (FilePicker)
-        
+        # Re-asignamos la función por seguridad
+        btn_foto.on_click = lambda _: file_picker.pick_files(allow_multiple=False)
+
         page.clean()
         page.add(
             ft.Column([
@@ -271,7 +267,7 @@ def main(page: ft.Page):
                 
                 ft.Text("NO ENTREGADO:", weight="bold", color="black"),
                 txt_motivo,
-                btn_foto, # Este botón ahora abre la cámara/archivos
+                btn_foto,
                 ft.Container(height=5),
                 
                 ft.Row([
@@ -284,7 +280,6 @@ def main(page: ft.Page):
             ])
         )
 
-    # Bloque de seguridad
     try:
         page.add(vista_inicio)
     except Exception as ex:
