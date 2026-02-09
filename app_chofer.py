@@ -21,7 +21,7 @@ def get_db_connection():
     return None
 
 def main(page: ft.Page):
-    print("🚀 INICIANDO V29 (VERSION MODERNA)...")
+    print("🚀 INICIANDO V30 (CODIGO UNIVERSAL)...")
     
     page.title = "Choferes"
     page.bgcolor = "white"
@@ -31,9 +31,10 @@ def main(page: ft.Page):
     state = {"id": None, "guia": "", "tiene_foto": False}
 
     # ---------------------------------------------------------
-    # 1. CAMARA REAL (FilePicker)
+    # 1. CAMARA (COMPATIBLE CON VERSIONES VIEJAS)
     # ---------------------------------------------------------
     def on_foto_seleccionada(e):
+        # Esta función sirve para cualquier versión
         if e.files:
             state["tiene_foto"] = True
             btn_foto.text = f"✅ FOTO LISTA"
@@ -42,8 +43,12 @@ def main(page: ft.Page):
         else:
             print("Foto cancelada")
 
-    # Esto ahora SI va a funcionar con el requirements nuevo
-    file_picker = ft.FilePicker(on_result=on_foto_seleccionada)
+    # TRUCO: Creamos el FilePicker VACÍO (esto nunca falla)
+    file_picker = ft.FilePicker()
+    
+    # Y le asignamos la función DESPUÉS (esto funciona en viejas y nuevas)
+    file_picker.on_result = on_foto_seleccionada
+    
     page.overlay.append(file_picker)
 
     # ---------------------------------------------------------
@@ -53,8 +58,8 @@ def main(page: ft.Page):
         direccion_full = f"{domicilio}, {localidad}"
         query = urllib.parse.quote(direccion_full)
         url = f"https://www.google.com/maps/search/?api=1&query={query}"
-        # Esto ahora SI va a funcionar
-        page.launch_url(url, web_window_name="_blank")
+        # Usamos el método simple que no falla
+        page.launch_url(url)
 
     def conectar(e):
         btn_inicio.text = "Cargando..."
@@ -68,6 +73,7 @@ def main(page: ft.Page):
                 dd_chofer.options = []
                 for r in res:
                     dd_chofer.options.append(ft.dropdown.Option(r[0]))
+                
                 ir_a_principal()
             except Exception as ex:
                 btn_inicio.text = f"Error: {ex}"
@@ -134,7 +140,7 @@ def main(page: ft.Page):
                             ft.Row([
                                 ft.Text("📍", size=20),
                                 ft.Text(f"{dom}", size=12, color="#333333", expand=True),
-                                ft.ElevatedButton("🗺️ MAPA", bgcolor="#e3f2fd", color="blue", on_click=lambda _,d=dom,l=loc: abrir_mapa(d,l))
+                                ft.ElevatedButton("🗺️ IR", bgcolor="#e3f2fd", color="blue", on_click=lambda _,d=dom,l=loc: abrir_mapa(d,l))
                             ]),
                             ft.Text(f"Guía: {guia} | Bultos: {bultos}", size=11, color="black"),
                             ft.Container(height=5),
@@ -158,8 +164,12 @@ def main(page: ft.Page):
     txt_recibe = ft.TextField(label="Quien recibe", text_size=14, border_color="grey", label_style=ft.TextStyle(color="black"))
     txt_motivo = ft.TextField(label="Motivo (Pendiente/Reprog)", text_size=14, border_color="grey", label_style=ft.TextStyle(color="black"))
     
-    # Boton camara REAL
-    btn_foto = ft.ElevatedButton("📷 FOTO (Cámara)", bgcolor="grey", color="white", height=45, on_click=lambda _: file_picker.pick_files(allow_multiple=False))
+    # Boton camara CON ASIGNACIÓN TARDÍA
+    btn_foto = ft.ElevatedButton(
+        "📷 FOTO (Cámara)", 
+        bgcolor="grey", color="white", height=45
+        # NO asignamos on_click aquí para evitar errores si FilePicker no está listo
+    )
 
     def guardar(estado):
         id_op = state["id"]
@@ -185,7 +195,11 @@ def main(page: ft.Page):
     def ir_a_gestion(id_op, guia):
         state["id"] = id_op; state["tiene_foto"] = False
         txt_recibe.value = ""; txt_motivo.value = ""
+        
         btn_foto.text = "📷 FOTO (Cámara)"; btn_foto.bgcolor = "grey"
+        # Asignamos la acción AHORA, de forma segura
+        btn_foto.on_click = lambda _: file_picker.pick_files(allow_multiple=False)
+        
         page.clean()
         page.add(ft.Column([
             ft.Text(f"Guia: {guia}", size=18, weight="bold", color="black"), ft.Divider(),
