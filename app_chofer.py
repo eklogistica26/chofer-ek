@@ -26,7 +26,7 @@ def get_db_connection():
     return None
 
 def main(page: ft.Page):
-    print("🚀 INICIANDO V13...")
+    print("🚀 INICIANDO V14 (FIX ALIGNMENT)...")
     
     page.title = "E.K. Choferes"
     page.bgcolor = "#f0f2f5"
@@ -40,7 +40,7 @@ def main(page: ft.Page):
     # 1. ELEMENTOS VISUALES
     # =========================================================================
     
-    # PANTALLA DE INICIO (Evita pantalla gris)
+    # PANTALLA DE INICIO
     btn_conectar = ft.ElevatedButton(
         "🚀 INICIAR SISTEMA", 
         bgcolor="#0d6efd", color="white", 
@@ -58,13 +58,14 @@ def main(page: ft.Page):
             ft.Container(height=10),
             lbl_mensaje_inicio
         ],
-        horizontal_alignment="center",
+        horizontal_alignment="center", # Esto sí funciona (es texto simple)
         alignment=ft.MainAxisAlignment.CENTER
     )
 
+    # --- CORRECCIÓN AQUÍ: Usamos Alignment(0,0) manual ---
     contenedor_inicio = ft.Container(
         content=columna_inicio,
-        alignment=ft.alignment.center,
+        alignment=ft.Alignment(0, 0), # <--- ESTO ARREGLA EL ERROR
         expand=True
     )
 
@@ -118,10 +119,11 @@ def main(page: ft.Page):
 
     def ir_a_principal():
         page.clean()
+        # --- CORRECCIÓN AQUÍ TAMBIÉN ---
         page.add(
             ft.Column([
                 ft.Row([ft.Icon("local_shipping", color="blue"), ft.Text("E.K. LOGISTICA", weight="bold", size=18)], alignment="center"),
-                ft.Container(content=dd_chofer, alignment=ft.alignment.center),
+                ft.Container(content=dd_chofer, alignment=ft.Alignment(0, 0)), # <--- FIX
                 ft.Divider(),
                 columna_viajes
             ])
@@ -221,7 +223,6 @@ def main(page: ft.Page):
     btn_conectar.on_click = conectar_sistema
     dd_chofer.on_change = cargar_ruta
     
-    # Agregamos primero la pantalla de inicio
     page.add(contenedor_inicio)
 
 if __name__ == "__main__":
