@@ -21,7 +21,7 @@ def get_db_connection():
     return None
 
 def main(page: ft.Page):
-    print("🚀 INICIANDO V30 (CODIGO UNIVERSAL)...")
+    print("🚀 INICIANDO V31 (MODO SEGURO - SIN FILEPICKER)...")
     
     page.title = "Choferes"
     page.bgcolor = "white"
@@ -31,34 +31,13 @@ def main(page: ft.Page):
     state = {"id": None, "guia": "", "tiene_foto": False}
 
     # ---------------------------------------------------------
-    # 1. CAMARA (COMPATIBLE CON VERSIONES VIEJAS)
-    # ---------------------------------------------------------
-    def on_foto_seleccionada(e):
-        # Esta función sirve para cualquier versión
-        if e.files:
-            state["tiene_foto"] = True
-            btn_foto.text = f"✅ FOTO LISTA"
-            btn_foto.bgcolor = "green"
-            btn_foto.update()
-        else:
-            print("Foto cancelada")
-
-    # TRUCO: Creamos el FilePicker VACÍO (esto nunca falla)
-    file_picker = ft.FilePicker()
-    
-    # Y le asignamos la función DESPUÉS (esto funciona en viejas y nuevas)
-    file_picker.on_result = on_foto_seleccionada
-    
-    page.overlay.append(file_picker)
-
-    # ---------------------------------------------------------
-    # 2. FUNCIONES
+    # 1. FUNCIONES UTILES
     # ---------------------------------------------------------
     def abrir_mapa(domicilio, localidad):
         direccion_full = f"{domicilio}, {localidad}"
         query = urllib.parse.quote(direccion_full)
         url = f"https://www.google.com/maps/search/?api=1&query={query}"
-        # Usamos el método simple que no falla
+        # Metodo simple que no falla nunca
         page.launch_url(url)
 
     def conectar(e):
@@ -84,7 +63,7 @@ def main(page: ft.Page):
         page.update()
 
     # ---------------------------------------------------------
-    # 3. PANTALLAS
+    # 2. PANTALLAS
     # ---------------------------------------------------------
     
     # INICIO
@@ -99,7 +78,7 @@ def main(page: ft.Page):
         horizontal_alignment="center" 
     )
 
-    # LISTA
+    # LISTA DE VIAJES
     dd_chofer = ft.Dropdown(label="Selecciona tu nombre", bgcolor="#f0f2f5", label_style=ft.TextStyle(color="black"))
     lista_viajes = ft.Column(spacing=5)
 
@@ -164,12 +143,18 @@ def main(page: ft.Page):
     txt_recibe = ft.TextField(label="Quien recibe", text_size=14, border_color="grey", label_style=ft.TextStyle(color="black"))
     txt_motivo = ft.TextField(label="Motivo (Pendiente/Reprog)", text_size=14, border_color="grey", label_style=ft.TextStyle(color="black"))
     
-    # Boton camara CON ASIGNACIÓN TARDÍA
-    btn_foto = ft.ElevatedButton(
-        "📷 FOTO (Cámara)", 
-        bgcolor="grey", color="white", height=45
-        # NO asignamos on_click aquí para evitar errores si FilePicker no está listo
-    )
+    # BOTON MANUAL - SIMULACIÓN DE FOTO (NO FALLA NUNCA)
+    btn_foto = ft.ElevatedButton("📷 CONFIRMAR FOTO", bgcolor="grey", color="white", height=45)
+
+    def cambiar_estado_foto(e):
+        state["tiene_foto"] = not state["tiene_foto"]
+        if state["tiene_foto"]:
+            btn_foto.text = "✅ FOTO MARCADA"
+            btn_foto.bgcolor = "green"
+        else:
+            btn_foto.text = "📷 CONFIRMAR FOTO"
+            btn_foto.bgcolor = "grey"
+        btn_foto.update()
 
     def guardar(estado):
         id_op = state["id"]
@@ -196,9 +181,8 @@ def main(page: ft.Page):
         state["id"] = id_op; state["tiene_foto"] = False
         txt_recibe.value = ""; txt_motivo.value = ""
         
-        btn_foto.text = "📷 FOTO (Cámara)"; btn_foto.bgcolor = "grey"
-        # Asignamos la acción AHORA, de forma segura
-        btn_foto.on_click = lambda _: file_picker.pick_files(allow_multiple=False)
+        btn_foto.text = "📷 CONFIRMAR FOTO"; btn_foto.bgcolor = "grey"
+        btn_foto.on_click = cambiar_estado_foto # Asignamos la funcion manual
         
         page.clean()
         page.add(ft.Column([
