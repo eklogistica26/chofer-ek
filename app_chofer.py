@@ -5,14 +5,15 @@ import os
 import urllib.parse
 import smtplib
 from email.message import EmailMessage
-import threading  # <--- IMPORTANTE: Librería para trabajar en segundo plano
+import threading 
 
 # --- CONFIGURACIÓN DB ---
 DATABASE_URL = "postgresql://postgres.gwdypvvyjuqzvpbbzchk:Eklogisticasajetpaq@aws-0-us-west-2.pooler.supabase.com:6543/postgres"
 
 # --- CREDENCIALES EMAIL ---
 EMAIL_USER = os.environ.get("EMAIL_USER", "eklogistica19@gmail.com") 
-EMAIL_PASS = os.environ.get("EMAIL_PASS", "") 
+# TRUCO: .replace(" ", "") elimina los espacios si los copiaste sin querer
+EMAIL_PASS = os.environ.get("EMAIL_PASS", "").replace(" ", "") 
 
 engine = None
 try:
@@ -28,7 +29,7 @@ def get_db_connection():
     return None
 
 def main(page: ft.Page):
-    print("🚀 INICIANDO V42 (TURBO - EMAILS EN SEGUNDO PLANO)...")
+    print("🚀 INICIANDO V43 (LOGICA JETPAQ + DETALLES + FIX EMAIL)...")
     
     page.title = "Choferes EK"
     page.bgcolor = "white"
@@ -44,13 +45,13 @@ def main(page: ft.Page):
     }
 
     # ---------------------------------------------------------
-    # 1. EMAIL AUTOMÁTICO (SE EJECUTARÁ EN SEGUNDO PLANO)
+    # 1. EMAIL EN SEGUNDO PLANO
     # ---------------------------------------------------------
     def enviar_reporte_email_thread(destinatario_final, guia, ruta_imagen, proveedor_nombre):
-        print(f"📧 Iniciando envío de correo en segundo plano para {guia}...")
+        print(f"📧 Intentando enviar correo para {proveedor_nombre}...")
         
         if not EMAIL_PASS:
-            print("❌ Error: No hay contraseña de email configurada.")
+            print("❌ Error: No hay contraseña configurada.")
             return
 
         email_proveedor = None
@@ -61,12 +62,12 @@ def main(page: ft.Page):
                 if res and res[0]:
                     email_proveedor = res[0]
             except Exception as e:
-                print(f"❌ Error DB buscando email: {e}")
+                print(f"❌ Error DB Email: {e}")
             finally:
                 conn.close()
 
         if not email_proveedor:
-            print(f"⚠️ El proveedor {proveedor_nombre} no tiene email asignado.")
+            print(f"⚠️ El proveedor {proveedor_nombre} no tiene email.")
             return
 
         msg = EmailMessage()
@@ -77,7 +78,7 @@ def main(page: ft.Page):
         cuerpo = f"""
         Hola,
         
-        Se informa la entrega exitosa de la carga.
+        Se informa la entrega exitosa.
         
         📅 Fecha: {datetime.now().strftime('%d/%m/%Y %H:%M')}
         📦 Guía: {guia}
@@ -97,15 +98,15 @@ def main(page: ft.Page):
                     file_name = f"remito_{guia}.jpg"
                     msg.add_attachment(file_data, maintype='image', subtype='jpeg', filename=file_name)
             except Exception as e:
-                print(f"❌ Error adjuntando foto: {e}")
+                print(f"❌ Error foto: {e}")
 
         try:
             with smtplib.SMTP_SSL('smtp.gmail.com', 465) as smtp:
                 smtp.login(EMAIL_USER, EMAIL_PASS)
                 smtp.send_message(msg)
-            print(f"✅ CORREO ENVIADO EXITOSAMENTE A {email_proveedor}")
+            print(f"✅ CORREO ENVIADO A {email_proveedor}")
         except Exception as e:
-            print(f"❌ Error final enviando email: {e}")
+            print(f"❌ Error SMTP Final: {e}")
 
     # ---------------------------------------------------------
     # 2. CÁMARA
@@ -115,13 +116,10 @@ def main(page: ft.Page):
             path = e.files[0].path
             state["tiene_foto"] = True
             state["ruta_foto"] = path
-            
             btn_foto.text = "✅ FOTO LISTA"
             btn_foto.bgcolor = "green"
             btn_foto.icon = "check"
             btn_foto.update()
-        else:
-            print("Foto cancelada")
 
     file_picker = ft.FilePicker()
     file_picker.on_result = on_foto_seleccionada
@@ -198,7 +196,7 @@ def main(page: ft.Page):
         page.clean()
         page.add(ft.Column([ft.Text("MI RUTA", size=18, weight="bold", color="black"), dd_chofer, btn_buscar, ft.Divider(), lista_viajes]))
 
-    # --- GESTION ---
+    # --- GESTION CON DETALLES ---
     txt_recibe = ft.TextField(label="Quien recibe", border_color="grey", label_style=ft.TextStyle(color="black"))
     txt_motivo = ft.TextField(label="Motivo (No entregado)", border_color="grey", label_style=ft.TextStyle(color="black"))
     
@@ -213,10 +211,20 @@ def main(page: ft.Page):
         id_op = state["id"]
         if not id_op: return
         
+        # Validaciones Generales
         if estado == "ENTREGADO" and not txt_recibe.value:
             txt_recibe.error_text = "Requerido"; txt_recibe.update(); return
         if estado != "ENTREGADO" and not txt_motivo.value:
             txt_motivo.error_text = "Requerido"; txt_motivo.update(); return
+
+        # VALIDACIÓN FOTO OBLIGATORIA (EXCEPTO JETPAQ)
+        if estado == "ENTREGADO":
+            es_jetpaq = "jetpaq" in state["proveedor"].lower()
+            if not es_jetpaq and not state["tiene_foto"]:
+                page.snack_bar = ft.SnackBar(ft.Text("⚠️ FOTO OBLIGATORIA (Salvo JetPaq)"), bgcolor="red")
+                page.snack_bar.open = True
+                page.update()
+                return
 
         det = f"Recibio: {txt_recibe.value}" if estado == "ENTREGADO" else f"Motivo: {txt_motivo.value}"
         if state["tiene_foto"]: det += " [CON FOTO]"
@@ -228,21 +236,14 @@ def main(page: ft.Page):
                 conn.execute(text("INSERT INTO historial_movimientos (operacion_id, usuario, accion, detalle, fecha_hora) VALUES (:o, :u, 'APP', :d, :f)"), {"o": id_op, "u": dd_chofer.value, "d": det, "f": datetime.now()})
                 conn.commit()
                 
-                # --- AQUÍ ESTÁ LA MAGIA: HILOS (THREADING) ---
+                # Enviar correo en hilo separado (TURBO)
                 if estado == "ENTREGADO" and state["tiene_foto"]:
-                    # Creamos un hilo separado para que el mail se vaya "por detrás"
-                    # y no trabe la pantalla del chofer.
-                    mail_thread = threading.Thread(
-                        target=enviar_reporte_email_thread, 
-                        args=(txt_recibe.value, state["guia"], state["ruta_foto"], state["proveedor"])
-                    )
-                    mail_thread.start() # ¡Despega el hilo!
-                    
-                    page.snack_bar = ft.SnackBar(ft.Text(f"✅ Guardado. Enviando correo en segundo plano..."), bgcolor="green")
+                    t = threading.Thread(target=enviar_reporte_email_thread, args=(txt_recibe.value, state["guia"], state["ruta_foto"], state["proveedor"]))
+                    t.start()
+                    page.snack_bar = ft.SnackBar(ft.Text("✅ Guardado. Enviando correo..."), bgcolor="green")
                 else:
                     page.snack_bar = ft.SnackBar(ft.Text("✅ Guardado"), bgcolor="green")
 
-                # Actualizamos la pantalla INMEDIATAMENTE, sin esperar al mail
                 ir_a_principal()
                 cargar_ruta(None)
                 page.snack_bar.open = True
@@ -250,22 +251,59 @@ def main(page: ft.Page):
 
             except Exception as e:
                 page.snack_bar = ft.SnackBar(ft.Text(f"Error: {e}"), bgcolor="red"); page.snack_bar.open = True
-                page.update()
             finally: conn.close()
 
     def ir_a_gestion(id_op, guia, prov):
         state["id"] = id_op; state["guia"] = guia; state["proveedor"] = prov; state["tiene_foto"] = False; state["ruta_foto"] = None
         txt_recibe.value = ""; txt_motivo.value = ""
-        btn_foto.text = "📷 TOMAR FOTO"; btn_foto.bgcolor = "grey"; 
-        btn_foto.icon = "camera_alt"
+        btn_foto.text = "📷 TOMAR FOTO"; btn_foto.bgcolor = "grey"; btn_foto.icon = "camera_alt"
         
+        # 1. BUSCAMOS DETALLES COMPLETOS
+        detalles_view = ft.Column()
+        conn = get_db_connection()
+        if conn:
+            try:
+                # Traemos: Celular, Urgencia, Tipo Carga, Cobro, Info Extra
+                sql_det = text("SELECT celular, tipo_urgencia, tipo_carga, es_contra_reembolso, monto_recaudacion, info_intercambio, destinatario, domicilio, localidad FROM operaciones WHERE id = :i")
+                res = conn.execute(sql_det, {"i": id_op}).fetchone()
+                if res:
+                    cel, urg, tipo, es_cr, monto_cr, info_cr, dest, dom, loc = res
+                    
+                    # Armamos la tarjeta de detalles
+                    info_pago = ""
+                    if es_cr:
+                        info_pago = f"💰 COBRAR: $ {monto_cr}"
+                        if info_cr: info_pago += f"\n📝 Nota: {info_cr}"
+                    
+                    detalles_view.controls = [
+                        ft.Container(
+                            bgcolor="#e3f2fd", padding=10, border_radius=5,
+                            content=ft.Column([
+                                ft.Text(f"👤 {dest}", weight="bold", size=16, color="black"),
+                                ft.Text(f"📍 {dom} ({loc})", color="black"),
+                                ft.Text(f"📞 {cel or 'Sin celular'}", color="blue", weight="bold"),
+                                ft.Divider(),
+                                ft.Row([
+                                    ft.Text(f"⚡ {urg}", color="red" if "URGENTE" in urg else "black", weight="bold"),
+                                    ft.Text(f"📦 {tipo}", color="black")
+                                ], alignment="spaceBetween"),
+                                ft.Text(info_pago, color="red", weight="bold", size=16) if es_cr else ft.Container()
+                            ])
+                        )
+                    ]
+            except: pass
+            finally: conn.close()
+
         page.clean()
         page.add(ft.Column([
-            ft.Text(f"Guía: {guia}", size=20, weight="bold", color="black"),
-            ft.Text(f"Cliente: {prov}", size=16, color="grey"),
+            ft.Text(f"Gestionar: {guia}", size=18, weight="bold", color="black"),
+            ft.Text(f"Cliente: {prov}", size=14, color="grey"),
+            detalles_view, # AQUI MOSTRAMOS TODO EL DETALLE
             ft.Divider(),
             ft.Text("ENTREGA EXITOSA:", weight="bold", color="black"),
-            txt_recibe, btn_foto, ft.Container(height=10),
+            txt_recibe, 
+            btn_foto, 
+            ft.Container(height=10),
             ft.ElevatedButton("CONFIRMAR ENTREGA ✅", bgcolor="green", color="white", width=300, height=50, on_click=lambda _: guardar("ENTREGADO")),
             ft.Divider(),
             ft.Text("NO ENTREGADO:", weight="bold", color="black"),
