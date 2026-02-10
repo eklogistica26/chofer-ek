@@ -28,9 +28,9 @@ def get_db_connection():
     return None
 
 def main(page: ft.Page):
-    print(f"🚀 INICIANDO V56 (STABLE 0.80.5) - Flet Ver: {ft.version}")
+    print(f"🚀 INICIANDO V57 (SIN ETIQUETAS) - Flet Ver: {ft.version}")
     
-    page.title = "Choferes EK - V56"
+    page.title = "Choferes EK - V57"
     page.bgcolor = "white"
     page.theme_mode = ft.ThemeMode.LIGHT 
     page.scroll = "auto"
@@ -104,13 +104,13 @@ def main(page: ft.Page):
         except: pass
 
     # ---------------------------------------------------------
-    # 2. CÁMARA (SINTAXIS SEGURA 0.80.5)
+    # 2. CÁMARA (SIN ETIQUETAS DE TIPO)
     # ---------------------------------------------------------
     
     btn_confirmar_global = ft.ElevatedButton("CONFIRMAR ENTREGA ✅", bgcolor="green", color="white", width=300, height=50)
 
-    # Funciones del FilePicker
-    def on_upload_result(e: ft.FilePickerUploadEvent):
+    # Quitamos ": ft.FilePickerUploadEvent" -> Solo dejamos "e"
+    def on_upload_result(e):
         if e.error:
             btn_foto.text = "❌ Error al subir"
             btn_foto.bgcolor = "red"
@@ -126,7 +126,7 @@ def main(page: ft.Page):
         
         btn_foto.text = "✅ FOTO LISTA"
         btn_foto.bgcolor = "green"
-        btn_foto.icon = "check"
+        btn_foto.icon = ft.icons.CHECK
         btn_foto.disabled = False
         btn_foto.update()
         
@@ -135,7 +135,8 @@ def main(page: ft.Page):
         btn_confirmar_global.bgcolor = "green"
         btn_confirmar_global.update()
 
-    def on_foto_seleccionada(e: ft.FilePickerResultEvent):
+    # Quitamos ": ft.FilePickerResultEvent" -> Solo dejamos "e"
+    def on_foto_seleccionada(e):
         if e.files:
             btn_foto.text = "⏳ Subiendo..."
             btn_foto.bgcolor = "orange"
@@ -151,14 +152,11 @@ def main(page: ft.Page):
         else:
             print("Cancelado")
 
-    # --- INICIALIZACIÓN SEGURA ---
-    # 1. Crear vacío
+    # INICIALIZACIÓN
     file_picker = ft.FilePicker()
-    # 2. Asignar página (Overlay)
     page.overlay.append(file_picker)
-    page.update() # Asegurar que existe en la página
     
-    # 3. Asignar eventos DESPUÉS
+    # Asignar eventos
     file_picker.on_result = on_foto_seleccionada
     file_picker.on_upload = on_upload_result
 
@@ -182,7 +180,7 @@ def main(page: ft.Page):
         page.update()
 
     btn_inicio = ft.ElevatedButton("CONECTAR", on_click=conectar, bgcolor="blue", color="white", height=50)
-    vista_inicio = ft.Column([ft.Text("🚛", size=50), ft.Text("BIENVENIDO V56", size=30, weight="bold", color="black"), ft.Container(height=20), btn_inicio], horizontal_alignment="center")
+    vista_inicio = ft.Column([ft.Text("🚛", size=50), ft.Text("BIENVENIDO V57", size=30, weight="bold", color="black"), ft.Container(height=20), btn_inicio], horizontal_alignment="center")
 
     dd_chofer = ft.Dropdown(label="Chofer", bgcolor="#f0f2f5", label_style=ft.TextStyle(color="black"))
     lista_viajes = ft.Column(spacing=10)
@@ -224,7 +222,7 @@ def main(page: ft.Page):
     btn_foto = ft.ElevatedButton(
         "📷 TOMAR FOTO", 
         bgcolor="grey", color="white", height=45,
-        icon="camera_alt", # Texto simple
+        icon=ft.icons.CAMERA_ALT, 
         on_click=lambda _: file_picker.pick_files(allow_multiple=False, file_type=ft.FilePickerFileType.IMAGE)
     )
 
@@ -269,7 +267,7 @@ def main(page: ft.Page):
     def ir_a_gestion(id_op, guia, prov):
         state["id"] = id_op; state["guia"] = guia; state["proveedor"] = prov; state["tiene_foto"] = False; state["ruta_foto"] = None
         txt_recibe.value = ""; txt_motivo.value = ""
-        btn_foto.text = "📷 TOMAR FOTO"; btn_foto.bgcolor = "grey"; btn_foto.icon = "camera_alt"; btn_foto.disabled = False
+        btn_foto.text = "📷 TOMAR FOTO"; btn_foto.bgcolor = "grey"; btn_foto.icon = ft.icons.CAMERA_ALT; btn_foto.disabled = False
         
         btn_confirmar_global.disabled = False
         btn_confirmar_global.text = "CONFIRMAR ENTREGA ✅"
@@ -309,6 +307,7 @@ def main(page: ft.Page):
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8000))
     ft.app(target=main, view=ft.AppView.WEB_BROWSER, port=port, host="0.0.0.0")
+
 
 
 
