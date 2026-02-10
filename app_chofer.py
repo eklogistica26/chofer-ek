@@ -27,7 +27,7 @@ def get_db_connection():
     return None
 
 def main(page: ft.Page):
-    print("🚀 INICIANDO V39 (FIX ICONO)...")
+    print("🚀 INICIANDO V40 (ICONOS COMO TEXTO)...")
     
     page.title = "Choferes EK"
     page.bgcolor = "white"
@@ -115,7 +115,7 @@ def main(page: ft.Page):
             
             btn_foto.text = "✅ FOTO LISTA"
             btn_foto.bgcolor = "green"
-            btn_foto.icon = ft.icons.CHECK # Icono de check simple
+            btn_foto.icon = "check" # <--- CAMBIO CLAVE: Texto simple
             btn_foto.update()
         else:
             print("Foto cancelada")
@@ -199,11 +199,11 @@ def main(page: ft.Page):
     txt_recibe = ft.TextField(label="Quien recibe", border_color="grey", label_style=ft.TextStyle(color="black"))
     txt_motivo = ft.TextField(label="Motivo (No entregado)", border_color="grey", label_style=ft.TextStyle(color="black"))
     
-    # BOTON CAMARA (USAMOS EL ICONO 'CAMERA' QUE ES SEGURO)
+    # BOTON CAMARA
     btn_foto = ft.ElevatedButton(
         "📷 TOMAR FOTO", 
         bgcolor="grey", color="white", height=45,
-        icon=ft.icons.CAMERA, # CAMBIO AQUI: CAMERA en lugar de CAMERA_ALT
+        icon="camera_alt", # <--- CAMBIO CLAVE: Texto simple "camera_alt"
         on_click=lambda _: file_picker.pick_files(allow_multiple=False, file_type=ft.FilePickerFileType.IMAGE)
     )
 
@@ -243,7 +243,7 @@ def main(page: ft.Page):
         state["id"] = id_op; state["guia"] = guia; state["proveedor"] = prov; state["tiene_foto"] = False; state["ruta_foto"] = None
         txt_recibe.value = ""; txt_motivo.value = ""
         btn_foto.text = "📷 TOMAR FOTO"; btn_foto.bgcolor = "grey"; 
-        btn_foto.icon = ft.icons.CAMERA # CAMBIO AQUI TAMBIEN
+        btn_foto.icon = "camera_alt" # <--- CAMBIO CLAVE: Texto simple
         
         page.clean()
         page.add(ft.Column([
@@ -269,6 +269,7 @@ def main(page: ft.Page):
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8000))
     ft.app(target=main, view=ft.AppView.WEB_BROWSER, port=port, host="0.0.0.0")
+
 
 
 
