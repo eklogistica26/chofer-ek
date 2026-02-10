@@ -12,7 +12,7 @@ DATABASE_URL = "postgresql://postgres.gwdypvvyjuqzvpbbzchk:Eklogisticasajetpaq@a
 
 # --- CREDENCIALES EMAIL (Las toma de Render) ---
 EMAIL_USER = os.environ.get("EMAIL_USER", "eklogistica19@gmail.com") 
-EMAIL_PASS = os.environ.get("EMAIL_PASS", "") # Si falla, revisa las variables en Render
+EMAIL_PASS = os.environ.get("EMAIL_PASS", "") 
 
 engine = None
 try:
@@ -28,7 +28,7 @@ def get_db_connection():
     return None
 
 def main(page: ft.Page):
-    print("🚀 INICIANDO V32 (CAMARA + EMAIL AUTOMATICO)...")
+    print("🚀 INICIANDO V33 (FIX CAMARA + EMAIL)...")
     
     page.title = "Choferes EK"
     page.bgcolor = "white"
@@ -39,7 +39,7 @@ def main(page: ft.Page):
     state = {
         "id": None, 
         "guia": "", 
-        "proveedor": "", # Guardamos de quien es la carga
+        "proveedor": "", 
         "tiene_foto": False,
         "ruta_foto": None
     }
@@ -112,14 +112,13 @@ def main(page: ft.Page):
     # ---------------------------------------------------------
     # 2. CÁMARA REAL (FILEPICKER) 📷
     # ---------------------------------------------------------
-    def on_foto_seleccionada(e: ft.FilePickerResultEvent):
+    
+    # CORRECCIÓN AQUÍ: Quitamos ": ft.FilePickerResultEvent" para que no falle nunca más
+    def on_foto_seleccionada(e):
         if e.files:
-            # Guardamos la ruta del archivo temporal
             file_path = e.files[0].path
-            # NOTA: En web/movil, a veces hay que 'subir' el archivo. 
-            # Pero FilePicker suele dejarlo en cache local accesible.
             state["tiene_foto"] = True
-            state["ruta_foto"] = file_path # Guardamos la ruta para el email
+            state["ruta_foto"] = file_path 
             
             btn_foto.text = "✅ FOTO LISTA"
             btn_foto.bgcolor = "green"
@@ -192,7 +191,6 @@ def main(page: ft.Page):
         
         if conn:
             try:
-                # Traemos tambien el proveedor para saber a quien mandar mail
                 sql = text("""
                     SELECT id, guia_remito, destinatario, domicilio, localidad, bultos, estado, proveedor 
                     FROM operaciones 
@@ -380,6 +378,7 @@ def main(page: ft.Page):
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8000))
     ft.app(target=main, view=ft.AppView.WEB_BROWSER, port=port, host="0.0.0.0")
+
 
 
 
