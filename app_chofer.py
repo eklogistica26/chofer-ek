@@ -29,9 +29,10 @@ def get_db_connection():
     return None
 
 def main(page: ft.Page):
-    print("🚀 INICIANDO V53 (VERSION LIMPIA)...")
+    print("🚀 INICIANDO V54 (VERSION FINAL - CACHE TEST)...")
     
-    page.title = "Choferes EK"
+    # --- SI NO VES ESTE TITULO EN EL CELULAR, BORRA EL HISTORIAL ---
+    page.title = "CHOFERES V54" 
     page.bgcolor = "white"
     page.theme_mode = ft.ThemeMode.LIGHT 
     page.scroll = "auto"
@@ -107,14 +108,13 @@ def main(page: ft.Page):
         except: pass
 
     # ---------------------------------------------------------
-    # 2. CÁMARA (CONFIGURACIÓN MANUAL)
+    # 2. CÁMARA (COMPATIBLE V54)
     # ---------------------------------------------------------
     
     btn_confirmar_global = ft.ElevatedButton("CONFIRMAR ENTREGA ✅", bgcolor="green", color="white", width=300, height=50)
 
     def on_upload_result(e):
         if e.error:
-            print(f"❌ Error Upload: {e.error}")
             btn_foto.text = "❌ Reintentar"
             btn_foto.bgcolor = "red"
             btn_foto.disabled = False
@@ -155,7 +155,7 @@ def main(page: ft.Page):
         else:
             print("Selección cancelada")
 
-    # CREACIÓN SEGURA DEL FILEPICKER
+    # CREACIÓN CORRECTA PARA FLET 0.80+
     file_picker = ft.FilePicker()
     file_picker.on_result = on_foto_seleccionada
     file_picker.on_upload = on_upload_result
