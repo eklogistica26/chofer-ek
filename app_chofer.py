@@ -27,7 +27,7 @@ def get_db_connection():
     return None
 
 def main(page: ft.Page):
-    print("🚀 INICIANDO V38 (CODIGO BLINDADO)...")
+    print("🚀 INICIANDO V39 (FIX ICONO)...")
     
     page.title = "Choferes EK"
     page.bgcolor = "white"
@@ -105,10 +105,8 @@ def main(page: ft.Page):
             print(f"❌ Error enviando email: {e}")
 
     # ---------------------------------------------------------
-    # 2. CÁMARA (ARREGLADA) 📷
+    # 2. CÁMARA
     # ---------------------------------------------------------
-    
-    # FIX 1: Quitamos la etiqueta de tipo ": ft.FilePickerResultEvent" que daba error
     def on_foto_seleccionada(e):
         if e.files:
             path = e.files[0].path
@@ -117,15 +115,13 @@ def main(page: ft.Page):
             
             btn_foto.text = "✅ FOTO LISTA"
             btn_foto.bgcolor = "green"
-            btn_foto.icon = ft.icons.CHECK
+            btn_foto.icon = ft.icons.CHECK # Icono de check simple
             btn_foto.update()
         else:
             print("Foto cancelada")
 
-    # FIX 2: Creamos vacío y asignamos después (para evitar el error 'unexpected argument')
     file_picker = ft.FilePicker()
     file_picker.on_result = on_foto_seleccionada
-    
     page.overlay.append(file_picker)
 
     # ---------------------------------------------------------
@@ -203,12 +199,12 @@ def main(page: ft.Page):
     txt_recibe = ft.TextField(label="Quien recibe", border_color="grey", label_style=ft.TextStyle(color="black"))
     txt_motivo = ft.TextField(label="Motivo (No entregado)", border_color="grey", label_style=ft.TextStyle(color="black"))
     
-    # BOTON CAMARA
-    # IMPORTANTE: Aquí solo definimos el botón, la acción se asigna dentro de 'ir_a_gestion'
+    # BOTON CAMARA (USAMOS EL ICONO 'CAMERA' QUE ES SEGURO)
     btn_foto = ft.ElevatedButton(
         "📷 TOMAR FOTO", 
         bgcolor="grey", color="white", height=45,
-        icon=ft.icons.CAMERA_ALT
+        icon=ft.icons.CAMERA, # CAMBIO AQUI: CAMERA en lugar de CAMERA_ALT
+        on_click=lambda _: file_picker.pick_files(allow_multiple=False, file_type=ft.FilePickerFileType.IMAGE)
     )
 
     def guardar(estado):
@@ -246,10 +242,8 @@ def main(page: ft.Page):
     def ir_a_gestion(id_op, guia, prov):
         state["id"] = id_op; state["guia"] = guia; state["proveedor"] = prov; state["tiene_foto"] = False; state["ruta_foto"] = None
         txt_recibe.value = ""; txt_motivo.value = ""
-        btn_foto.text = "📷 TOMAR FOTO"; btn_foto.bgcolor = "grey"; btn_foto.icon = ft.icons.CAMERA_ALT
-        
-        # Asignación segura del evento click
-        btn_foto.on_click = lambda _: file_picker.pick_files(allow_multiple=False, file_type=ft.FilePickerFileType.IMAGE)
+        btn_foto.text = "📷 TOMAR FOTO"; btn_foto.bgcolor = "grey"; 
+        btn_foto.icon = ft.icons.CAMERA # CAMBIO AQUI TAMBIEN
         
         page.clean()
         page.add(ft.Column([
@@ -275,6 +269,7 @@ def main(page: ft.Page):
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8000))
     ft.app(target=main, view=ft.AppView.WEB_BROWSER, port=port, host="0.0.0.0")
+
 
 
 
