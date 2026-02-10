@@ -157,9 +157,10 @@ def main(page: ft.Page):
             print("Selección cancelada")
 
     # --- FIX CRÍTICO AQUI ---
-    # Creamos VACIO
+    # Creamos VACIO (sin argumentos, para que no de error __init__)
     file_picker = ft.FilePicker()
-    # Asignamos DESPUES
+    
+    # Asignamos las funciones DESPUES (esto funciona en todas las versiones)
     file_picker.on_result = on_foto_seleccionada
     file_picker.on_upload = on_upload_result
     
@@ -312,6 +313,7 @@ def main(page: ft.Page):
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8000))
     ft.app(target=main, view=ft.AppView.WEB_BROWSER, port=port, host="0.0.0.0")
+
 
 
 
