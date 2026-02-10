@@ -4,6 +4,7 @@ from datetime import datetime
 import os
 import urllib.parse
 import smtplib
+import socket # <--- NECESARIO PARA EL HACK DE IP
 from email.message import EmailMessage
 import threading 
 
@@ -28,7 +29,7 @@ def get_db_connection():
     return None
 
 def main(page: ft.Page):
-    print("🚀 INICIANDO V44 (PUERTO 587 - FIX FIREWALL)...")
+    print("🚀 INICIANDO V45 (FORCE IPV4 + SAFETY BLOCK)...")
     
     page.title = "Choferes EK"
     page.bgcolor = "white"
@@ -44,10 +45,10 @@ def main(page: ft.Page):
     }
 
     # ---------------------------------------------------------
-    # 1. EMAIL EN SEGUNDO PLANO (MODIFICADO PUERTO 587)
+    # 1. EMAIL EN SEGUNDO PLANO (CON HACK IPV4)
     # ---------------------------------------------------------
     def enviar_reporte_email_thread(destinatario_final, guia, ruta_imagen, proveedor_nombre):
-        print(f"📧 Intentando conectar a Gmail por puerto 587...")
+        print(f"📧 Iniciando proceso de envío para {proveedor_nombre}...")
         
         if not EMAIL_PASS:
             print("❌ Error: No hay contraseña configurada.")
@@ -99,19 +100,26 @@ def main(page: ft.Page):
             except Exception as e:
                 print(f"❌ Error foto: {e}")
 
-        # --- CAMBIO CRITICO AQUI: USAR PUERTO 587 + STARTTLS ---
+        # --- HACK DE CONEXIÓN IPV4 ---
         try:
-            # Usamos SMTP normal (no SSL directo)
-            with smtplib.SMTP('smtp.gmail.com', 587) as smtp:
-                smtp.ehlo()          # Saludo al servidor
-                smtp.starttls()      # Encriptamos la conexión
-                smtp.ehlo()          # Saludo de nuevo (protocolo)
-                smtp.login(EMAIL_USER, EMAIL_PASS) # Login
-                smtp.send_message(msg)             # Envio
+            print("🔄 Resolviendo IP de Gmail (IPv4)...")
+            # Esto obtiene la dirección numérica (ej: 172.217.192.108) en lugar del nombre
+            # Evita que Render intente usar IPv6 y falle.
+            gmail_ip = socket.gethostbyname('smtp.gmail.com')
+            print(f"✅ IP encontrada: {gmail_ip}. Conectando...")
+
+            with smtplib.SMTP(gmail_ip, 587) as smtp:
+                smtp.ehlo()
+                smtp.starttls()
+                smtp.ehlo()
+                smtp.login(EMAIL_USER, EMAIL_PASS)
+                smtp.send_message(msg)
             
             print(f"✅ CORREO ENVIADO A {email_proveedor}")
+        
         except Exception as e:
-            print(f"❌ Error SMTP (Puerto 587): {e}")
+            # Si falla, imprimimos el error pero NO ROMPEMOS LA APP
+            print(f"❌ ERROR CRÍTICO ENVIANDO MAIL: {e}")
 
     # ---------------------------------------------------------
     # 2. CÁMARA
@@ -216,13 +224,12 @@ def main(page: ft.Page):
         id_op = state["id"]
         if not id_op: return
         
-        # Validaciones Generales
         if estado == "ENTREGADO" and not txt_recibe.value:
             txt_recibe.error_text = "Requerido"; txt_recibe.update(); return
         if estado != "ENTREGADO" and not txt_motivo.value:
             txt_motivo.error_text = "Requerido"; txt_motivo.update(); return
 
-        # VALIDACIÓN FOTO OBLIGATORIA (EXCEPTO JETPAQ)
+        # LOGICA FOTO OBLIGATORIA (Salvo JetPaq)
         if estado == "ENTREGADO":
             es_jetpaq = "jetpaq" in state["proveedor"].lower()
             if not es_jetpaq and not state["tiene_foto"]:
@@ -241,7 +248,6 @@ def main(page: ft.Page):
                 conn.execute(text("INSERT INTO historial_movimientos (operacion_id, usuario, accion, detalle, fecha_hora) VALUES (:o, :u, 'APP', :d, :f)"), {"o": id_op, "u": dd_chofer.value, "d": det, "f": datetime.now()})
                 conn.commit()
                 
-                # Hilo de correo
                 if estado == "ENTREGADO" and state["tiene_foto"]:
                     t = threading.Thread(target=enviar_reporte_email_thread, args=(txt_recibe.value, state["guia"], state["ruta_foto"], state["proveedor"]))
                     t.start()
@@ -263,7 +269,7 @@ def main(page: ft.Page):
         txt_recibe.value = ""; txt_motivo.value = ""
         btn_foto.text = "📷 TOMAR FOTO"; btn_foto.bgcolor = "grey"; btn_foto.icon = "camera_alt"
         
-        # 1. BUSCAMOS DETALLES COMPLETOS
+        # BUSCAR DETALLES
         detalles_view = ft.Column()
         conn = get_db_connection()
         if conn:
@@ -272,11 +278,7 @@ def main(page: ft.Page):
                 res = conn.execute(sql_det, {"i": id_op}).fetchone()
                 if res:
                     cel, urg, tipo, es_cr, monto_cr, info_cr, dest, dom, loc = res
-                    
-                    info_pago = ""
-                    if es_cr:
-                        info_pago = f"💰 COBRAR: $ {monto_cr}"
-                        if info_cr: info_pago += f"\n📝 Nota: {info_cr}"
+                    info_pago = f"💰 COBRAR: $ {monto_cr}\n📝 {info_cr}" if es_cr else ""
                     
                     detalles_view.controls = [
                         ft.Container(
@@ -286,10 +288,7 @@ def main(page: ft.Page):
                                 ft.Text(f"📍 {dom} ({loc})", color="black"),
                                 ft.Text(f"📞 {cel or 'Sin celular'}", color="blue", weight="bold"),
                                 ft.Divider(),
-                                ft.Row([
-                                    ft.Text(f"⚡ {urg}", color="red" if "URGENTE" in urg else "black", weight="bold"),
-                                    ft.Text(f"📦 {tipo}", color="black")
-                                ], alignment="spaceBetween"),
+                                ft.Row([ft.Text(f"⚡ {urg}", color="red" if "URGENTE" in urg else "black", weight="bold"), ft.Text(f"📦 {tipo}", color="black")], alignment="spaceBetween"),
                                 ft.Text(info_pago, color="red", weight="bold", size=16) if es_cr else ft.Container()
                             ])
                         )
@@ -324,6 +323,7 @@ def main(page: ft.Page):
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8000))
     ft.app(target=main, view=ft.AppView.WEB_BROWSER, port=port, host="0.0.0.0")
+
 
 
 
