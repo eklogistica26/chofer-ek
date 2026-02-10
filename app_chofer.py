@@ -28,7 +28,7 @@ def get_db_connection():
     return None
 
 def main(page: ft.Page):
-    print("🚀 INICIANDO V33 (FIX CAMARA + EMAIL)...")
+    print("🚀 INICIANDO V34 (COMPATIBILIDAD TOTAL)...")
     
     page.title = "Choferes EK"
     page.bgcolor = "white"
@@ -45,19 +45,17 @@ def main(page: ft.Page):
     }
 
     # ---------------------------------------------------------
-    # 1. FUNCIÓN DE EMAIL (EL ROBOT POSTAL) 📧
+    # 1. FUNCIÓN DE EMAIL
     # ---------------------------------------------------------
     def enviar_reporte_email(destinatario_final, guia, ruta_imagen, proveedor_nombre):
         if not EMAIL_PASS:
             print("❌ No hay contraseña de email configurada.")
             return
 
-        # 1. Buscamos el email del proveedor en la base de datos
         email_proveedor = None
         conn = get_db_connection()
         if conn:
             try:
-                # Busca el email en la tabla que creamos en escritorio
                 res = conn.execute(text("SELECT email_reportes FROM clientes_principales WHERE nombre = :n"), {"n": proveedor_nombre}).fetchone()
                 if res and res[0]:
                     email_proveedor = res[0]
@@ -67,10 +65,9 @@ def main(page: ft.Page):
                 conn.close()
 
         if not email_proveedor:
-            print(f"⚠️ El proveedor {proveedor_nombre} no tiene email configurado. No se envía correo.")
+            print(f"⚠️ El proveedor {proveedor_nombre} no tiene email. No se envía correo.")
             return
 
-        # 2. Armamos el correo
         msg = EmailMessage()
         msg['Subject'] = f"ENTREGA REALIZADA - Guía: {guia}"
         msg['From'] = EMAIL_USER
@@ -93,14 +90,12 @@ def main(page: ft.Page):
         """
         msg.set_content(cuerpo)
 
-        # 3. Adjuntamos la foto
         if ruta_imagen and os.path.exists(ruta_imagen):
             with open(ruta_imagen, 'rb') as f:
                 file_data = f.read()
                 file_name = f"remito_{guia}.jpg"
                 msg.add_attachment(file_data, maintype='image', subtype='jpeg', filename=file_name)
 
-        # 4. Enviamos
         try:
             with smtplib.SMTP_SSL('smtp.gmail.com', 465) as smtp:
                 smtp.login(EMAIL_USER, EMAIL_PASS)
@@ -110,10 +105,9 @@ def main(page: ft.Page):
             print(f"❌ Error enviando correo: {e}")
 
     # ---------------------------------------------------------
-    # 2. CÁMARA REAL (FILEPICKER) 📷
+    # 2. CÁMARA REAL (CORREGIDO PARA VERSIONES VIEJAS) 📷
     # ---------------------------------------------------------
     
-    # CORRECCIÓN AQUÍ: Quitamos ": ft.FilePickerResultEvent" para que no falle nunca más
     def on_foto_seleccionada(e):
         if e.files:
             file_path = e.files[0].path
@@ -126,7 +120,12 @@ def main(page: ft.Page):
         else:
             print("Foto cancelada")
 
-    file_picker = ft.FilePicker(on_result=on_foto_seleccionada)
+    # CORRECCION: Creamos vacío primero (ESTO NO FALLA NUNCA)
+    file_picker = ft.FilePicker()
+    
+    # Asignamos el evento después (ESTO FUNCIONA EN TODAS LAS VERSIONES)
+    file_picker.on_result = on_foto_seleccionada
+    
     page.overlay.append(file_picker)
 
     # ---------------------------------------------------------
@@ -268,15 +267,14 @@ def main(page: ft.Page):
     # Boton camara que llama al file_picker
     btn_foto = ft.ElevatedButton(
         "📷 FOTO REMITO", 
-        bgcolor="grey", color="white", height=45,
-        on_click=lambda _: file_picker.pick_files(allow_multiple=False, file_type=ft.FilePickerFileType.IMAGE)
+        bgcolor="grey", color="white", height=45
+        # NOTA: No asignamos on_click aqui para evitar error de FilePicker no inicializado aun en algunas versiones
     )
 
     def guardar(estado_final):
         id_op = state["id"]
         if not id_op: return
         
-        # Validaciones
         if estado_final == "ENTREGADO" and not txt_recibe.value: 
             txt_recibe.error_text = "Requerido"
             txt_recibe.update()
@@ -296,7 +294,6 @@ def main(page: ft.Page):
         if state["tiene_foto"]:
             det += " [CON FOTO]"
         
-        # 1. ACTUALIZAR BASE DE DATOS
         conn = get_db_connection()
         if conn:
             try:
@@ -304,14 +301,10 @@ def main(page: ft.Page):
                 conn.execute(text("INSERT INTO historial_movimientos (operacion_id, usuario, accion, detalle, fecha_hora) VALUES (:o, :u, 'APP', :d, :f)"), {"o": id_op, "u": dd_chofer.value, "d": det, "f": datetime.now()})
                 conn.commit()
                 
-                # 2. ENVIAR EMAIL (Solo si es Entregado y tiene foto)
                 if estado_final == "ENTREGADO" and state["tiene_foto"] and state["ruta_foto"]:
-                    # Mostramos un aviso visual
                     page.snack_bar = ft.SnackBar(ft.Text(f"📧 Enviando remito a {state['proveedor']}..."), bgcolor="blue")
                     page.snack_bar.open = True
                     page.update()
-                    
-                    # Llamamos a la funcion de envio
                     enviar_reporte_email(txt_recibe.value, state["guia"], state["ruta_foto"], state["proveedor"])
 
                 ir_a_principal()
@@ -340,6 +333,8 @@ def main(page: ft.Page):
         
         btn_foto.text = "📷 FOTO REMITO"
         btn_foto.bgcolor = "grey"
+        # Asignamos la acción AHORA, de forma segura
+        btn_foto.on_click = lambda _: file_picker.pick_files(allow_multiple=False)
         
         page.clean()
         page.add(
@@ -350,7 +345,7 @@ def main(page: ft.Page):
                 
                 ft.Text("ENTREGA EXITOSA:", weight="bold", color="black"),
                 txt_recibe,
-                btn_foto, # Boton de camara real
+                btn_foto, 
                 ft.Container(height=10),
                 ft.ElevatedButton("CONFIRMAR ENTREGA Y ENVIAR 📧", bgcolor="green", color="white", width=300, height=50, on_click=lambda _: guardar("ENTREGADO")),
                 
