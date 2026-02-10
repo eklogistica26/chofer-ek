@@ -3,10 +3,10 @@ from sqlalchemy import create_engine, text
 from datetime import datetime
 import os
 import urllib.parse
-import requests  # Para la API de Brevo
-import base64    # Para codificar la foto
+import requests
+import base64
 import threading 
-import shutil    # Para manejar archivos
+import shutil
 
 # --- CONFIGURACIÓN DB ---
 DATABASE_URL = "postgresql://postgres.gwdypvvyjuqzvpbbzchk:Eklogisticasajetpaq@aws-0-us-west-2.pooler.supabase.com:6543/postgres"
@@ -29,14 +29,13 @@ def get_db_connection():
     return None
 
 def main(page: ft.Page):
-    print("🚀 INICIANDO V47 (UPLOAD FOTO + BREVO)...")
+    print("🚀 INICIANDO V48 (BLOQUEO DE SEGURIDAD FOTO)...")
     
     page.title = "Choferes EK"
     page.bgcolor = "white"
     page.theme_mode = "light" 
     page.scroll = "auto"
     
-    # IMPORTANTE: Definimos dónde se guardarán las fotos en el servidor
     upload_dir = "uploads"
     os.makedirs(upload_dir, exist_ok=True)
     page.upload_dir = upload_dir
@@ -50,14 +49,10 @@ def main(page: ft.Page):
     }
 
     # ---------------------------------------------------------
-    # 1. EMAIL VIA API BREVO (CON FOTO DEL SERVIDOR)
+    # 1. EMAIL VIA API BREVO
     # ---------------------------------------------------------
     def enviar_reporte_email_thread(destinatario_final, guia, ruta_imagen_servidor, proveedor_nombre):
-        print(f"📧 Preparando envío para {proveedor_nombre}...")
-        
-        if not BREVO_API_KEY:
-            print("❌ Error: Falta BREVO_API_KEY.")
-            return
+        if not BREVO_API_KEY: return
 
         email_proveedor = None
         conn = get_db_connection()
@@ -66,34 +61,20 @@ def main(page: ft.Page):
                 res = conn.execute(text("SELECT email_reportes FROM clientes_principales WHERE nombre = :n"), {"n": proveedor_nombre}).fetchone()
                 if res and res[0]:
                     email_proveedor = res[0]
-            except Exception as e:
-                print(f"❌ Error DB: {e}")
-            finally:
-                conn.close()
+            except: pass
+            finally: conn.close()
 
-        if not email_proveedor:
-            print(f"⚠️ El proveedor {proveedor_nombre} no tiene email.")
-            return
+        if not email_proveedor: return
 
-        # Preparar FOTO (Leyendo desde el disco del servidor)
         adjuntos = []
         if ruta_imagen_servidor and os.path.exists(ruta_imagen_servidor):
             try:
-                print(f"📎 Adjuntando archivo: {ruta_imagen_servidor}")
                 with open(ruta_imagen_servidor, "rb") as image_file:
                     encoded_string = base64.b64encode(image_file.read()).decode('utf-8')
-                    adjuntos.append({
-                        "content": encoded_string,
-                        "name": f"remito_{guia}.jpg"
-                    })
-            except Exception as e:
-                print(f"❌ Error leyendo foto en servidor: {e}")
-        else:
-            print("⚠️ No se encontró el archivo de foto en el servidor para adjuntar.")
+                    adjuntos.append({"content": encoded_string, "name": f"remito_{guia}.jpg"})
+            except: pass
 
-        # Conexión Brevo
         url = "https://api.brevo.com/v3/smtp/email"
-        
         payload = {
             "sender": {"name": "Logistica EK", "email": EMAIL_REMITENTE},
             "to": [{"email": email_proveedor}],
@@ -101,69 +82,56 @@ def main(page: ft.Page):
             "htmlContent": f"""
                 <html><body>
                 <h3>Hola,</h3>
-                <p>Se informa la entrega exitosa de la carga.</p>
+                <p>Se informa la entrega exitosa.</p>
                 <ul>
                     <li><b>Fecha:</b> {datetime.now().strftime('%d/%m/%Y %H:%M')}</li>
                     <li><b>Guía:</b> {guia}</li>
                     <li><b>Proveedor:</b> {proveedor_nombre}</li>
                     <li><b>Recibió:</b> {destinatario_final}</li>
                 </ul>
-                <p><i>Adjuntamos la foto del remito conformado.</i></p>
                 <p>Atte.<br><b>Equipo EK Logística</b></p>
                 </body></html>
             """
         }
-        
-        if adjuntos:
-            payload["attachment"] = adjuntos
+        if adjuntos: payload["attachment"] = adjuntos
+        headers = {"accept": "application/json", "api-key": BREVO_API_KEY, "content-type": "application/json"}
 
-        headers = {
-            "accept": "application/json",
-            "api-key": BREVO_API_KEY,
-            "content-type": "application/json"
-        }
-
-        try:
-            response = requests.post(url, json=payload, headers=headers)
-            if response.status_code == 201:
-                print(f"✅ CORREO ENVIADO CORRECTAMENTE")
-            else:
-                print(f"❌ Error Brevo: {response.text}")
-        except Exception as e:
-            print(f"❌ Error de conexión API: {e}")
+        try: requests.post(url, json=payload, headers=headers)
+        except: pass
 
     # ---------------------------------------------------------
-    # 2. CÁMARA CON SUBIDA (UPLOAD) ☁️
+    # 2. CÁMARA CON BLOQUEO DE BOTÓN 🔒
     # ---------------------------------------------------------
     
-    # Evento: Cuando la foto se termina de subir al servidor
+    # Referencia al boton de confirmar (para poder desactivarlo)
+    btn_confirmar_global = ft.ElevatedButton("CONFIRMAR ENTREGA ✅", bgcolor="green", color="white", width=300, height=50)
+
     def on_upload_result(e: ft.FilePickerUploadEvent):
         if e.error:
-            btn_foto.text = "❌ Error al subir"
-            btn_foto.bgcolor = "red"
-            btn_foto.update()
-            return
+            btn_foto.text = "❌ Error al subir"; btn_foto.bgcolor = "red"; btn_foto.update(); return
             
-        # Si llega aquí, la foto ya está en el servidor Render
         state["tiene_foto"] = True
-        # La ruta en el servidor es: uploads/nombre_archivo
         state["ruta_foto"] = os.path.join(page.upload_dir, e.file_name)
         
-        btn_foto.text = "✅ FOTO LISTA"
-        btn_foto.bgcolor = "green"
-        btn_foto.icon = "check"
+        btn_foto.text = "✅ FOTO LISTA"; btn_foto.bgcolor = "green"; btn_foto.icon = "check"
         btn_foto.update()
-        print(f"✅ Foto subida a: {state['ruta_foto']}")
+        
+        # DESBLOQUEAMOS EL BOTÓN DE CONFIRMAR
+        btn_confirmar_global.disabled = False
+        btn_confirmar_global.text = "CONFIRMAR ENTREGA ✅"
+        btn_confirmar_global.bgcolor = "green"
+        btn_confirmar_global.update()
 
-    # Evento: Cuando el usuario elige la foto del celular
     def on_foto_seleccionada(e: ft.FilePickerResultEvent):
         if e.files:
-            btn_foto.text = "⏳ Subiendo..."
-            btn_foto.bgcolor = "orange"
-            btn_foto.update()
+            btn_foto.text = "⏳ Subiendo... (Espere)"; btn_foto.bgcolor = "orange"; btn_foto.update()
             
-            # INICIAMOS LA SUBIDA AL SERVIDOR
-            # Flet sube el archivo a la carpeta definida en page.upload_dir
+            # BLOQUEAMOS EL BOTÓN DE CONFIRMAR
+            btn_confirmar_global.disabled = True
+            btn_confirmar_global.text = "⏳ ESPERE FOTO..."
+            btn_confirmar_global.bgcolor = "grey"
+            btn_confirmar_global.update()
+            
             file_picker.upload(e.files)
         else:
             print("Foto cancelada")
@@ -179,38 +147,28 @@ def main(page: ft.Page):
         page.launch_url(f"https://www.google.com/maps/search/?api=1&query={q}")
 
     def conectar(e):
-        btn_inicio.text = "Cargando..."
-        btn_inicio.disabled = True
-        page.update()
+        btn_inicio.text = "Cargando..."; btn_inicio.disabled = True; page.update()
         conn = get_db_connection()
         if conn:
             try:
                 res = conn.execute(text("SELECT nombre FROM choferes ORDER BY nombre")).fetchall()
                 dd_chofer.options = [ft.dropdown.Option(r[0]) for r in res]
                 ir_a_principal()
-            except:
-                btn_inicio.text = "Error DB"
-                btn_inicio.disabled = False
-        else:
-            btn_inicio.text = "Error Conexión"
-            btn_inicio.disabled = False
+            except: btn_inicio.text = "Error DB"; btn_inicio.disabled = False
+        else: btn_inicio.text = "Error Conexión"; btn_inicio.disabled = False
         page.update()
 
     btn_inicio = ft.ElevatedButton("CONECTAR", on_click=conectar, bgcolor="blue", color="white", height=50)
     vista_inicio = ft.Column([ft.Text("🚛", size=50), ft.Text("BIENVENIDO", size=30, weight="bold", color="black"), ft.Container(height=20), btn_inicio], horizontal_alignment="center")
 
-    # --- LISTA ---
     dd_chofer = ft.Dropdown(label="Chofer", bgcolor="#f0f2f5")
     lista_viajes = ft.Column(spacing=10)
 
     def cargar_ruta(e):
         chofer = dd_chofer.value
         if not chofer: return
-        lista_viajes.controls.clear()
-        lista_viajes.controls.append(ft.Text("Buscando...", color="blue"))
-        page.update()
-        conn = get_db_connection()
-        lista_viajes.controls.clear()
+        lista_viajes.controls.clear(); lista_viajes.controls.append(ft.Text("Buscando...", color="blue")); page.update()
+        conn = get_db_connection(); lista_viajes.controls.clear()
         if conn:
             try:
                 sql = text("SELECT id, guia_remito, destinatario, domicilio, localidad, bultos, estado, proveedor FROM operaciones WHERE chofer_asignado = :c AND estado IN ('En Reparto', 'Pendiente') ORDER BY id ASC")
@@ -219,15 +177,12 @@ def main(page: ft.Page):
                 for row in rows:
                     id_op, guia, dest, dom, loc, bultos, est, prov = row
                     color_est = "blue" if est == "En Reparto" else "orange"
-                    card = ft.Container(
-                        bgcolor="white", padding=10, border=ft.border.all(1, "#ddd"), border_radius=8,
-                        content=ft.Column([
+                    card = ft.Container(bgcolor="white", padding=10, border=ft.border.all(1, "#ddd"), border_radius=8, content=ft.Column([
                             ft.Row([ft.Text(dest[:25], weight="bold", color="black"), ft.Container(content=ft.Text(est[:10], color="white", size=10), bgcolor=color_est, padding=3, border_radius=3)], alignment="spaceBetween"),
                             ft.Row([ft.Text("📍"), ft.Text(f"{dom}", size=12, color="#333", expand=True), ft.ElevatedButton("IR", on_click=lambda _,d=dom,l=loc: abrir_mapa(d,l))]),
                             ft.Text(f"Guía: {guia} | Bultos: {bultos}", size=12, color="black"),
                             ft.ElevatedButton("GESTIONAR", bgcolor="blue", color="white", width=280, on_click=lambda _,x=id_op,g=guia,p=prov: ir_a_gestion(x,g,p))
-                        ])
-                    )
+                        ]))
                     lista_viajes.controls.append(card)
             except Exception as ex: lista_viajes.controls.append(ft.Text(f"Error: {ex}", color="red"))
             finally: conn.close()
@@ -236,14 +191,12 @@ def main(page: ft.Page):
     btn_buscar = ft.ElevatedButton("VER MIS VIAJES 🔍", on_click=cargar_ruta, bgcolor="green", color="white")
 
     def ir_a_principal():
-        page.clean()
-        page.add(ft.Column([ft.Text("MI RUTA", size=18, weight="bold", color="black"), dd_chofer, btn_buscar, ft.Divider(), lista_viajes]))
+        page.clean(); page.add(ft.Column([ft.Text("MI RUTA", size=18, weight="bold", color="black"), dd_chofer, btn_buscar, ft.Divider(), lista_viajes]))
 
     # --- GESTION ---
     txt_recibe = ft.TextField(label="Quien recibe", border_color="grey")
     txt_motivo = ft.TextField(label="Motivo (No entregado)", border_color="grey")
     
-    # Boton de cámara
     btn_foto = ft.ElevatedButton(
         "📷 TOMAR FOTO", 
         bgcolor="grey", color="white", height=45,
@@ -255,13 +208,12 @@ def main(page: ft.Page):
         id_op = state["id"]
         if not id_op: return
         
-        # Validaciones
         if estado == "ENTREGADO" and not txt_recibe.value:
             txt_recibe.error_text = "Requerido"; txt_recibe.update(); return
         if estado != "ENTREGADO" and not txt_motivo.value:
             txt_motivo.error_text = "Requerido"; txt_motivo.update(); return
 
-        # Regla JetPaq: Foto obligatoria si NO es JetPaq
+        # VALIDACION: Si es JetPaq, foto opcional. Si NO es JetPaq, FOTO OBLIGATORIA.
         if estado == "ENTREGADO":
             es_jetpaq = "jetpaq" in state["proveedor"].lower()
             if not es_jetpaq and not state["tiene_foto"]:
@@ -278,7 +230,6 @@ def main(page: ft.Page):
                 conn.execute(text("INSERT INTO historial_movimientos (operacion_id, usuario, accion, detalle, fecha_hora) VALUES (:o, :u, 'APP', :d, :f)"), {"o": id_op, "u": dd_chofer.value, "d": det, "f": datetime.now()})
                 conn.commit()
                 
-                # ENVIAR CORREO (Solo si hay foto y está en el servidor)
                 if estado == "ENTREGADO" and state["tiene_foto"]:
                     t = threading.Thread(target=enviar_reporte_email_thread, args=(txt_recibe.value, state["guia"], state["ruta_foto"], state["proveedor"]))
                     t.start()
@@ -297,6 +248,13 @@ def main(page: ft.Page):
         txt_recibe.value = ""; txt_motivo.value = ""
         btn_foto.text = "📷 TOMAR FOTO"; btn_foto.bgcolor = "grey"; btn_foto.icon = "camera_alt"
         
+        # Reiniciar estado del boton global
+        btn_confirmar_global.disabled = False
+        btn_confirmar_global.text = "CONFIRMAR ENTREGA ✅"
+        btn_confirmar_global.bgcolor = "green"
+        # Asignamos la accion aqui
+        btn_confirmar_global.on_click = lambda _: guardar("ENTREGADO")
+
         detalles_view = ft.Column()
         conn = get_db_connection()
         if conn:
@@ -317,7 +275,10 @@ def main(page: ft.Page):
             detalles_view, ft.Divider(),
             ft.Text("ENTREGA EXITOSA:", weight="bold", color="black"),
             txt_recibe, btn_foto, ft.Container(height=10),
-            ft.ElevatedButton("CONFIRMAR ENTREGA ✅", bgcolor="green", color="white", width=300, height=50, on_click=lambda _: guardar("ENTREGADO")),
+            
+            # USAMOS EL BOTON GLOBAL
+            btn_confirmar_global,
+            
             ft.Divider(),
             ft.Text("NO ENTREGADO:", weight="bold", color="black"),
             txt_motivo,
@@ -330,6 +291,7 @@ def main(page: ft.Page):
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8000))
     ft.app(target=main, view=ft.AppView.WEB_BROWSER, port=port, host="0.0.0.0")
+
 
 
 
