@@ -27,7 +27,7 @@ def get_db_connection():
     return None
 
 def main(page: ft.Page):
-    print("🚀 INICIANDO V36 (CAMARA REAL + EMAIL)...")
+    print("🚀 INICIANDO V37 (FLET 0.80.5 COMPATIBLE)...")
     
     page.title = "Choferes EK"
     page.bgcolor = "white"
@@ -43,7 +43,7 @@ def main(page: ft.Page):
     }
 
     # ---------------------------------------------------------
-    # 1. EMAIL AUTOMÁTICO
+    # 1. FUNCIÓN DE EMAIL (ROBOT POSTAL)
     # ---------------------------------------------------------
     def enviar_reporte_email(destinatario_final, guia, ruta_imagen, proveedor_nombre):
         if not EMAIL_PASS:
@@ -54,7 +54,6 @@ def main(page: ft.Page):
         conn = get_db_connection()
         if conn:
             try:
-                # Buscamos el email del cliente
                 res = conn.execute(text("SELECT email_reportes FROM clientes_principales WHERE nombre = :n"), {"n": proveedor_nombre}).fetchone()
                 if res and res[0]:
                     email_proveedor = res[0]
@@ -88,7 +87,6 @@ def main(page: ft.Page):
         """
         msg.set_content(cuerpo)
 
-        # Adjuntar foto
         if ruta_imagen:
             try:
                 with open(ruta_imagen, 'rb') as f:
@@ -96,7 +94,7 @@ def main(page: ft.Page):
                     file_name = f"remito_{guia}.jpg"
                     msg.add_attachment(file_data, maintype='image', subtype='jpeg', filename=file_name)
             except Exception as e:
-                print(f"No se pudo leer la foto para adjuntar: {e}")
+                print(f"No se pudo leer la foto: {e}")
 
         try:
             with smtplib.SMTP_SSL('smtp.gmail.com', 465) as smtp:
@@ -107,9 +105,11 @@ def main(page: ft.Page):
             print(f"❌ Error enviando email: {e}")
 
     # ---------------------------------------------------------
-    # 2. CÁMARA (CONFIGURACIÓN NUEVA)
+    # 2. CÁMARA (SIN ETIQUETAS QUE DEN ERROR) 📷
     # ---------------------------------------------------------
-    def on_foto_seleccionada(e: ft.FilePickerResultEvent):
+    
+    # AQUI ESTABA EL ERROR: Quitamos ": ft.FilePickerResultEvent"
+    def on_foto_seleccionada(e): 
         if e.files:
             path = e.files[0].path
             state["tiene_foto"] = True
@@ -122,12 +122,11 @@ def main(page: ft.Page):
         else:
             print("Foto cancelada")
 
-    # Este componente REQUIERE Flet nuevo (por eso actualizamos requirements.txt)
     file_picker = ft.FilePicker(on_result=on_foto_seleccionada)
     page.overlay.append(file_picker)
 
     # ---------------------------------------------------------
-    # 3. PANTALLAS
+    # 3. INTERFAZ Y FUNCIONES
     # ---------------------------------------------------------
     def abrir_mapa(domicilio, localidad):
         q = urllib.parse.quote(f"{domicilio}, {localidad}")
@@ -154,7 +153,7 @@ def main(page: ft.Page):
     btn_inicio = ft.ElevatedButton("CONECTAR", on_click=conectar, bgcolor="blue", color="white", height=50)
     vista_inicio = ft.Column([ft.Text("🚛", size=50), ft.Text("BIENVENIDO", size=30, weight="bold", color="black"), ft.Container(height=20), btn_inicio], horizontal_alignment="center")
 
-    # --- LISTA ---
+    # PANTALLA RUTA
     dd_chofer = ft.Dropdown(label="Chofer", bgcolor="#f0f2f5", label_style=ft.TextStyle(color="black"))
     lista_viajes = ft.Column(spacing=10)
 
@@ -197,11 +196,11 @@ def main(page: ft.Page):
         page.clean()
         page.add(ft.Column([ft.Text("MI RUTA", size=18, weight="bold", color="black"), dd_chofer, btn_buscar, ft.Divider(), lista_viajes]))
 
-    # --- GESTION ---
+    # PANTALLA GESTION
     txt_recibe = ft.TextField(label="Quien recibe", border_color="grey", label_style=ft.TextStyle(color="black"))
     txt_motivo = ft.TextField(label="Motivo (No entregado)", border_color="grey", label_style=ft.TextStyle(color="black"))
     
-    # BOTON CAMARA REAL
+    # Boton FOTO
     btn_foto = ft.ElevatedButton(
         "📷 TOMAR FOTO", 
         bgcolor="grey", color="white", height=45,
@@ -228,14 +227,14 @@ def main(page: ft.Page):
                 conn.execute(text("INSERT INTO historial_movimientos (operacion_id, usuario, accion, detalle, fecha_hora) VALUES (:o, :u, 'APP', :d, :f)"), {"o": id_op, "u": dd_chofer.value, "d": det, "f": datetime.now()})
                 conn.commit()
                 
-                # ENVIO EMAIL
+                # ENVIAR EMAIL SOLO SI ES ENTREGADO Y HAY FOTO
                 if estado == "ENTREGADO" and state["tiene_foto"]:
-                    page.snack_bar = ft.SnackBar(ft.Text(f"📧 Enviando a {state['proveedor']}..."), bgcolor="blue")
+                    page.snack_bar = ft.SnackBar(ft.Text(f"📤 Enviando correo a {state['proveedor']}..."), bgcolor="blue")
                     page.snack_bar.open = True; page.update()
                     enviar_reporte_email(txt_recibe.value, state["guia"], state["ruta_foto"], state["proveedor"])
 
                 ir_a_principal(); cargar_ruta(None)
-                page.snack_bar = ft.SnackBar(ft.Text("✅ Guardado"), bgcolor="green"); page.snack_bar.open = True
+                page.snack_bar = ft.SnackBar(ft.Text("✅ Operación Guardada"), bgcolor="green"); page.snack_bar.open = True
             except Exception as e:
                 page.snack_bar = ft.SnackBar(ft.Text(f"Error: {e}"), bgcolor="red"); page.snack_bar.open = True
             finally: conn.close()
@@ -270,6 +269,7 @@ def main(page: ft.Page):
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8000))
     ft.app(target=main, view=ft.AppView.WEB_BROWSER, port=port, host="0.0.0.0")
+
 
 
 
