@@ -2,7 +2,6 @@ import flet as ft
 from sqlalchemy import create_engine, text
 from datetime import datetime
 import os
-import urllib.parse
 import requests
 import base64
 import threading 
@@ -29,23 +28,20 @@ def get_db_connection():
     return None
 
 def main(page: ft.Page):
-    print("🚀 INICIANDO V54 (VERSION FINAL - CACHE TEST)...")
+    print(f"🚀 INICIANDO V55 (ESTABLE 0.74.0) - Flet Version: {ft.version}")
     
-    # --- SI NO VES ESTE TITULO EN EL CELULAR, BORRA EL HISTORIAL ---
-    page.title = "CHOFERES V54" 
+    page.title = "Choferes EK - V55"
     page.bgcolor = "white"
-    page.theme_mode = ft.ThemeMode.LIGHT 
+    page.theme_mode = "light" 
     page.scroll = "auto"
     
     # --- CONFIGURACIÓN CARPETA SUBIDA ---
     basedir = os.path.abspath(os.getcwd())
     upload_dir = os.path.join(basedir, "uploads")
-    
     if os.path.exists(upload_dir):
         try: shutil.rmtree(upload_dir)
         except: pass
     os.makedirs(upload_dir, exist_ok=True)
-    
     page.upload_dir = upload_dir
     
     state = {
@@ -108,19 +104,18 @@ def main(page: ft.Page):
         except: pass
 
     # ---------------------------------------------------------
-    # 2. CÁMARA (COMPATIBLE V54)
+    # 2. CÁMARA (VERSIÓN 0.74.0 - ESTABLE)
     # ---------------------------------------------------------
     
     btn_confirmar_global = ft.ElevatedButton("CONFIRMAR ENTREGA ✅", bgcolor="green", color="white", width=300, height=50)
 
-    def on_upload_result(e):
+    def on_upload_result(e: ft.FilePickerUploadEvent):
         if e.error:
-            btn_foto.text = "❌ Reintentar"
+            btn_foto.text = "❌ Error al subir"
             btn_foto.bgcolor = "red"
-            btn_foto.disabled = False
             btn_foto.update()
             
-            btn_confirmar_global.text = "ERROR EN FOTO"
+            btn_confirmar_global.text = "ERROR FOTO"
             btn_confirmar_global.disabled = True
             btn_confirmar_global.update()
             return
@@ -130,36 +125,34 @@ def main(page: ft.Page):
         
         btn_foto.text = "✅ FOTO LISTA"
         btn_foto.bgcolor = "green"
-        btn_foto.icon = "check"
+        btn_foto.icon = ft.icons.CHECK
         btn_foto.disabled = False
         btn_foto.update()
         
-        btn_confirmar_global.disabled = False
         btn_confirmar_global.text = "CONFIRMAR ENTREGA ✅"
+        btn_confirmar_global.disabled = False
         btn_confirmar_global.bgcolor = "green"
         btn_confirmar_global.update()
 
-    def on_foto_seleccionada(e):
+    def on_foto_seleccionada(e: ft.FilePickerResultEvent):
         if e.files:
             btn_foto.text = "⏳ Subiendo..."
             btn_foto.bgcolor = "orange"
             btn_foto.disabled = True
             btn_foto.update()
             
-            btn_confirmar_global.disabled = True
             btn_confirmar_global.text = "⏳ ESPERE..."
+            btn_confirmar_global.disabled = True
             btn_confirmar_global.bgcolor = "grey"
             btn_confirmar_global.update()
             
+            # En v0.74.0, upload funciona perfecto así:
             file_picker.upload(e.files)
         else:
-            print("Selección cancelada")
+            print("Cancelado")
 
-    # CREACIÓN CORRECTA PARA FLET 0.80+
-    file_picker = ft.FilePicker()
-    file_picker.on_result = on_foto_seleccionada
-    file_picker.on_upload = on_upload_result
-    
+    # EN 0.74.0 ESTA SINTAXIS ES PERFECTA (Y NO DA ERROR DE __INIT__)
+    file_picker = ft.FilePicker(on_result=on_foto_seleccionada, on_upload=on_upload_result)
     page.overlay.append(file_picker)
 
     # ---------------------------------------------------------
@@ -182,9 +175,9 @@ def main(page: ft.Page):
         page.update()
 
     btn_inicio = ft.ElevatedButton("CONECTAR", on_click=conectar, bgcolor="blue", color="white", height=50)
-    vista_inicio = ft.Column([ft.Text("🚛", size=50), ft.Text("BIENVENIDO", size=30, weight="bold", color="black"), ft.Container(height=20), btn_inicio], horizontal_alignment="center")
+    vista_inicio = ft.Column([ft.Text("🚛", size=50), ft.Text("BIENVENIDO V55", size=30, weight="bold", color="black"), ft.Container(height=20), btn_inicio], horizontal_alignment="center")
 
-    dd_chofer = ft.Dropdown(label="Chofer", bgcolor="#f0f2f5", label_style=ft.TextStyle(color="black"))
+    dd_chofer = ft.Dropdown(label="Chofer", bgcolor="#f0f2f5")
     lista_viajes = ft.Column(spacing=10)
 
     def cargar_ruta(e):
@@ -217,14 +210,14 @@ def main(page: ft.Page):
         page.clean(); page.add(ft.Column([ft.Text("MI RUTA", size=18, weight="bold", color="black"), dd_chofer, btn_buscar, ft.Divider(), lista_viajes]))
 
     # --- GESTION ---
-    txt_recibe = ft.TextField(label="Quien recibe", border_color="grey", label_style=ft.TextStyle(color="black"))
-    txt_motivo = ft.TextField(label="Motivo (No entregado)", border_color="grey", label_style=ft.TextStyle(color="black"))
+    txt_recibe = ft.TextField(label="Quien recibe", border_color="grey")
+    txt_motivo = ft.TextField(label="Motivo (No entregado)", border_color="grey")
     
     # Boton de cámara
     btn_foto = ft.ElevatedButton(
         "📷 TOMAR FOTO", 
         bgcolor="grey", color="white", height=45,
-        icon="camera_alt", 
+        icon=ft.icons.CAMERA_ALT, # Funciona en 0.74.0
         on_click=lambda _: file_picker.pick_files(allow_multiple=False, file_type=ft.FilePickerFileType.IMAGE)
     )
 
@@ -269,7 +262,7 @@ def main(page: ft.Page):
     def ir_a_gestion(id_op, guia, prov):
         state["id"] = id_op; state["guia"] = guia; state["proveedor"] = prov; state["tiene_foto"] = False; state["ruta_foto"] = None
         txt_recibe.value = ""; txt_motivo.value = ""
-        btn_foto.text = "📷 TOMAR FOTO"; btn_foto.bgcolor = "grey"; btn_foto.icon = "camera_alt"; btn_foto.disabled = False
+        btn_foto.text = "📷 TOMAR FOTO"; btn_foto.bgcolor = "grey"; btn_foto.icon = ft.icons.CAMERA_ALT; btn_foto.disabled = False
         
         btn_confirmar_global.disabled = False
         btn_confirmar_global.text = "CONFIRMAR ENTREGA ✅"
