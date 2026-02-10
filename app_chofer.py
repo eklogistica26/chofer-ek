@@ -12,7 +12,6 @@ DATABASE_URL = "postgresql://postgres.gwdypvvyjuqzvpbbzchk:Eklogisticasajetpaq@a
 
 # --- CREDENCIALES EMAIL ---
 EMAIL_USER = os.environ.get("EMAIL_USER", "eklogistica19@gmail.com") 
-# TRUCO: .replace(" ", "") elimina los espacios si los copiaste sin querer
 EMAIL_PASS = os.environ.get("EMAIL_PASS", "").replace(" ", "") 
 
 engine = None
@@ -29,7 +28,7 @@ def get_db_connection():
     return None
 
 def main(page: ft.Page):
-    print("🚀 INICIANDO V43 (LOGICA JETPAQ + DETALLES + FIX EMAIL)...")
+    print("🚀 INICIANDO V44 (PUERTO 587 - FIX FIREWALL)...")
     
     page.title = "Choferes EK"
     page.bgcolor = "white"
@@ -45,10 +44,10 @@ def main(page: ft.Page):
     }
 
     # ---------------------------------------------------------
-    # 1. EMAIL EN SEGUNDO PLANO
+    # 1. EMAIL EN SEGUNDO PLANO (MODIFICADO PUERTO 587)
     # ---------------------------------------------------------
     def enviar_reporte_email_thread(destinatario_final, guia, ruta_imagen, proveedor_nombre):
-        print(f"📧 Intentando enviar correo para {proveedor_nombre}...")
+        print(f"📧 Intentando conectar a Gmail por puerto 587...")
         
         if not EMAIL_PASS:
             print("❌ Error: No hay contraseña configurada.")
@@ -78,7 +77,7 @@ def main(page: ft.Page):
         cuerpo = f"""
         Hola,
         
-        Se informa la entrega exitosa.
+        Se informa la entrega exitosa de la carga.
         
         📅 Fecha: {datetime.now().strftime('%d/%m/%Y %H:%M')}
         📦 Guía: {guia}
@@ -100,13 +99,19 @@ def main(page: ft.Page):
             except Exception as e:
                 print(f"❌ Error foto: {e}")
 
+        # --- CAMBIO CRITICO AQUI: USAR PUERTO 587 + STARTTLS ---
         try:
-            with smtplib.SMTP_SSL('smtp.gmail.com', 465) as smtp:
-                smtp.login(EMAIL_USER, EMAIL_PASS)
-                smtp.send_message(msg)
+            # Usamos SMTP normal (no SSL directo)
+            with smtplib.SMTP('smtp.gmail.com', 587) as smtp:
+                smtp.ehlo()          # Saludo al servidor
+                smtp.starttls()      # Encriptamos la conexión
+                smtp.ehlo()          # Saludo de nuevo (protocolo)
+                smtp.login(EMAIL_USER, EMAIL_PASS) # Login
+                smtp.send_message(msg)             # Envio
+            
             print(f"✅ CORREO ENVIADO A {email_proveedor}")
         except Exception as e:
-            print(f"❌ Error SMTP Final: {e}")
+            print(f"❌ Error SMTP (Puerto 587): {e}")
 
     # ---------------------------------------------------------
     # 2. CÁMARA
@@ -236,7 +241,7 @@ def main(page: ft.Page):
                 conn.execute(text("INSERT INTO historial_movimientos (operacion_id, usuario, accion, detalle, fecha_hora) VALUES (:o, :u, 'APP', :d, :f)"), {"o": id_op, "u": dd_chofer.value, "d": det, "f": datetime.now()})
                 conn.commit()
                 
-                # Enviar correo en hilo separado (TURBO)
+                # Hilo de correo
                 if estado == "ENTREGADO" and state["tiene_foto"]:
                     t = threading.Thread(target=enviar_reporte_email_thread, args=(txt_recibe.value, state["guia"], state["ruta_foto"], state["proveedor"]))
                     t.start()
@@ -263,13 +268,11 @@ def main(page: ft.Page):
         conn = get_db_connection()
         if conn:
             try:
-                # Traemos: Celular, Urgencia, Tipo Carga, Cobro, Info Extra
                 sql_det = text("SELECT celular, tipo_urgencia, tipo_carga, es_contra_reembolso, monto_recaudacion, info_intercambio, destinatario, domicilio, localidad FROM operaciones WHERE id = :i")
                 res = conn.execute(sql_det, {"i": id_op}).fetchone()
                 if res:
                     cel, urg, tipo, es_cr, monto_cr, info_cr, dest, dom, loc = res
                     
-                    # Armamos la tarjeta de detalles
                     info_pago = ""
                     if es_cr:
                         info_pago = f"💰 COBRAR: $ {monto_cr}"
@@ -298,7 +301,7 @@ def main(page: ft.Page):
         page.add(ft.Column([
             ft.Text(f"Gestionar: {guia}", size=18, weight="bold", color="black"),
             ft.Text(f"Cliente: {prov}", size=14, color="grey"),
-            detalles_view, # AQUI MOSTRAMOS TODO EL DETALLE
+            detalles_view, 
             ft.Divider(),
             ft.Text("ENTREGA EXITOSA:", weight="bold", color="black"),
             txt_recibe, 
@@ -321,6 +324,7 @@ def main(page: ft.Page):
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8000))
     ft.app(target=main, view=ft.AppView.WEB_BROWSER, port=port, host="0.0.0.0")
+
 
 
 
