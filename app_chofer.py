@@ -29,27 +29,26 @@ def get_db_connection():
     return None
 
 def main(page: ft.Page):
-    print("🚀 INICIANDO V49 (RUTAS ABSOLUTAS + DIAGNOSTICO)...")
+    print("🚀 INICIANDO V50 (FLET MODERN + TEXT ICONS + BREVO)...")
     
     page.title = "Choferes EK"
     page.bgcolor = "white"
-    page.theme_mode = "light" 
+    page.theme_mode = ft.ThemeMode.LIGHT 
     page.scroll = "auto"
     
-    # --- CONFIGURACIÓN DE CARPETA DE SUBIDA (FIX PERMISOS) ---
-    # Usamos ruta absoluta para evitar errores en Render
+    # --- CONFIGURACIÓN DE CARPETA DE SUBIDA ---
+    # Usamos ruta absoluta para máxima compatibilidad en Render
     basedir = os.path.abspath(os.getcwd())
     upload_dir = os.path.join(basedir, "uploads")
     
-    # Limpieza inicial (para no llenar disco) y creacion
+    # Limpiamos la carpeta al inicio para ahorrar espacio
     if os.path.exists(upload_dir):
         try: shutil.rmtree(upload_dir)
         except: pass
     os.makedirs(upload_dir, exist_ok=True)
     
-    # Asignamos la ruta absoluta a la pagina
     page.upload_dir = upload_dir
-    print(f"📂 Carpeta de subida configurada en: {upload_dir}")
+    print(f"📂 Carpeta de fotos: {upload_dir}")
     
     state = {
         "id": None, 
@@ -63,7 +62,9 @@ def main(page: ft.Page):
     # 1. EMAIL VIA API BREVO
     # ---------------------------------------------------------
     def enviar_reporte_email_thread(destinatario_final, guia, ruta_imagen_servidor, proveedor_nombre):
-        if not BREVO_API_KEY: return
+        if not BREVO_API_KEY: 
+            print("❌ Falta API KEY de Brevo")
+            return
 
         email_proveedor = None
         conn = get_db_connection()
@@ -75,7 +76,9 @@ def main(page: ft.Page):
             except: pass
             finally: conn.close()
 
-        if not email_proveedor: return
+        if not email_proveedor: 
+            print(f"⚠️ Proveedor {proveedor_nombre} sin email.")
+            return
 
         adjuntos = []
         if ruta_imagen_servidor and os.path.exists(ruta_imagen_servidor):
@@ -84,7 +87,7 @@ def main(page: ft.Page):
                     encoded_string = base64.b64encode(image_file.read()).decode('utf-8')
                     adjuntos.append({"content": encoded_string, "name": f"remito_{guia}.jpg"})
             except Exception as e:
-                print(f"❌ Error leyendo archivo para email: {e}")
+                print(f"❌ Error leyendo foto: {e}")
 
         url = "https://api.brevo.com/v3/smtp/email"
         payload = {
@@ -108,38 +111,40 @@ def main(page: ft.Page):
         if adjuntos: payload["attachment"] = adjuntos
         headers = {"accept": "application/json", "api-key": BREVO_API_KEY, "content-type": "application/json"}
 
-        try: requests.post(url, json=payload, headers=headers)
-        except: pass
+        try: 
+            r = requests.post(url, json=payload, headers=headers)
+            print(f"📧 Brevo Status: {r.status_code}")
+        except Exception as e:
+            print(f"❌ Error API: {e}")
 
     # ---------------------------------------------------------
-    # 2. CÁMARA + BLOQUEO + DIAGNOSTICO DE ERROR
+    # 2. CÁMARA (LÓGICA SEGURA V50)
     # ---------------------------------------------------------
     
     btn_confirmar_global = ft.ElevatedButton("CONFIRMAR ENTREGA ✅", bgcolor="green", color="white", width=300, height=50)
 
     def on_upload_result(e: ft.FilePickerUploadEvent):
-        # SI HAY ERROR, LO MOSTRAMOS EN EL BOTON
+        # En Flet nuevo, e.error suele ser None si todo va bien
         if e.error:
-            error_msg = str(e.error)[:20] # Cortamos el mensaje si es muy largo
-            print(f"❌ Error Upload Flet: {e.error}")
-            btn_foto.text = f"❌ Error: {error_msg}"
+            print(f"❌ Error Upload: {e.error}")
+            btn_foto.text = "❌ Reintentar"
             btn_foto.bgcolor = "red"
-            
-            # Desbloqueamos el botón pero avisando (opcional, o lo dejamos bloqueado)
-            # Aquí lo dejamos bloqueado para obligar a reintentar
-            btn_confirmar_global.disabled = True
-            btn_confirmar_global.text = "FALLE AL SUBIR FOTO"
-            btn_confirmar_global.bgcolor = "grey"
-            btn_confirmar_global.update()
+            btn_foto.disabled = False
             btn_foto.update()
-            return
             
+            btn_confirmar_global.text = "ERROR EN FOTO"
+            btn_confirmar_global.disabled = True
+            btn_confirmar_global.update()
+            return
+
         state["tiene_foto"] = True
         state["ruta_foto"] = os.path.join(page.upload_dir, e.file_name)
+        print(f"✅ Foto guardada en: {state['ruta_foto']}")
         
         btn_foto.text = "✅ FOTO LISTA"
         btn_foto.bgcolor = "green"
-        btn_foto.icon = "check"
+        btn_foto.icon = "check" # TEXT ICON (Seguro)
+        btn_foto.disabled = False
         btn_foto.update()
         
         btn_confirmar_global.disabled = False
@@ -151,6 +156,7 @@ def main(page: ft.Page):
         if e.files:
             btn_foto.text = "⏳ Subiendo..."
             btn_foto.bgcolor = "orange"
+            btn_foto.disabled = True # Evitar doble click
             btn_foto.update()
             
             btn_confirmar_global.disabled = True
@@ -158,10 +164,12 @@ def main(page: ft.Page):
             btn_confirmar_global.bgcolor = "grey"
             btn_confirmar_global.update()
             
+            # SUBIDA AL SERVIDOR
             file_picker.upload(e.files)
         else:
-            print("Foto cancelada")
+            print("Selección cancelada")
 
+    # Configuración moderna del FilePicker
     file_picker = ft.FilePicker(on_result=on_foto_seleccionada, on_upload=on_upload_result)
     page.overlay.append(file_picker)
 
@@ -187,7 +195,7 @@ def main(page: ft.Page):
     btn_inicio = ft.ElevatedButton("CONECTAR", on_click=conectar, bgcolor="blue", color="white", height=50)
     vista_inicio = ft.Column([ft.Text("🚛", size=50), ft.Text("BIENVENIDO", size=30, weight="bold", color="black"), ft.Container(height=20), btn_inicio], horizontal_alignment="center")
 
-    dd_chofer = ft.Dropdown(label="Chofer", bgcolor="#f0f2f5")
+    dd_chofer = ft.Dropdown(label="Chofer", bgcolor="#f0f2f5", label_style=ft.TextStyle(color="black"))
     lista_viajes = ft.Column(spacing=10)
 
     def cargar_ruta(e):
@@ -220,14 +228,15 @@ def main(page: ft.Page):
         page.clean(); page.add(ft.Column([ft.Text("MI RUTA", size=18, weight="bold", color="black"), dd_chofer, btn_buscar, ft.Divider(), lista_viajes]))
 
     # --- GESTION ---
-    txt_recibe = ft.TextField(label="Quien recibe", border_color="grey")
-    txt_motivo = ft.TextField(label="Motivo (No entregado)", border_color="grey")
+    txt_recibe = ft.TextField(label="Quien recibe", border_color="grey", label_style=ft.TextStyle(color="black"))
+    txt_motivo = ft.TextField(label="Motivo (No entregado)", border_color="grey", label_style=ft.TextStyle(color="black"))
     
+    # Boton de cámara (Icono en texto para evitar error)
     btn_foto = ft.ElevatedButton(
         "📷 TOMAR FOTO", 
         bgcolor="grey", color="white", height=45,
-        icon="camera_alt",
-        on_click=lambda _: file_picker.pick_files(allow_multiple=False, file_type="image")
+        icon="camera_alt", 
+        on_click=lambda _: file_picker.pick_files(allow_multiple=False, file_type=ft.FilePickerFileType.IMAGE)
     )
 
     def guardar(estado):
@@ -271,7 +280,7 @@ def main(page: ft.Page):
     def ir_a_gestion(id_op, guia, prov):
         state["id"] = id_op; state["guia"] = guia; state["proveedor"] = prov; state["tiene_foto"] = False; state["ruta_foto"] = None
         txt_recibe.value = ""; txt_motivo.value = ""
-        btn_foto.text = "📷 TOMAR FOTO"; btn_foto.bgcolor = "grey"; btn_foto.icon = "camera_alt"
+        btn_foto.text = "📷 TOMAR FOTO"; btn_foto.bgcolor = "grey"; btn_foto.icon = "camera_alt"; btn_foto.disabled = False
         
         btn_confirmar_global.disabled = False
         btn_confirmar_global.text = "CONFIRMAR ENTREGA ✅"
