@@ -29,7 +29,7 @@ def get_db_connection():
     return None
 
 def main(page: ft.Page):
-    print("🚀 INICIANDO V52 (FIX FILEPICKER INIT)...")
+    print("🚀 INICIANDO V53 (VERSION LIMPIA)...")
     
     page.title = "Choferes EK"
     page.bgcolor = "white"
@@ -107,12 +107,11 @@ def main(page: ft.Page):
         except: pass
 
     # ---------------------------------------------------------
-    # 2. CÁMARA (CONFIGURACIÓN MANUAL SEGURA)
+    # 2. CÁMARA (CONFIGURACIÓN MANUAL)
     # ---------------------------------------------------------
     
     btn_confirmar_global = ft.ElevatedButton("CONFIRMAR ENTREGA ✅", bgcolor="green", color="white", width=300, height=50)
 
-    # Definimos funciones PRIMERO
     def on_upload_result(e):
         if e.error:
             print(f"❌ Error Upload: {e.error}")
@@ -156,11 +155,8 @@ def main(page: ft.Page):
         else:
             print("Selección cancelada")
 
-    # --- FIX CRÍTICO AQUI ---
-    # Creamos VACIO (sin argumentos, para que no de error __init__)
+    # CREACIÓN SEGURA DEL FILEPICKER
     file_picker = ft.FilePicker()
-    
-    # Asignamos las funciones DESPUES (esto funciona en todas las versiones)
     file_picker.on_result = on_foto_seleccionada
     file_picker.on_upload = on_upload_result
     
@@ -313,6 +309,7 @@ def main(page: ft.Page):
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8000))
     ft.app(target=main, view=ft.AppView.WEB_BROWSER, port=port, host="0.0.0.0")
+
 
 
 
