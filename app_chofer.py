@@ -3,17 +3,16 @@ from sqlalchemy import create_engine, text
 from datetime import datetime
 import os
 import urllib.parse
-import smtplib
-import socket # <--- NECESARIO PARA EL HACK DE IP
-from email.message import EmailMessage
+import requests  # <--- Usamos esto para saltar el bloqueo
+import base64    # <--- Para enviar la foto por la API
 import threading 
 
 # --- CONFIGURACIÓN DB ---
 DATABASE_URL = "postgresql://postgres.gwdypvvyjuqzvpbbzchk:Eklogisticasajetpaq@aws-0-us-west-2.pooler.supabase.com:6543/postgres"
 
-# --- CREDENCIALES EMAIL ---
-EMAIL_USER = os.environ.get("EMAIL_USER", "eklogistica19@gmail.com") 
-EMAIL_PASS = os.environ.get("EMAIL_PASS", "").replace(" ", "") 
+# --- CREDENCIALES BREVO ---
+BREVO_API_KEY = os.environ.get("BREVO_API_KEY", "") 
+EMAIL_REMITENTE = "eklogistica19@gmail.com" # Debe estar validado en Brevo
 
 engine = None
 try:
@@ -29,11 +28,11 @@ def get_db_connection():
     return None
 
 def main(page: ft.Page):
-    print("🚀 INICIANDO V45 (FORCE IPV4 + SAFETY BLOCK)...")
+    print("🚀 INICIANDO V46 (BREVO API - ANTI BLOQUEO)...")
     
     page.title = "Choferes EK"
     page.bgcolor = "white"
-    page.theme_mode = ft.ThemeMode.LIGHT 
+    page.theme_mode = "light" 
     page.scroll = "auto"
     
     state = {
@@ -45,13 +44,13 @@ def main(page: ft.Page):
     }
 
     # ---------------------------------------------------------
-    # 1. EMAIL EN SEGUNDO PLANO (CON HACK IPV4)
+    # 1. EMAIL VIA API (ESTO NO FALLA EN RENDER)
     # ---------------------------------------------------------
     def enviar_reporte_email_thread(destinatario_final, guia, ruta_imagen, proveedor_nombre):
-        print(f"📧 Iniciando proceso de envío para {proveedor_nombre}...")
+        print(f"📧 Enviando vía API Brevo para {proveedor_nombre}...")
         
-        if not EMAIL_PASS:
-            print("❌ Error: No hay contraseña configurada.")
+        if not BREVO_API_KEY:
+            print("❌ Error: Falta configurar BREVO_API_KEY en Render.")
             return
 
         email_proveedor = None
@@ -62,7 +61,7 @@ def main(page: ft.Page):
                 if res and res[0]:
                     email_proveedor = res[0]
             except Exception as e:
-                print(f"❌ Error DB Email: {e}")
+                print(f"❌ Error DB: {e}")
             finally:
                 conn.close()
 
@@ -70,72 +69,74 @@ def main(page: ft.Page):
             print(f"⚠️ El proveedor {proveedor_nombre} no tiene email.")
             return
 
-        msg = EmailMessage()
-        msg['Subject'] = f"ENTREGA REALIZADA - Guía: {guia}"
-        msg['From'] = EMAIL_USER
-        msg['To'] = email_proveedor
-        
-        cuerpo = f"""
-        Hola,
-        
-        Se informa la entrega exitosa de la carga.
-        
-        📅 Fecha: {datetime.now().strftime('%d/%m/%Y %H:%M')}
-        📦 Guía: {guia}
-        🚛 Proveedor: {proveedor_nombre}
-        👤 Recibió: {destinatario_final}
-        
-        Adjuntamos la foto del remito conformado.
-        
-        Atte. EK Logística
-        """
-        msg.set_content(cuerpo)
-
+        # Preparar FOTO en base64 para la API
+        adjuntos = []
         if ruta_imagen:
             try:
-                with open(ruta_imagen, 'rb') as f:
-                    file_data = f.read()
-                    file_name = f"remito_{guia}.jpg"
-                    msg.add_attachment(file_data, maintype='image', subtype='jpeg', filename=file_name)
+                with open(ruta_imagen, "rb") as image_file:
+                    encoded_string = base64.b64encode(image_file.read()).decode('utf-8')
+                    adjuntos.append({
+                        "content": encoded_string,
+                        "name": f"remito_{guia}.jpg"
+                    })
             except Exception as e:
-                print(f"❌ Error foto: {e}")
+                print(f"❌ Error leyendo foto: {e}")
 
-        # --- HACK DE CONEXIÓN IPV4 ---
-        try:
-            print("🔄 Resolviendo IP de Gmail (IPv4)...")
-            # Esto obtiene la dirección numérica (ej: 172.217.192.108) en lugar del nombre
-            # Evita que Render intente usar IPv6 y falle.
-            gmail_ip = socket.gethostbyname('smtp.gmail.com')
-            print(f"✅ IP encontrada: {gmail_ip}. Conectando...")
-
-            with smtplib.SMTP(gmail_ip, 587) as smtp:
-                smtp.ehlo()
-                smtp.starttls()
-                smtp.ehlo()
-                smtp.login(EMAIL_USER, EMAIL_PASS)
-                smtp.send_message(msg)
-            
-            print(f"✅ CORREO ENVIADO A {email_proveedor}")
+        # --- CONEXIÓN CON BREVO ---
+        url = "https://api.brevo.com/v3/smtp/email"
         
+        payload = {
+            "sender": {"name": "Logistica EK", "email": EMAIL_REMITENTE},
+            "to": [{"email": email_proveedor}],
+            "subject": f"ENTREGA REALIZADA - Guía: {guia}",
+            "htmlContent": f"""
+                <html><body>
+                <h3>Hola,</h3>
+                <p>Se informa la entrega exitosa de la carga.</p>
+                <ul>
+                    <li><b>Fecha:</b> {datetime.now().strftime('%d/%m/%Y %H:%M')}</li>
+                    <li><b>Guía:</b> {guia}</li>
+                    <li><b>Proveedor:</b> {proveedor_nombre}</li>
+                    <li><b>Recibió:</b> {destinatario_final}</li>
+                </ul>
+                <p><i>Adjuntamos la foto del remito conformado.</i></p>
+                <p>Atte.<br><b>Equipo EK Logística</b></p>
+                </body></html>
+            """
+        }
+        
+        if adjuntos:
+            payload["attachment"] = adjuntos
+
+        headers = {
+            "accept": "application/json",
+            "api-key": BREVO_API_KEY,
+            "content-type": "application/json"
+        }
+
+        try:
+            response = requests.post(url, json=payload, headers=headers)
+            if response.status_code == 201:
+                print(f"✅ CORREO ENVIADO A {email_proveedor} (ID: {response.json().get('messageId')})")
+            else:
+                print(f"❌ Error Brevo: {response.text}")
         except Exception as e:
-            # Si falla, imprimimos el error pero NO ROMPEMOS LA APP
-            print(f"❌ ERROR CRÍTICO ENVIANDO MAIL: {e}")
+            print(f"❌ Error de conexión API: {e}")
 
     # ---------------------------------------------------------
-    # 2. CÁMARA
+    # 2. CÁMARA (V41 CLASICA)
     # ---------------------------------------------------------
-    def on_foto_seleccionada(e):
+    def on_foto_seleccionada(e: ft.FilePickerResultEvent):
         if e.files:
             path = e.files[0].path
             state["tiene_foto"] = True
             state["ruta_foto"] = path
             btn_foto.text = "✅ FOTO LISTA"
             btn_foto.bgcolor = "green"
-            btn_foto.icon = "check"
+            btn_foto.icon = ft.icons.CHECK
             btn_foto.update()
 
-    file_picker = ft.FilePicker()
-    file_picker.on_result = on_foto_seleccionada
+    file_picker = ft.FilePicker(on_result=on_foto_seleccionada)
     page.overlay.append(file_picker)
 
     # ---------------------------------------------------------
@@ -167,7 +168,7 @@ def main(page: ft.Page):
     vista_inicio = ft.Column([ft.Text("🚛", size=50), ft.Text("BIENVENIDO", size=30, weight="bold", color="black"), ft.Container(height=20), btn_inicio], horizontal_alignment="center")
 
     # --- LISTA ---
-    dd_chofer = ft.Dropdown(label="Chofer", bgcolor="#f0f2f5", label_style=ft.TextStyle(color="black"))
+    dd_chofer = ft.Dropdown(label="Chofer", bgcolor="#f0f2f5")
     lista_viajes = ft.Column(spacing=10)
 
     def cargar_ruta(e):
@@ -176,7 +177,6 @@ def main(page: ft.Page):
         lista_viajes.controls.clear()
         lista_viajes.controls.append(ft.Text("Buscando...", color="blue"))
         page.update()
-        
         conn = get_db_connection()
         lista_viajes.controls.clear()
         if conn:
@@ -184,11 +184,9 @@ def main(page: ft.Page):
                 sql = text("SELECT id, guia_remito, destinatario, domicilio, localidad, bultos, estado, proveedor FROM operaciones WHERE chofer_asignado = :c AND estado IN ('En Reparto', 'Pendiente') ORDER BY id ASC")
                 rows = conn.execute(sql, {"c": chofer}).fetchall()
                 if not rows: lista_viajes.controls.append(ft.Text("✅ Sin viajes pendientes", color="green"))
-                
                 for row in rows:
                     id_op, guia, dest, dom, loc, bultos, est, prov = row
                     color_est = "blue" if est == "En Reparto" else "orange"
-                    
                     card = ft.Container(
                         bgcolor="white", padding=10, border=ft.border.all(1, "#ddd"), border_radius=8,
                         content=ft.Column([
@@ -209,34 +207,33 @@ def main(page: ft.Page):
         page.clean()
         page.add(ft.Column([ft.Text("MI RUTA", size=18, weight="bold", color="black"), dd_chofer, btn_buscar, ft.Divider(), lista_viajes]))
 
-    # --- GESTION CON DETALLES ---
-    txt_recibe = ft.TextField(label="Quien recibe", border_color="grey", label_style=ft.TextStyle(color="black"))
-    txt_motivo = ft.TextField(label="Motivo (No entregado)", border_color="grey", label_style=ft.TextStyle(color="black"))
+    # --- GESTION ---
+    txt_recibe = ft.TextField(label="Quien recibe", border_color="grey")
+    txt_motivo = ft.TextField(label="Motivo (No entregado)", border_color="grey")
     
     btn_foto = ft.ElevatedButton(
         "📷 TOMAR FOTO", 
         bgcolor="grey", color="white", height=45,
-        icon="camera_alt",
-        on_click=lambda _: file_picker.pick_files(allow_multiple=False, file_type=ft.FilePickerFileType.IMAGE)
+        icon=ft.icons.CAMERA_ALT,
+        on_click=lambda _: file_picker.pick_files(allow_multiple=False, file_type="image")
     )
 
     def guardar(estado):
         id_op = state["id"]
         if not id_op: return
         
+        # Validaciones
         if estado == "ENTREGADO" and not txt_recibe.value:
             txt_recibe.error_text = "Requerido"; txt_recibe.update(); return
         if estado != "ENTREGADO" and not txt_motivo.value:
             txt_motivo.error_text = "Requerido"; txt_motivo.update(); return
 
-        # LOGICA FOTO OBLIGATORIA (Salvo JetPaq)
+        # Regla JetPaq
         if estado == "ENTREGADO":
             es_jetpaq = "jetpaq" in state["proveedor"].lower()
             if not es_jetpaq and not state["tiene_foto"]:
-                page.snack_bar = ft.SnackBar(ft.Text("⚠️ FOTO OBLIGATORIA (Salvo JetPaq)"), bgcolor="red")
-                page.snack_bar.open = True
-                page.update()
-                return
+                page.snack_bar = ft.SnackBar(ft.Text("⚠️ FOTO OBLIGATORIA"), bgcolor="red")
+                page.snack_bar.open = True; page.update(); return
 
         det = f"Recibio: {txt_recibe.value}" if estado == "ENTREGADO" else f"Motivo: {txt_motivo.value}"
         if state["tiene_foto"]: det += " [CON FOTO]"
@@ -248,6 +245,7 @@ def main(page: ft.Page):
                 conn.execute(text("INSERT INTO historial_movimientos (operacion_id, usuario, accion, detalle, fecha_hora) VALUES (:o, :u, 'APP', :d, :f)"), {"o": id_op, "u": dd_chofer.value, "d": det, "f": datetime.now()})
                 conn.commit()
                 
+                # ENVIAR CORREO API
                 if estado == "ENTREGADO" and state["tiene_foto"]:
                     t = threading.Thread(target=enviar_reporte_email_thread, args=(txt_recibe.value, state["guia"], state["ruta_foto"], state["proveedor"]))
                     t.start()
@@ -255,11 +253,8 @@ def main(page: ft.Page):
                 else:
                     page.snack_bar = ft.SnackBar(ft.Text("✅ Guardado"), bgcolor="green")
 
-                ir_a_principal()
-                cargar_ruta(None)
-                page.snack_bar.open = True
-                page.update()
-
+                ir_a_principal(); cargar_ruta(None)
+                page.snack_bar.open = True; page.update()
             except Exception as e:
                 page.snack_bar = ft.SnackBar(ft.Text(f"Error: {e}"), bgcolor="red"); page.snack_bar.open = True
             finally: conn.close()
@@ -267,9 +262,9 @@ def main(page: ft.Page):
     def ir_a_gestion(id_op, guia, prov):
         state["id"] = id_op; state["guia"] = guia; state["proveedor"] = prov; state["tiene_foto"] = False; state["ruta_foto"] = None
         txt_recibe.value = ""; txt_motivo.value = ""
-        btn_foto.text = "📷 TOMAR FOTO"; btn_foto.bgcolor = "grey"; btn_foto.icon = "camera_alt"
+        btn_foto.text = "📷 TOMAR FOTO"; btn_foto.bgcolor = "grey"; btn_foto.icon = ft.icons.CAMERA_ALT
         
-        # BUSCAR DETALLES
+        # Detalles
         detalles_view = ft.Column()
         conn = get_db_connection()
         if conn:
@@ -279,20 +274,7 @@ def main(page: ft.Page):
                 if res:
                     cel, urg, tipo, es_cr, monto_cr, info_cr, dest, dom, loc = res
                     info_pago = f"💰 COBRAR: $ {monto_cr}\n📝 {info_cr}" if es_cr else ""
-                    
-                    detalles_view.controls = [
-                        ft.Container(
-                            bgcolor="#e3f2fd", padding=10, border_radius=5,
-                            content=ft.Column([
-                                ft.Text(f"👤 {dest}", weight="bold", size=16, color="black"),
-                                ft.Text(f"📍 {dom} ({loc})", color="black"),
-                                ft.Text(f"📞 {cel or 'Sin celular'}", color="blue", weight="bold"),
-                                ft.Divider(),
-                                ft.Row([ft.Text(f"⚡ {urg}", color="red" if "URGENTE" in urg else "black", weight="bold"), ft.Text(f"📦 {tipo}", color="black")], alignment="spaceBetween"),
-                                ft.Text(info_pago, color="red", weight="bold", size=16) if es_cr else ft.Container()
-                            ])
-                        )
-                    ]
+                    detalles_view.controls = [ft.Container(bgcolor="#e3f2fd", padding=10, border_radius=5, content=ft.Column([ft.Text(f"👤 {dest}", weight="bold", size=16, color="black"), ft.Text(f"📍 {dom} ({loc})", color="black"), ft.Text(f"📞 {cel or 'Sin celular'}", color="blue", weight="bold"), ft.Divider(), ft.Row([ft.Text(f"⚡ {urg}", color="red" if "URGENTE" in urg else "black", weight="bold"), ft.Text(f"📦 {tipo}", color="black")], alignment="spaceBetween"), ft.Text(info_pago, color="red", weight="bold", size=16) if es_cr else ft.Container()]))]
             except: pass
             finally: conn.close()
 
@@ -300,22 +282,15 @@ def main(page: ft.Page):
         page.add(ft.Column([
             ft.Text(f"Gestionar: {guia}", size=18, weight="bold", color="black"),
             ft.Text(f"Cliente: {prov}", size=14, color="grey"),
-            detalles_view, 
-            ft.Divider(),
+            detalles_view, ft.Divider(),
             ft.Text("ENTREGA EXITOSA:", weight="bold", color="black"),
-            txt_recibe, 
-            btn_foto, 
-            ft.Container(height=10),
+            txt_recibe, btn_foto, ft.Container(height=10),
             ft.ElevatedButton("CONFIRMAR ENTREGA ✅", bgcolor="green", color="white", width=300, height=50, on_click=lambda _: guardar("ENTREGADO")),
             ft.Divider(),
             ft.Text("NO ENTREGADO:", weight="bold", color="black"),
             txt_motivo,
-            ft.Row([
-                ft.ElevatedButton("PENDIENTE", bgcolor="orange", color="white", expand=True, on_click=lambda _: guardar("Pendiente")),
-                ft.ElevatedButton("REPROGRAMAR", bgcolor="purple", color="white", expand=True, on_click=lambda _: guardar("Reprogramado"))
-            ]),
-            ft.Container(height=20),
-            ft.TextButton("VOLVER", on_click=lambda _: ir_a_principal())
+            ft.Row([ft.ElevatedButton("PENDIENTE", bgcolor="orange", color="white", expand=True, on_click=lambda _: guardar("Pendiente")), ft.ElevatedButton("REPROGRAMAR", bgcolor="purple", color="white", expand=True, on_click=lambda _: guardar("Reprogramado"))]),
+            ft.Container(height=20), ft.TextButton("VOLVER", on_click=lambda _: ir_a_principal())
         ]))
 
     page.add(vista_inicio)
