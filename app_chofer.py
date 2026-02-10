@@ -29,26 +29,24 @@ def get_db_connection():
     return None
 
 def main(page: ft.Page):
-    print("🚀 INICIANDO V50 (FLET MODERN + TEXT ICONS + BREVO)...")
+    print("🚀 INICIANDO V51 (SIN ETIQUETAS DE TIPO - VERSION FINAL)...")
     
     page.title = "Choferes EK"
     page.bgcolor = "white"
     page.theme_mode = ft.ThemeMode.LIGHT 
     page.scroll = "auto"
     
-    # --- CONFIGURACIÓN DE CARPETA DE SUBIDA ---
-    # Usamos ruta absoluta para máxima compatibilidad en Render
+    # --- CONFIGURACIÓN CARPETA DE SUBIDA ---
     basedir = os.path.abspath(os.getcwd())
     upload_dir = os.path.join(basedir, "uploads")
     
-    # Limpiamos la carpeta al inicio para ahorrar espacio
     if os.path.exists(upload_dir):
         try: shutil.rmtree(upload_dir)
         except: pass
     os.makedirs(upload_dir, exist_ok=True)
     
     page.upload_dir = upload_dir
-    print(f"📂 Carpeta de fotos: {upload_dir}")
+    print(f"📂 Carpeta configurada: {upload_dir}")
     
     state = {
         "id": None, 
@@ -63,7 +61,7 @@ def main(page: ft.Page):
     # ---------------------------------------------------------
     def enviar_reporte_email_thread(destinatario_final, guia, ruta_imagen_servidor, proveedor_nombre):
         if not BREVO_API_KEY: 
-            print("❌ Falta API KEY de Brevo")
+            print("❌ Falta API Key")
             return
 
         email_proveedor = None
@@ -111,20 +109,17 @@ def main(page: ft.Page):
         if adjuntos: payload["attachment"] = adjuntos
         headers = {"accept": "application/json", "api-key": BREVO_API_KEY, "content-type": "application/json"}
 
-        try: 
-            r = requests.post(url, json=payload, headers=headers)
-            print(f"📧 Brevo Status: {r.status_code}")
-        except Exception as e:
-            print(f"❌ Error API: {e}")
+        try: requests.post(url, json=payload, headers=headers)
+        except Exception as e: print(f"❌ Error API: {e}")
 
     # ---------------------------------------------------------
-    # 2. CÁMARA (LÓGICA SEGURA V50)
+    # 2. CÁMARA (CORREGIDA - SIN ETIQUETAS)
     # ---------------------------------------------------------
     
     btn_confirmar_global = ft.ElevatedButton("CONFIRMAR ENTREGA ✅", bgcolor="green", color="white", width=300, height=50)
 
-    def on_upload_result(e: ft.FilePickerUploadEvent):
-        # En Flet nuevo, e.error suele ser None si todo va bien
+    # AQUI ESTABA EL ERROR: Quitamos ": ft.FilePickerUploadEvent"
+    def on_upload_result(e):
         if e.error:
             print(f"❌ Error Upload: {e.error}")
             btn_foto.text = "❌ Reintentar"
@@ -143,7 +138,7 @@ def main(page: ft.Page):
         
         btn_foto.text = "✅ FOTO LISTA"
         btn_foto.bgcolor = "green"
-        btn_foto.icon = "check" # TEXT ICON (Seguro)
+        btn_foto.icon = "check"
         btn_foto.disabled = False
         btn_foto.update()
         
@@ -152,11 +147,12 @@ def main(page: ft.Page):
         btn_confirmar_global.bgcolor = "green"
         btn_confirmar_global.update()
 
-    def on_foto_seleccionada(e: ft.FilePickerResultEvent):
+    # AQUI TAMBIEN: Quitamos ": ft.FilePickerResultEvent"
+    def on_foto_seleccionada(e):
         if e.files:
             btn_foto.text = "⏳ Subiendo..."
             btn_foto.bgcolor = "orange"
-            btn_foto.disabled = True # Evitar doble click
+            btn_foto.disabled = True
             btn_foto.update()
             
             btn_confirmar_global.disabled = True
@@ -164,12 +160,10 @@ def main(page: ft.Page):
             btn_confirmar_global.bgcolor = "grey"
             btn_confirmar_global.update()
             
-            # SUBIDA AL SERVIDOR
             file_picker.upload(e.files)
         else:
             print("Selección cancelada")
 
-    # Configuración moderna del FilePicker
     file_picker = ft.FilePicker(on_result=on_foto_seleccionada, on_upload=on_upload_result)
     page.overlay.append(file_picker)
 
@@ -231,7 +225,7 @@ def main(page: ft.Page):
     txt_recibe = ft.TextField(label="Quien recibe", border_color="grey", label_style=ft.TextStyle(color="black"))
     txt_motivo = ft.TextField(label="Motivo (No entregado)", border_color="grey", label_style=ft.TextStyle(color="black"))
     
-    # Boton de cámara (Icono en texto para evitar error)
+    # Boton de cámara
     btn_foto = ft.ElevatedButton(
         "📷 TOMAR FOTO", 
         bgcolor="grey", color="white", height=45,
