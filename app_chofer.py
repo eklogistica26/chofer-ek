@@ -28,11 +28,11 @@ def get_db_connection():
     return None
 
 def main(page: ft.Page):
-    print(f"🚀 INICIANDO V55 (ESTABLE 0.74.0) - Flet Version: {ft.version}")
+    print(f"🚀 INICIANDO V56 (STABLE 0.80.5) - Flet Ver: {ft.version}")
     
-    page.title = "Choferes EK - V55"
+    page.title = "Choferes EK - V56"
     page.bgcolor = "white"
-    page.theme_mode = "light" 
+    page.theme_mode = ft.ThemeMode.LIGHT 
     page.scroll = "auto"
     
     # --- CONFIGURACIÓN CARPETA SUBIDA ---
@@ -104,11 +104,12 @@ def main(page: ft.Page):
         except: pass
 
     # ---------------------------------------------------------
-    # 2. CÁMARA (VERSIÓN 0.74.0 - ESTABLE)
+    # 2. CÁMARA (SINTAXIS SEGURA 0.80.5)
     # ---------------------------------------------------------
     
     btn_confirmar_global = ft.ElevatedButton("CONFIRMAR ENTREGA ✅", bgcolor="green", color="white", width=300, height=50)
 
+    # Funciones del FilePicker
     def on_upload_result(e: ft.FilePickerUploadEvent):
         if e.error:
             btn_foto.text = "❌ Error al subir"
@@ -125,7 +126,7 @@ def main(page: ft.Page):
         
         btn_foto.text = "✅ FOTO LISTA"
         btn_foto.bgcolor = "green"
-        btn_foto.icon = ft.icons.CHECK
+        btn_foto.icon = "check"
         btn_foto.disabled = False
         btn_foto.update()
         
@@ -146,14 +147,20 @@ def main(page: ft.Page):
             btn_confirmar_global.bgcolor = "grey"
             btn_confirmar_global.update()
             
-            # En v0.74.0, upload funciona perfecto así:
             file_picker.upload(e.files)
         else:
             print("Cancelado")
 
-    # EN 0.74.0 ESTA SINTAXIS ES PERFECTA (Y NO DA ERROR DE __INIT__)
-    file_picker = ft.FilePicker(on_result=on_foto_seleccionada, on_upload=on_upload_result)
+    # --- INICIALIZACIÓN SEGURA ---
+    # 1. Crear vacío
+    file_picker = ft.FilePicker()
+    # 2. Asignar página (Overlay)
     page.overlay.append(file_picker)
+    page.update() # Asegurar que existe en la página
+    
+    # 3. Asignar eventos DESPUÉS
+    file_picker.on_result = on_foto_seleccionada
+    file_picker.on_upload = on_upload_result
 
     # ---------------------------------------------------------
     # 3. INTERFAZ
@@ -175,9 +182,9 @@ def main(page: ft.Page):
         page.update()
 
     btn_inicio = ft.ElevatedButton("CONECTAR", on_click=conectar, bgcolor="blue", color="white", height=50)
-    vista_inicio = ft.Column([ft.Text("🚛", size=50), ft.Text("BIENVENIDO V55", size=30, weight="bold", color="black"), ft.Container(height=20), btn_inicio], horizontal_alignment="center")
+    vista_inicio = ft.Column([ft.Text("🚛", size=50), ft.Text("BIENVENIDO V56", size=30, weight="bold", color="black"), ft.Container(height=20), btn_inicio], horizontal_alignment="center")
 
-    dd_chofer = ft.Dropdown(label="Chofer", bgcolor="#f0f2f5")
+    dd_chofer = ft.Dropdown(label="Chofer", bgcolor="#f0f2f5", label_style=ft.TextStyle(color="black"))
     lista_viajes = ft.Column(spacing=10)
 
     def cargar_ruta(e):
@@ -210,14 +217,14 @@ def main(page: ft.Page):
         page.clean(); page.add(ft.Column([ft.Text("MI RUTA", size=18, weight="bold", color="black"), dd_chofer, btn_buscar, ft.Divider(), lista_viajes]))
 
     # --- GESTION ---
-    txt_recibe = ft.TextField(label="Quien recibe", border_color="grey")
-    txt_motivo = ft.TextField(label="Motivo (No entregado)", border_color="grey")
+    txt_recibe = ft.TextField(label="Quien recibe", border_color="grey", label_style=ft.TextStyle(color="black"))
+    txt_motivo = ft.TextField(label="Motivo (No entregado)", border_color="grey", label_style=ft.TextStyle(color="black"))
     
     # Boton de cámara
     btn_foto = ft.ElevatedButton(
         "📷 TOMAR FOTO", 
         bgcolor="grey", color="white", height=45,
-        icon=ft.icons.CAMERA_ALT, # Funciona en 0.74.0
+        icon="camera_alt", # Texto simple
         on_click=lambda _: file_picker.pick_files(allow_multiple=False, file_type=ft.FilePickerFileType.IMAGE)
     )
 
@@ -262,7 +269,7 @@ def main(page: ft.Page):
     def ir_a_gestion(id_op, guia, prov):
         state["id"] = id_op; state["guia"] = guia; state["proveedor"] = prov; state["tiene_foto"] = False; state["ruta_foto"] = None
         txt_recibe.value = ""; txt_motivo.value = ""
-        btn_foto.text = "📷 TOMAR FOTO"; btn_foto.bgcolor = "grey"; btn_foto.icon = ft.icons.CAMERA_ALT; btn_foto.disabled = False
+        btn_foto.text = "📷 TOMAR FOTO"; btn_foto.bgcolor = "grey"; btn_foto.icon = "camera_alt"; btn_foto.disabled = False
         
         btn_confirmar_global.disabled = False
         btn_confirmar_global.text = "CONFIRMAR ENTREGA ✅"
