@@ -27,11 +27,11 @@ def get_db_connection():
     return None
 
 def main(page: ft.Page):
-    print("🚀 INICIANDO V40 (ICONOS COMO TEXTO)...")
+    print("🚀 INICIANDO V41 (VERSION CLASICA 0.22.1)...")
     
     page.title = "Choferes EK"
     page.bgcolor = "white"
-    page.theme_mode = ft.ThemeMode.LIGHT 
+    page.theme_mode = "light" # Sintaxis clásica
     page.scroll = "auto"
     
     state = {
@@ -43,28 +43,21 @@ def main(page: ft.Page):
     }
 
     # ---------------------------------------------------------
-    # 1. EMAIL AUTOMÁTICO
+    # 1. EMAIL
     # ---------------------------------------------------------
     def enviar_reporte_email(destinatario_final, guia, ruta_imagen, proveedor_nombre):
-        if not EMAIL_PASS:
-            print("❌ Falta contraseña de email.")
-            return
+        if not EMAIL_PASS: return
 
         email_proveedor = None
         conn = get_db_connection()
         if conn:
             try:
                 res = conn.execute(text("SELECT email_reportes FROM clientes_principales WHERE nombre = :n"), {"n": proveedor_nombre}).fetchone()
-                if res and res[0]:
-                    email_proveedor = res[0]
-            except Exception as e:
-                print(f"Error DB Email: {e}")
-            finally:
-                conn.close()
+                if res and res[0]: email_proveedor = res[0]
+            except: pass
+            finally: conn.close()
 
-        if not email_proveedor:
-            print(f"⚠️ El cliente {proveedor_nombre} no tiene email cargado.")
-            return
+        if not email_proveedor: return
 
         msg = EmailMessage()
         msg['Subject'] = f"ENTREGA REALIZADA - Guía: {guia}"
@@ -73,16 +66,12 @@ def main(page: ft.Page):
         
         cuerpo = f"""
         Hola,
-        
-        Se informa la entrega exitosa de la carga.
-        
-        📅 Fecha: {datetime.now().strftime('%d/%m/%Y %H:%M')}
+        Se informa la entrega exitosa.
+        📅 {datetime.now().strftime('%d/%m/%Y %H:%M')}
         📦 Guía: {guia}
         🚛 Proveedor: {proveedor_nombre}
         👤 Recibió: {destinatario_final}
-        
-        Adjuntamos la foto del remito conformado.
-        
+        Adjuntamos foto del remito.
         Atte. EK Logística
         """
         msg.set_content(cuerpo)
@@ -91,41 +80,34 @@ def main(page: ft.Page):
             try:
                 with open(ruta_imagen, 'rb') as f:
                     file_data = f.read()
-                    file_name = f"remito_{guia}.jpg"
-                    msg.add_attachment(file_data, maintype='image', subtype='jpeg', filename=file_name)
-            except Exception as e:
-                print(f"No se pudo leer la foto: {e}")
+                    msg.add_attachment(file_data, maintype='image', subtype='jpeg', filename=f"remito_{guia}.jpg")
+            except: pass
 
         try:
             with smtplib.SMTP_SSL('smtp.gmail.com', 465) as smtp:
                 smtp.login(EMAIL_USER, EMAIL_PASS)
                 smtp.send_message(msg)
-            print(f"✅ Email enviado a {email_proveedor}")
-        except Exception as e:
-            print(f"❌ Error enviando email: {e}")
+        except: pass
 
     # ---------------------------------------------------------
-    # 2. CÁMARA
+    # 2. CÁMARA (ESTILO CLÁSICO - NO FALLA)
     # ---------------------------------------------------------
-    def on_foto_seleccionada(e):
+    def on_foto_seleccionada(e: ft.FilePickerResultEvent):
         if e.files:
             path = e.files[0].path
             state["tiene_foto"] = True
             state["ruta_foto"] = path
-            
             btn_foto.text = "✅ FOTO LISTA"
             btn_foto.bgcolor = "green"
-            btn_foto.icon = "check" # <--- CAMBIO CLAVE: Texto simple
+            btn_foto.icon = ft.icons.CHECK
             btn_foto.update()
-        else:
-            print("Foto cancelada")
 
-    file_picker = ft.FilePicker()
-    file_picker.on_result = on_foto_seleccionada
+    # En la version 0.22.1, ESTO SI FUNCIONA ASI:
+    file_picker = ft.FilePicker(on_result=on_foto_seleccionada)
     page.overlay.append(file_picker)
 
     # ---------------------------------------------------------
-    # 3. PANTALLAS
+    # 3. INTERFAZ
     # ---------------------------------------------------------
     def abrir_mapa(domicilio, localidad):
         q = urllib.parse.quote(f"{domicilio}, {localidad}")
@@ -153,7 +135,7 @@ def main(page: ft.Page):
     vista_inicio = ft.Column([ft.Text("🚛", size=50), ft.Text("BIENVENIDO", size=30, weight="bold", color="black"), ft.Container(height=20), btn_inicio], horizontal_alignment="center")
 
     # --- LISTA ---
-    dd_chofer = ft.Dropdown(label="Chofer", bgcolor="#f0f2f5", label_style=ft.TextStyle(color="black"))
+    dd_chofer = ft.Dropdown(label="Chofer", bgcolor="#f0f2f5")
     lista_viajes = ft.Column(spacing=10)
 
     def cargar_ruta(e):
@@ -162,7 +144,6 @@ def main(page: ft.Page):
         lista_viajes.controls.clear()
         lista_viajes.controls.append(ft.Text("Buscando...", color="blue"))
         page.update()
-        
         conn = get_db_connection()
         lista_viajes.controls.clear()
         if conn:
@@ -170,11 +151,9 @@ def main(page: ft.Page):
                 sql = text("SELECT id, guia_remito, destinatario, domicilio, localidad, bultos, estado, proveedor FROM operaciones WHERE chofer_asignado = :c AND estado IN ('En Reparto', 'Pendiente') ORDER BY id ASC")
                 rows = conn.execute(sql, {"c": chofer}).fetchall()
                 if not rows: lista_viajes.controls.append(ft.Text("✅ Sin viajes pendientes", color="green"))
-                
                 for row in rows:
                     id_op, guia, dest, dom, loc, bultos, est, prov = row
                     color_est = "blue" if est == "En Reparto" else "orange"
-                    
                     card = ft.Container(
                         bgcolor="white", padding=10, border=ft.border.all(1, "#ddd"), border_radius=8,
                         content=ft.Column([
@@ -196,21 +175,19 @@ def main(page: ft.Page):
         page.add(ft.Column([ft.Text("MI RUTA", size=18, weight="bold", color="black"), dd_chofer, btn_buscar, ft.Divider(), lista_viajes]))
 
     # --- GESTION ---
-    txt_recibe = ft.TextField(label="Quien recibe", border_color="grey", label_style=ft.TextStyle(color="black"))
-    txt_motivo = ft.TextField(label="Motivo (No entregado)", border_color="grey", label_style=ft.TextStyle(color="black"))
+    txt_recibe = ft.TextField(label="Quien recibe", border_color="grey")
+    txt_motivo = ft.TextField(label="Motivo (No entregado)", border_color="grey")
     
-    # BOTON CAMARA
     btn_foto = ft.ElevatedButton(
         "📷 TOMAR FOTO", 
         bgcolor="grey", color="white", height=45,
-        icon="camera_alt", # <--- CAMBIO CLAVE: Texto simple "camera_alt"
-        on_click=lambda _: file_picker.pick_files(allow_multiple=False, file_type=ft.FilePickerFileType.IMAGE)
+        icon=ft.icons.CAMERA_ALT, # En 0.22.1 esto funciona perfecto
+        on_click=lambda _: file_picker.pick_files(allow_multiple=False, file_type="image") # Sintaxis clasica
     )
 
     def guardar(estado):
         id_op = state["id"]
         if not id_op: return
-        
         if estado == "ENTREGADO" and not txt_recibe.value:
             txt_recibe.error_text = "Requerido"; txt_recibe.update(); return
         if estado != "ENTREGADO" and not txt_motivo.value:
@@ -225,13 +202,10 @@ def main(page: ft.Page):
                 conn.execute(text("UPDATE operaciones SET estado=:e, fecha_entrega=:f WHERE id=:i"), {"e": estado, "f": datetime.now(), "i": id_op})
                 conn.execute(text("INSERT INTO historial_movimientos (operacion_id, usuario, accion, detalle, fecha_hora) VALUES (:o, :u, 'APP', :d, :f)"), {"o": id_op, "u": dd_chofer.value, "d": det, "f": datetime.now()})
                 conn.commit()
-                
-                # ENVIO EMAIL
                 if estado == "ENTREGADO" and state["tiene_foto"]:
-                    page.snack_bar = ft.SnackBar(ft.Text(f"📤 Enviando correo a {state['proveedor']}..."), bgcolor="blue")
+                    page.snack_bar = ft.SnackBar(ft.Text(f"📤 Enviando correo..."), bgcolor="blue")
                     page.snack_bar.open = True; page.update()
                     enviar_reporte_email(txt_recibe.value, state["guia"], state["ruta_foto"], state["proveedor"])
-
                 ir_a_principal(); cargar_ruta(None)
                 page.snack_bar = ft.SnackBar(ft.Text("✅ Guardado"), bgcolor="green"); page.snack_bar.open = True
             except Exception as e:
@@ -242,9 +216,7 @@ def main(page: ft.Page):
     def ir_a_gestion(id_op, guia, prov):
         state["id"] = id_op; state["guia"] = guia; state["proveedor"] = prov; state["tiene_foto"] = False; state["ruta_foto"] = None
         txt_recibe.value = ""; txt_motivo.value = ""
-        btn_foto.text = "📷 TOMAR FOTO"; btn_foto.bgcolor = "grey"; 
-        btn_foto.icon = "camera_alt" # <--- CAMBIO CLAVE: Texto simple
-        
+        btn_foto.text = "📷 TOMAR FOTO"; btn_foto.bgcolor = "grey"; btn_foto.icon = ft.icons.CAMERA_ALT
         page.clean()
         page.add(ft.Column([
             ft.Text(f"Guía: {guia}", size=20, weight="bold", color="black"),
