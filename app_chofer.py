@@ -3,16 +3,17 @@ from sqlalchemy import create_engine, text
 from datetime import datetime
 import os
 import urllib.parse
-import requests  # <--- Usamos esto para saltar el bloqueo
-import base64    # <--- Para enviar la foto por la API
+import requests  # Para la API de Brevo
+import base64    # Para codificar la foto
 import threading 
+import shutil    # Para manejar archivos
 
 # --- CONFIGURACIÓN DB ---
 DATABASE_URL = "postgresql://postgres.gwdypvvyjuqzvpbbzchk:Eklogisticasajetpaq@aws-0-us-west-2.pooler.supabase.com:6543/postgres"
 
 # --- CREDENCIALES BREVO ---
 BREVO_API_KEY = os.environ.get("BREVO_API_KEY", "") 
-EMAIL_REMITENTE = "eklogistica19@gmail.com" # Debe estar validado en Brevo
+EMAIL_REMITENTE = "eklogistica19@gmail.com" 
 
 engine = None
 try:
@@ -28,12 +29,17 @@ def get_db_connection():
     return None
 
 def main(page: ft.Page):
-    print("🚀 INICIANDO V46 (BREVO API - ANTI BLOQUEO)...")
+    print("🚀 INICIANDO V47 (UPLOAD FOTO + BREVO)...")
     
     page.title = "Choferes EK"
     page.bgcolor = "white"
     page.theme_mode = "light" 
     page.scroll = "auto"
+    
+    # IMPORTANTE: Definimos dónde se guardarán las fotos en el servidor
+    upload_dir = "uploads"
+    os.makedirs(upload_dir, exist_ok=True)
+    page.upload_dir = upload_dir
     
     state = {
         "id": None, 
@@ -44,13 +50,13 @@ def main(page: ft.Page):
     }
 
     # ---------------------------------------------------------
-    # 1. EMAIL VIA API (ESTO NO FALLA EN RENDER)
+    # 1. EMAIL VIA API BREVO (CON FOTO DEL SERVIDOR)
     # ---------------------------------------------------------
-    def enviar_reporte_email_thread(destinatario_final, guia, ruta_imagen, proveedor_nombre):
-        print(f"📧 Enviando vía API Brevo para {proveedor_nombre}...")
+    def enviar_reporte_email_thread(destinatario_final, guia, ruta_imagen_servidor, proveedor_nombre):
+        print(f"📧 Preparando envío para {proveedor_nombre}...")
         
         if not BREVO_API_KEY:
-            print("❌ Error: Falta configurar BREVO_API_KEY en Render.")
+            print("❌ Error: Falta BREVO_API_KEY.")
             return
 
         email_proveedor = None
@@ -69,20 +75,23 @@ def main(page: ft.Page):
             print(f"⚠️ El proveedor {proveedor_nombre} no tiene email.")
             return
 
-        # Preparar FOTO en base64 para la API
+        # Preparar FOTO (Leyendo desde el disco del servidor)
         adjuntos = []
-        if ruta_imagen:
+        if ruta_imagen_servidor and os.path.exists(ruta_imagen_servidor):
             try:
-                with open(ruta_imagen, "rb") as image_file:
+                print(f"📎 Adjuntando archivo: {ruta_imagen_servidor}")
+                with open(ruta_imagen_servidor, "rb") as image_file:
                     encoded_string = base64.b64encode(image_file.read()).decode('utf-8')
                     adjuntos.append({
                         "content": encoded_string,
                         "name": f"remito_{guia}.jpg"
                     })
             except Exception as e:
-                print(f"❌ Error leyendo foto: {e}")
+                print(f"❌ Error leyendo foto en servidor: {e}")
+        else:
+            print("⚠️ No se encontró el archivo de foto en el servidor para adjuntar.")
 
-        # --- CONEXIÓN CON BREVO ---
+        # Conexión Brevo
         url = "https://api.brevo.com/v3/smtp/email"
         
         payload = {
@@ -117,30 +126,53 @@ def main(page: ft.Page):
         try:
             response = requests.post(url, json=payload, headers=headers)
             if response.status_code == 201:
-                print(f"✅ CORREO ENVIADO A {email_proveedor} (ID: {response.json().get('messageId')})")
+                print(f"✅ CORREO ENVIADO CORRECTAMENTE")
             else:
                 print(f"❌ Error Brevo: {response.text}")
         except Exception as e:
             print(f"❌ Error de conexión API: {e}")
 
     # ---------------------------------------------------------
-    # 2. CÁMARA (V41 CLASICA)
+    # 2. CÁMARA CON SUBIDA (UPLOAD) ☁️
     # ---------------------------------------------------------
+    
+    # Evento: Cuando la foto se termina de subir al servidor
+    def on_upload_result(e: ft.FilePickerUploadEvent):
+        if e.error:
+            btn_foto.text = "❌ Error al subir"
+            btn_foto.bgcolor = "red"
+            btn_foto.update()
+            return
+            
+        # Si llega aquí, la foto ya está en el servidor Render
+        state["tiene_foto"] = True
+        # La ruta en el servidor es: uploads/nombre_archivo
+        state["ruta_foto"] = os.path.join(page.upload_dir, e.file_name)
+        
+        btn_foto.text = "✅ FOTO LISTA"
+        btn_foto.bgcolor = "green"
+        btn_foto.icon = "check"
+        btn_foto.update()
+        print(f"✅ Foto subida a: {state['ruta_foto']}")
+
+    # Evento: Cuando el usuario elige la foto del celular
     def on_foto_seleccionada(e: ft.FilePickerResultEvent):
         if e.files:
-            path = e.files[0].path
-            state["tiene_foto"] = True
-            state["ruta_foto"] = path
-            btn_foto.text = "✅ FOTO LISTA"
-            btn_foto.bgcolor = "green"
-            btn_foto.icon = ft.icons.CHECK
+            btn_foto.text = "⏳ Subiendo..."
+            btn_foto.bgcolor = "orange"
             btn_foto.update()
+            
+            # INICIAMOS LA SUBIDA AL SERVIDOR
+            # Flet sube el archivo a la carpeta definida en page.upload_dir
+            file_picker.upload(e.files)
+        else:
+            print("Foto cancelada")
 
-    file_picker = ft.FilePicker(on_result=on_foto_seleccionada)
+    file_picker = ft.FilePicker(on_result=on_foto_seleccionada, on_upload=on_upload_result)
     page.overlay.append(file_picker)
 
     # ---------------------------------------------------------
-    # 3. PANTALLAS
+    # 3. INTERFAZ
     # ---------------------------------------------------------
     def abrir_mapa(domicilio, localidad):
         q = urllib.parse.quote(f"{domicilio}, {localidad}")
@@ -211,10 +243,11 @@ def main(page: ft.Page):
     txt_recibe = ft.TextField(label="Quien recibe", border_color="grey")
     txt_motivo = ft.TextField(label="Motivo (No entregado)", border_color="grey")
     
+    # Boton de cámara
     btn_foto = ft.ElevatedButton(
         "📷 TOMAR FOTO", 
         bgcolor="grey", color="white", height=45,
-        icon=ft.icons.CAMERA_ALT,
+        icon="camera_alt",
         on_click=lambda _: file_picker.pick_files(allow_multiple=False, file_type="image")
     )
 
@@ -228,11 +261,11 @@ def main(page: ft.Page):
         if estado != "ENTREGADO" and not txt_motivo.value:
             txt_motivo.error_text = "Requerido"; txt_motivo.update(); return
 
-        # Regla JetPaq
+        # Regla JetPaq: Foto obligatoria si NO es JetPaq
         if estado == "ENTREGADO":
             es_jetpaq = "jetpaq" in state["proveedor"].lower()
             if not es_jetpaq and not state["tiene_foto"]:
-                page.snack_bar = ft.SnackBar(ft.Text("⚠️ FOTO OBLIGATORIA"), bgcolor="red")
+                page.snack_bar = ft.SnackBar(ft.Text("⚠️ FOTO OBLIGATORIA (Salvo JetPaq)"), bgcolor="red")
                 page.snack_bar.open = True; page.update(); return
 
         det = f"Recibio: {txt_recibe.value}" if estado == "ENTREGADO" else f"Motivo: {txt_motivo.value}"
@@ -245,7 +278,7 @@ def main(page: ft.Page):
                 conn.execute(text("INSERT INTO historial_movimientos (operacion_id, usuario, accion, detalle, fecha_hora) VALUES (:o, :u, 'APP', :d, :f)"), {"o": id_op, "u": dd_chofer.value, "d": det, "f": datetime.now()})
                 conn.commit()
                 
-                # ENVIAR CORREO API
+                # ENVIAR CORREO (Solo si hay foto y está en el servidor)
                 if estado == "ENTREGADO" and state["tiene_foto"]:
                     t = threading.Thread(target=enviar_reporte_email_thread, args=(txt_recibe.value, state["guia"], state["ruta_foto"], state["proveedor"]))
                     t.start()
@@ -262,9 +295,8 @@ def main(page: ft.Page):
     def ir_a_gestion(id_op, guia, prov):
         state["id"] = id_op; state["guia"] = guia; state["proveedor"] = prov; state["tiene_foto"] = False; state["ruta_foto"] = None
         txt_recibe.value = ""; txt_motivo.value = ""
-        btn_foto.text = "📷 TOMAR FOTO"; btn_foto.bgcolor = "grey"; btn_foto.icon = ft.icons.CAMERA_ALT
+        btn_foto.text = "📷 TOMAR FOTO"; btn_foto.bgcolor = "grey"; btn_foto.icon = "camera_alt"
         
-        # Detalles
         detalles_view = ft.Column()
         conn = get_db_connection()
         if conn:
@@ -298,6 +330,7 @@ def main(page: ft.Page):
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8000))
     ft.app(target=main, view=ft.AppView.WEB_BROWSER, port=port, host="0.0.0.0")
+
 
 
 
