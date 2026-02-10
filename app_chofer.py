@@ -29,14 +29,14 @@ def get_db_connection():
     return None
 
 def main(page: ft.Page):
-    print("🚀 INICIANDO V51 (SIN ETIQUETAS DE TIPO - VERSION FINAL)...")
+    print("🚀 INICIANDO V52 (FIX FILEPICKER INIT)...")
     
     page.title = "Choferes EK"
     page.bgcolor = "white"
     page.theme_mode = ft.ThemeMode.LIGHT 
     page.scroll = "auto"
     
-    # --- CONFIGURACIÓN CARPETA DE SUBIDA ---
+    # --- CONFIGURACIÓN CARPETA SUBIDA ---
     basedir = os.path.abspath(os.getcwd())
     upload_dir = os.path.join(basedir, "uploads")
     
@@ -46,7 +46,6 @@ def main(page: ft.Page):
     os.makedirs(upload_dir, exist_ok=True)
     
     page.upload_dir = upload_dir
-    print(f"📂 Carpeta configurada: {upload_dir}")
     
     state = {
         "id": None, 
@@ -60,9 +59,7 @@ def main(page: ft.Page):
     # 1. EMAIL VIA API BREVO
     # ---------------------------------------------------------
     def enviar_reporte_email_thread(destinatario_final, guia, ruta_imagen_servidor, proveedor_nombre):
-        if not BREVO_API_KEY: 
-            print("❌ Falta API Key")
-            return
+        if not BREVO_API_KEY: return
 
         email_proveedor = None
         conn = get_db_connection()
@@ -74,9 +71,7 @@ def main(page: ft.Page):
             except: pass
             finally: conn.close()
 
-        if not email_proveedor: 
-            print(f"⚠️ Proveedor {proveedor_nombre} sin email.")
-            return
+        if not email_proveedor: return
 
         adjuntos = []
         if ruta_imagen_servidor and os.path.exists(ruta_imagen_servidor):
@@ -84,8 +79,7 @@ def main(page: ft.Page):
                 with open(ruta_imagen_servidor, "rb") as image_file:
                     encoded_string = base64.b64encode(image_file.read()).decode('utf-8')
                     adjuntos.append({"content": encoded_string, "name": f"remito_{guia}.jpg"})
-            except Exception as e:
-                print(f"❌ Error leyendo foto: {e}")
+            except: pass
 
         url = "https://api.brevo.com/v3/smtp/email"
         payload = {
@@ -110,15 +104,15 @@ def main(page: ft.Page):
         headers = {"accept": "application/json", "api-key": BREVO_API_KEY, "content-type": "application/json"}
 
         try: requests.post(url, json=payload, headers=headers)
-        except Exception as e: print(f"❌ Error API: {e}")
+        except: pass
 
     # ---------------------------------------------------------
-    # 2. CÁMARA (CORREGIDA - SIN ETIQUETAS)
+    # 2. CÁMARA (CONFIGURACIÓN MANUAL SEGURA)
     # ---------------------------------------------------------
     
     btn_confirmar_global = ft.ElevatedButton("CONFIRMAR ENTREGA ✅", bgcolor="green", color="white", width=300, height=50)
 
-    # AQUI ESTABA EL ERROR: Quitamos ": ft.FilePickerUploadEvent"
+    # Definimos funciones PRIMERO
     def on_upload_result(e):
         if e.error:
             print(f"❌ Error Upload: {e.error}")
@@ -134,7 +128,6 @@ def main(page: ft.Page):
 
         state["tiene_foto"] = True
         state["ruta_foto"] = os.path.join(page.upload_dir, e.file_name)
-        print(f"✅ Foto guardada en: {state['ruta_foto']}")
         
         btn_foto.text = "✅ FOTO LISTA"
         btn_foto.bgcolor = "green"
@@ -147,7 +140,6 @@ def main(page: ft.Page):
         btn_confirmar_global.bgcolor = "green"
         btn_confirmar_global.update()
 
-    # AQUI TAMBIEN: Quitamos ": ft.FilePickerResultEvent"
     def on_foto_seleccionada(e):
         if e.files:
             btn_foto.text = "⏳ Subiendo..."
@@ -164,7 +156,13 @@ def main(page: ft.Page):
         else:
             print("Selección cancelada")
 
-    file_picker = ft.FilePicker(on_result=on_foto_seleccionada, on_upload=on_upload_result)
+    # --- FIX CRÍTICO AQUI ---
+    # Creamos VACIO
+    file_picker = ft.FilePicker()
+    # Asignamos DESPUES
+    file_picker.on_result = on_foto_seleccionada
+    file_picker.on_upload = on_upload_result
+    
     page.overlay.append(file_picker)
 
     # ---------------------------------------------------------
@@ -314,6 +312,7 @@ def main(page: ft.Page):
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8000))
     ft.app(target=main, view=ft.AppView.WEB_BROWSER, port=port, host="0.0.0.0")
+
 
 
 
