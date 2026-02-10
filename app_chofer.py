@@ -29,16 +29,27 @@ def get_db_connection():
     return None
 
 def main(page: ft.Page):
-    print("🚀 INICIANDO V48 (BLOQUEO DE SEGURIDAD FOTO)...")
+    print("🚀 INICIANDO V49 (RUTAS ABSOLUTAS + DIAGNOSTICO)...")
     
     page.title = "Choferes EK"
     page.bgcolor = "white"
     page.theme_mode = "light" 
     page.scroll = "auto"
     
-    upload_dir = "uploads"
+    # --- CONFIGURACIÓN DE CARPETA DE SUBIDA (FIX PERMISOS) ---
+    # Usamos ruta absoluta para evitar errores en Render
+    basedir = os.path.abspath(os.getcwd())
+    upload_dir = os.path.join(basedir, "uploads")
+    
+    # Limpieza inicial (para no llenar disco) y creacion
+    if os.path.exists(upload_dir):
+        try: shutil.rmtree(upload_dir)
+        except: pass
     os.makedirs(upload_dir, exist_ok=True)
+    
+    # Asignamos la ruta absoluta a la pagina
     page.upload_dir = upload_dir
+    print(f"📂 Carpeta de subida configurada en: {upload_dir}")
     
     state = {
         "id": None, 
@@ -72,7 +83,8 @@ def main(page: ft.Page):
                 with open(ruta_imagen_servidor, "rb") as image_file:
                     encoded_string = base64.b64encode(image_file.read()).decode('utf-8')
                     adjuntos.append({"content": encoded_string, "name": f"remito_{guia}.jpg"})
-            except: pass
+            except Exception as e:
+                print(f"❌ Error leyendo archivo para email: {e}")
 
         url = "https://api.brevo.com/v3/smtp/email"
         payload = {
@@ -100,23 +112,36 @@ def main(page: ft.Page):
         except: pass
 
     # ---------------------------------------------------------
-    # 2. CÁMARA CON BLOQUEO DE BOTÓN 🔒
+    # 2. CÁMARA + BLOQUEO + DIAGNOSTICO DE ERROR
     # ---------------------------------------------------------
     
-    # Referencia al boton de confirmar (para poder desactivarlo)
     btn_confirmar_global = ft.ElevatedButton("CONFIRMAR ENTREGA ✅", bgcolor="green", color="white", width=300, height=50)
 
     def on_upload_result(e: ft.FilePickerUploadEvent):
+        # SI HAY ERROR, LO MOSTRAMOS EN EL BOTON
         if e.error:
-            btn_foto.text = "❌ Error al subir"; btn_foto.bgcolor = "red"; btn_foto.update(); return
+            error_msg = str(e.error)[:20] # Cortamos el mensaje si es muy largo
+            print(f"❌ Error Upload Flet: {e.error}")
+            btn_foto.text = f"❌ Error: {error_msg}"
+            btn_foto.bgcolor = "red"
+            
+            # Desbloqueamos el botón pero avisando (opcional, o lo dejamos bloqueado)
+            # Aquí lo dejamos bloqueado para obligar a reintentar
+            btn_confirmar_global.disabled = True
+            btn_confirmar_global.text = "FALLE AL SUBIR FOTO"
+            btn_confirmar_global.bgcolor = "grey"
+            btn_confirmar_global.update()
+            btn_foto.update()
+            return
             
         state["tiene_foto"] = True
         state["ruta_foto"] = os.path.join(page.upload_dir, e.file_name)
         
-        btn_foto.text = "✅ FOTO LISTA"; btn_foto.bgcolor = "green"; btn_foto.icon = "check"
+        btn_foto.text = "✅ FOTO LISTA"
+        btn_foto.bgcolor = "green"
+        btn_foto.icon = "check"
         btn_foto.update()
         
-        # DESBLOQUEAMOS EL BOTÓN DE CONFIRMAR
         btn_confirmar_global.disabled = False
         btn_confirmar_global.text = "CONFIRMAR ENTREGA ✅"
         btn_confirmar_global.bgcolor = "green"
@@ -124,11 +149,12 @@ def main(page: ft.Page):
 
     def on_foto_seleccionada(e: ft.FilePickerResultEvent):
         if e.files:
-            btn_foto.text = "⏳ Subiendo... (Espere)"; btn_foto.bgcolor = "orange"; btn_foto.update()
+            btn_foto.text = "⏳ Subiendo..."
+            btn_foto.bgcolor = "orange"
+            btn_foto.update()
             
-            # BLOQUEAMOS EL BOTÓN DE CONFIRMAR
             btn_confirmar_global.disabled = True
-            btn_confirmar_global.text = "⏳ ESPERE FOTO..."
+            btn_confirmar_global.text = "⏳ ESPERE..."
             btn_confirmar_global.bgcolor = "grey"
             btn_confirmar_global.update()
             
@@ -213,7 +239,6 @@ def main(page: ft.Page):
         if estado != "ENTREGADO" and not txt_motivo.value:
             txt_motivo.error_text = "Requerido"; txt_motivo.update(); return
 
-        # VALIDACION: Si es JetPaq, foto opcional. Si NO es JetPaq, FOTO OBLIGATORIA.
         if estado == "ENTREGADO":
             es_jetpaq = "jetpaq" in state["proveedor"].lower()
             if not es_jetpaq and not state["tiene_foto"]:
@@ -248,11 +273,9 @@ def main(page: ft.Page):
         txt_recibe.value = ""; txt_motivo.value = ""
         btn_foto.text = "📷 TOMAR FOTO"; btn_foto.bgcolor = "grey"; btn_foto.icon = "camera_alt"
         
-        # Reiniciar estado del boton global
         btn_confirmar_global.disabled = False
         btn_confirmar_global.text = "CONFIRMAR ENTREGA ✅"
         btn_confirmar_global.bgcolor = "green"
-        # Asignamos la accion aqui
         btn_confirmar_global.on_click = lambda _: guardar("ENTREGADO")
 
         detalles_view = ft.Column()
@@ -275,10 +298,7 @@ def main(page: ft.Page):
             detalles_view, ft.Divider(),
             ft.Text("ENTREGA EXITOSA:", weight="bold", color="black"),
             txt_recibe, btn_foto, ft.Container(height=10),
-            
-            # USAMOS EL BOTON GLOBAL
             btn_confirmar_global,
-            
             ft.Divider(),
             ft.Text("NO ENTREGADO:", weight="bold", color="black"),
             txt_motivo,
