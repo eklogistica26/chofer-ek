@@ -4,14 +4,18 @@ from datetime import datetime
 import os
 import base64
 import requests
+import urllib.parse # Para codificar el mensaje de WhatsApp
 
 app = Flask(__name__)
 app.secret_key = "secreto_super_seguro_choferes_ek"
 
-# --- CONFIGURACIÓN DB Y EMAIL ---
+# --- CONFIGURACIÓN ---
 DATABASE_URL = "postgresql://postgres.gwdypvvyjuqzvpbbzchk:Eklogisticasajetpaq@aws-0-us-west-2.pooler.supabase.com:6543/postgres"
 BREVO_API_KEY = os.environ.get("BREVO_API_KEY", "") 
 EMAIL_REMITENTE = "eklogistica19@gmail.com" 
+
+# !!! PONER AQUI EL NUMERO DE LA BASE/OFICINA (con código de país, ej: 549...) !!!
+NUMERO_BASE = "5492163672674" 
 
 BASE_DIR = os.path.abspath(os.path.dirname(__file__))
 UPLOAD_FOLDER = os.path.join(BASE_DIR, 'uploads')
@@ -22,7 +26,13 @@ def get_db():
     try: return create_engine(DATABASE_URL, pool_pre_ping=True).connect()
     except: return None
 
-# --- EMAIL (TEXTO ACTUALIZADO) ---
+# --- UTILIDADES ---
+def limpiar_telefono(telefono):
+    """Deja solo los números para el link de WhatsApp"""
+    if not telefono: return ""
+    return "".join(filter(str.isdigit, str(telefono)))
+
+# --- EMAIL ---
 def enviar_email(destinatario, guia, ruta_foto, proveedor):
     if not BREVO_API_KEY: return
     conn = get_db()
@@ -45,8 +55,6 @@ def enviar_email(destinatario, guia, ruta_foto, proveedor):
         except: pass
 
     url = "https://api.brevo.com/v3/smtp/email"
-    
-    # HTML ACTUALIZADO CON LA FRASE PEDIDA
     fecha_hora = datetime.now().strftime('%d/%m/%Y %H:%M')
     html_content = f"""
     <html><body>
@@ -73,16 +81,16 @@ def enviar_email(destinatario, guia, ruta_foto, proveedor):
     try: requests.post(url, json=payload, headers=headers)
     except: pass
 
-# --- ESTILOS CSS (BOTON CAMARA MEJORADO) ---
+# --- ESTILOS CSS ---
 HTML_HEAD = """
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Choferes EK</title>
     <style>
-        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background: #f0f2f5; margin: 0; padding: 0; font-size: 16px; }
-        .header { background: #2196F3; color: white; padding: 15px; text-align: center; position: sticky; top: 0; z-index: 100; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
-        .header h2 { margin: 0; font-size: 1.2rem; }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background: #f0f2f5; margin: 0; padding: 0; font-size: 16px; padding-bottom: 80px; }
+        .header { background: #2196F3; color: white; padding: 15px; text-align: center; position: sticky; top: 0; z-index: 100; box-shadow: 0 2px 4px rgba(0,0,0,0.1); display: flex; justify-content: space-between; align-items: center; }
+        .header h2 { margin: 0; font-size: 1.1rem; flex-grow: 1; text-align: center; }
         .container { padding: 15px; max-width: 600px; margin: 0 auto; }
         
         .card { background: white; padding: 20px; margin-bottom: 15px; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
@@ -92,40 +100,30 @@ HTML_HEAD = """
         .btn:active { transform: scale(0.98); opacity: 0.9; }
         .btn-blue { background: #2196F3; color: white; }
         .btn-green { background: #4CAF50; color: white; }
+        .btn-wa { background: #25D366; color: white; } /* WhatsApp Color */
         .btn-red { background: #f44336; color: white; }
         .btn-orange { background: #ff9800; color: white; }
         .btn-purple { background: #9c27b0; color: white; }
         .btn-grey { background: #9e9e9e; color: white; }
+        .btn-outline { background: transparent; border: 1px solid #ccc; color: #666; }
         
         input, select { width: 100%; padding: 12px; margin-top: 8px; border: 1px solid #ddd; border-radius: 8px; font-size: 16px; background: #fff; box-sizing: border-box; }
         label { font-weight: 600; color: #555; margin-top: 15px; display: block; font-size: 0.9rem; }
         
         .tag { padding: 4px 8px; border-radius: 4px; font-size: 0.75rem; color: white; float: right; font-weight: bold; text-transform: uppercase; letter-spacing: 0.5px; }
         .tag-blue { background: #2196F3; } .tag-orange { background: #ff9800; }
+        .tag-green { background: #4CAF50; } .tag-red { background: #f44336; }
         
-        /* NUEVO BOTON DE CAMARA ESTILO APP */
-        .camera-btn {
-            background-color: #e3f2fd;
-            color: #1565c0;
-            border: 2px solid #2196F3;
-            border-radius: 8px;
-            padding: 12px;
-            text-align: center;
-            cursor: pointer;
-            margin-top: 5px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 10px;
-            font-weight: bold;
-            transition: all 0.3s;
-        }
-        .camera-btn:active { background-color: #bbdefb; }
-        .camera-icon { font-size: 1.5rem; }
+        .camera-btn { background-color: #e3f2fd; color: #1565c0; border: 2px solid #2196F3; border-radius: 8px; padding: 12px; text-align: center; cursor: pointer; margin-top: 5px; display: flex; align-items: center; justify-content: center; gap: 10px; font-weight: bold; }
         
         .alert { padding: 12px; margin-bottom: 15px; border-radius: 8px; font-weight: 500; text-align: center; font-size: 0.9rem; }
         .alert-success { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
         .alert-error { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
+
+        /* FOOTER FLOTANTE (Historial y Base) */
+        .bottom-nav { position: fixed; bottom: 0; left: 0; width: 100%; background: white; border-top: 1px solid #ddd; display: flex; justify-content: space-around; padding: 10px 0; z-index: 99; }
+        .nav-item { text-decoration: none; color: #555; text-align: center; font-size: 0.8rem; }
+        .nav-icon { font-size: 1.5rem; display: block; margin-bottom: 2px; }
     </style>
     <script>
         function fileSelected(input) {
@@ -134,12 +132,14 @@ HTML_HEAD = """
                 btn.style.backgroundColor = '#4CAF50';
                 btn.style.color = 'white';
                 btn.style.borderColor = '#4CAF50';
-                btn.innerHTML = '<span class="camera-icon">✅</span> Foto Cargada';
+                btn.innerHTML = '✅ Foto Cargada';
             }
         }
     </script>
 </head>
 """
+
+# --- RUTAS ---
 
 @app.route('/', methods=['GET', 'POST'])
 def index():
@@ -160,13 +160,14 @@ def index():
     <!DOCTYPE html>
     <html>
     {HTML_HEAD}
-    <body>
-        <div class="header"><h1>🚛 Choferes EK</h1></div>
-        <div class="container">
-            <div class="card" style="text-align: center; padding: 40px 20px;">
-                <div style="font-size: 3rem; margin-bottom: 10px;">👋</div>
-                <h2 style="margin-bottom: 20px; color: #333;">Iniciar Turno</h2>
-                <form method="POST">
+    <body style="background:white;">
+        <div class="container" style="display:flex; flex-direction:column; justify-content:center; height:90vh;">
+            <div style="text-align: center;">
+                <div style="font-size: 4rem; margin-bottom: 10px;">🚛</div>
+                <h1 style="color: #2196F3;">Choferes EK</h1>
+                <br>
+                <form method="POST" style="background: #f9f9f9; padding: 30px; border-radius: 15px;">
+                    <label style="text-align: left;">¿Quién eres?</label>
                     <select name="chofer" required style="margin-bottom: 20px; padding: 15px;">
                         <option value="">Selecciona tu nombre...</option>
                         {"".join([f'<option value="{c}">{c}</option>' for c in choferes])}
@@ -202,7 +203,13 @@ def lista_viajes():
         
     cards_html = ""
     if not viajes:
-        cards_html = "<div class='card' style='text-align:center; color:#666; padding: 40px;'><h3>✅ ¡Todo Listo!</h3><p>No tienes entregas pendientes por ahora.</p></div>"
+        cards_html = """
+        <div class='card' style='text-align:center; padding: 40px; border: 2px dashed #ddd;'>
+            <div style="font-size: 2rem;">🎉</div>
+            <h3>¡Todo Entregado!</h3>
+            <p style="color:#666;">No tienes viajes pendientes.</p>
+        </div>
+        """
     else:
         for v in viajes:
             color = "tag-blue" if v[6] == "En Reparto" else "tag-orange"
@@ -215,14 +222,14 @@ def lista_viajes():
                     <span class="tag {color}">{v[6]}</span>
                     <h3 style="margin: 0; font-size: 1.1rem;">{v[2]}</h3>
                 </div>
-                <div style="color: #555; font-size: 0.95rem; margin-bottom: 12px; display: flex; align-items: start; gap: 5px;">
-                    <span>📍</span> <span>{v[3]} <br> <small style="color:#888;">{v[4]}</small></span>
+                <div style="color: #555; font-size: 0.95rem; margin-bottom: 12px;">
+                    📍 {v[3]} <small>({v[4]})</small>
                 </div>
-                <div style="background: #f5f5f5; padding: 10px; border-radius: 6px; font-size: 0.85rem; color: #444; margin-bottom: 15px; border-left: 4px solid #ddd;">
-                    📦 Guía: <b>{v[1]}</b> &nbsp;|&nbsp; Bultos: {v[5]}
+                <div style="background: #f0f7ff; padding: 10px; border-radius: 6px; font-size: 0.85rem; color: #444; margin-bottom: 15px; border-left: 4px solid #2196F3;">
+                    📦 Guía: <b>{v[1]}</b>  |  Bultos: {v[5]}
                 </div>
                 <div style="display:flex; gap:10px;">
-                    <a href="{mapa_url}" target="_blank" class="btn btn-grey" style="flex:1; margin-top:0;">🗺️ Mapa</a>
+                    <a href="{mapa_url}" target="_blank" class="btn btn-outline" style="flex:1; margin-top:0;">🗺️ Mapa</a>
                     <a href="/gestion/{v[0]}" class="btn btn-blue" style="flex:2; margin-top:0;">Gestionar</a>
                 </div>
             </div>
@@ -233,15 +240,95 @@ def lista_viajes():
     <html>
     {HTML_HEAD}
     <body>
-        <div class="header" style="display:flex; justify-content:space-between; align-items:center;">
-            <div style="font-weight:bold;">🚛 {chofer}</div>
-            <a href="/" style="color:white; font-size:0.8rem; text-decoration:none; background:rgba(255,255,255,0.2); padding: 4px 10px; border-radius: 20px;">Salir</a>
+        <div class="header">
+            <div>🚛 <b>{chofer}</b></div>
+            <a href="/" style="color:white; font-size:0.8rem; background:rgba(255,255,255,0.2); padding: 4px 10px; border-radius: 20px; text-decoration:none;">Salir</a>
         </div>
         <div class="container">
             {mensajes_html}
             {cards_html}
             <br>
-            <a href="/viajes" class="btn btn-green" style="margin-bottom: 30px;">🔄 ACTUALIZAR LISTA</a>
+            <a href="/viajes" class="btn btn-green" style="margin-bottom: 60px;">🔄 ACTUALIZAR LISTA</a>
+        </div>
+
+        <div class="bottom-nav">
+            <a href="/viajes" class="nav-item" style="color: #2196F3; font-weight:bold;">
+                <span class="nav-icon">📦</span>Ruta
+            </a>
+            <a href="/historial" class="nav-item">
+                <span class="nav-icon">📜</span>Historial
+            </a>
+            <a href="https://wa.me/{NUMERO_BASE}" class="nav-item">
+                <span class="nav-icon">🆘</span>Base
+            </a>
+        </div>
+    </body>
+    </html>
+    """
+    return render_template_string(html)
+
+@app.route('/historial')
+def historial():
+    chofer = session.get('chofer')
+    if not chofer: return redirect(url_for('index'))
+    
+    conn = get_db()
+    movimientos = []
+    if conn:
+        try:
+            # Trae movimientos de HOY del chofer
+            sql = text("""
+                SELECT detalle, fecha_hora, accion 
+                FROM historial_movimientos 
+                WHERE usuario = :u AND fecha_hora::date = CURRENT_DATE 
+                ORDER BY fecha_hora DESC
+            """)
+            movimientos = conn.execute(sql, {"u": chofer}).fetchall()
+        except: pass
+        finally: conn.close()
+    
+    filas_html = ""
+    if not movimientos:
+        filas_html = "<div style='text-align:center; padding:20px; color:#888;'>No hay movimientos hoy.</div>"
+    else:
+        for m in movimientos:
+            hora = m[1].strftime('%H:%M')
+            # Detectar color segun la accion/detalle
+            color = "#4CAF50" # Verde por defecto
+            if "No Entregado" in m[0] or "Motivo" in m[0]: color = "#f44336" # Rojo
+            elif "Pendiente" in m[0]: color = "#ff9800" # Naranja
+            
+            filas_html += f"""
+            <div style="background:white; padding:15px; border-radius:8px; margin-bottom:10px; border-left: 5px solid {color}; box-shadow: 0 1px 2px rgba(0,0,0,0.1);">
+                <div style="display:flex; justify-content:space-between;">
+                    <span style="font-weight:bold; color:#333;">{hora} hs</span>
+                    <span style="font-size:0.8rem; color:#888;">{m[2]}</span>
+                </div>
+                <div style="margin-top:5px; color:#555;">{m[0]}</div>
+            </div>
+            """
+
+    html = f"""
+    <!DOCTYPE html>
+    <html>
+    {HTML_HEAD}
+    <body>
+        <div class="header" style="background:#607d8b;">
+            <div>📜 Historial de Hoy</div>
+        </div>
+        <div class="container">
+            {filas_html}
+        </div>
+        <div class="bottom-nav">
+            <a href="/viajes" class="nav-item">
+                <span class="nav-icon">📦</span>Ruta
+            </a>
+            <a href="/historial" class="nav-item" style="color: #2196F3; font-weight:bold;">
+                <span class="nav-icon">📜</span>Historial
+            </a>
+            <a href="https://wa.me/{NUMERO_BASE}" class="nav-item">
+                <span class="nav-icon">🆘</span>Base
+            </a>
         </div>
     </body>
     </html>
@@ -302,7 +389,7 @@ def gestion(id_op):
             finally: conn.close()
             
         if estado == "ENTREGADO" and tiene_foto:
-            flash("✅ ¡Excelente! Enviando correo...", "success")
+            flash("✅ Entregado. Enviando correo con foto...", "success")
             enviar_email(recibe, op[0], ruta_foto, op[10])
         elif estado == "ENTREGADO":
             flash("✅ Entregado correctamente.", "success")
@@ -320,6 +407,14 @@ def gestion(id_op):
     cobranza_html = ""
     if op[7]:
         cobranza_html = f"<div style='background:#fff3cd; padding:15px; border-radius:8px; margin-bottom:20px; border-left: 5px solid #ffc107; color:#856404;'>💰 <b>COBRAR: $ {op[8]}</b><br><small>{op[9]}</small></div>"
+
+    # Preparar link de WhatsApp
+    telefono_limpio = limpiar_telefono(op[4])
+    mensaje_wa = urllib.parse.quote(f"Hola, soy el chofer de EK Logística. Estoy en camino con tu envío (Guía: {op[0]}).")
+    link_wa = f"https://wa.me/{telefono_limpio}?text={mensaje_wa}" if telefono_limpio else "#"
+    
+    # Boton WA deshabilitado si no hay cel
+    btn_wa_style = "opacity:0.5; pointer-events:none;" if not telefono_limpio else ""
 
     html = f"""
     <!DOCTYPE html>
@@ -340,10 +435,7 @@ def gestion(id_op):
                 
                 <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px;">
                     <a href="tel:{op[4]}" class="btn btn-grey" style="margin:0; font-size:0.9rem;">📞 Llamar</a>
-                    <div style="background:#f5f5f5; padding:10px; border-radius:8px; text-align:center;">
-                        <div style="font-size:0.7rem; color:#888;">GUÍA</div>
-                        <div style="font-weight:bold;">{op[0]}</div>
-                    </div>
+                    <a href="{link_wa}" class="btn btn-wa" style="margin:0; font-size:0.9rem; {btn_wa_style}" target="_blank">💬 WhatsApp</a>
                 </div>
             </div>
             
@@ -375,7 +467,7 @@ def gestion(id_op):
                 </div>
             </form>
             <br>
-            <a href="/viajes" class="btn btn-grey" style="background:transparent; color:#666; border:1px solid #ccc;">← Volver a la lista</a>
+            <a href="/viajes" class="btn btn-outline" style="border:1px solid #ccc; color:#666;">← Volver a la lista</a>
             <br><br>
         </div>
     </body>
