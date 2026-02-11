@@ -1,6 +1,7 @@
-flet==0.62.0
+flet==0.80.5
 sqlalchemy
 psycopg2-binary
 requests
+
 
 
