@@ -8,11 +8,12 @@ import threading
 import shutil
 import urllib.parse 
 
-# --- CONFIGURACIÓN DB ---
+# --- CONFIGURACIÓN ---
 DATABASE_URL = "postgresql://postgres.gwdypvvyjuqzvpbbzchk:Eklogisticasajetpaq@aws-0-us-west-2.pooler.supabase.com:6543/postgres"
 BREVO_API_KEY = os.environ.get("BREVO_API_KEY", "") 
 EMAIL_REMITENTE = "eklogistica19@gmail.com" 
 
+# --- BASE DE DATOS ---
 engine = None
 try:
     engine = create_engine(DATABASE_URL, pool_pre_ping=True, pool_recycle=3600)
@@ -27,13 +28,14 @@ def get_db_connection():
     return None
 
 def main(page: ft.Page):
-    print(f"🚀 INICIANDO V66 (CAMARA EN BODY) - Flet Ver: {ft.version}")
+    print(f"🚀 INICIANDO V67 (VERSION FINAL DEFINITIVA) - Flet: {ft.version}")
     
-    page.title = "Choferes V66"
+    page.title = "Choferes V67"
     page.bgcolor = "white"
     page.theme_mode = ft.ThemeMode.LIGHT 
     page.scroll = "auto"
     
+    # Carpeta temporal para fotos
     basedir = os.path.abspath(os.getcwd())
     upload_dir = os.path.join(basedir, "uploads")
     if os.path.exists(upload_dir):
@@ -44,23 +46,7 @@ def main(page: ft.Page):
     
     state = {"id": None, "guia": "", "proveedor": "", "tiene_foto": False, "ruta_foto": None}
 
-    # ---------------------------------------------------------
-    # 1. CÁMARA GLOBAL (EN EL CUERPO, NO OVERLAY)
-    # ---------------------------------------------------------
-    # Definimos funciones vacías primero
-    def on_upload_dummy(e): pass
-    def on_pick_dummy(e): pass
-
-    # Creamos la cámara
-    file_picker = ft.FilePicker(on_result=on_pick_dummy, on_upload=on_upload_dummy)
-    
-    # ⚠️ TRUCO V66: Agregamos la cámara a la página DIRECTAMENTE (oculta)
-    # Esto evita el error de "Unknown control" en el overlay
-    page.add(ft.Row([file_picker], visible=False))
-
-    # ---------------------------------------------------------
-    # 2. EMAIL
-    # ---------------------------------------------------------
+    # --- EMAIL (EN SEGUNDO PLANO) ---
     def enviar_reporte_email_thread(destinatario_final, guia, ruta_imagen_servidor, proveedor_nombre):
         if not BREVO_API_KEY: return
         email_proveedor = None
@@ -74,6 +60,7 @@ def main(page: ft.Page):
         if not email_proveedor: return
 
         adjuntos = []
+        # Solo adjuntamos si existe el archivo
         if ruta_imagen_servidor and os.path.exists(ruta_imagen_servidor):
             try:
                 with open(ruta_imagen_servidor, "rb") as image_file:
@@ -93,9 +80,7 @@ def main(page: ft.Page):
         try: requests.post(url, json=payload, headers=headers)
         except: pass
 
-    # ---------------------------------------------------------
-    # 3. INTERFAZ
-    # ---------------------------------------------------------
+    # --- INTERFAZ ---
     def abrir_mapa(domicilio, localidad):
         try:
             q = urllib.parse.quote(f"{domicilio}, {localidad}")
@@ -117,11 +102,9 @@ def main(page: ft.Page):
     btn_inicio = ft.ElevatedButton("CONECTAR", on_click=conectar, bgcolor="blue", color="white", height=50)
     dd_chofer = ft.Dropdown(label="Chofer", bgcolor="#f0f2f5", label_style=ft.TextStyle(color="black"))
     
+    # --- PANTALLA PRINCIPAL ---
     def ir_a_principal():
-        # Limpiamos, pero hay que volver a agregar el FilePicker
         page.clean()
-        page.add(ft.Row([file_picker], visible=False)) # RE-AGREGAR SIEMPRE
-        
         lista_viajes = ft.Column(spacing=10)
         
         def cargar_ruta(e):
@@ -151,6 +134,7 @@ def main(page: ft.Page):
         btn_buscar = ft.ElevatedButton("VER MIS VIAJES 🔍", on_click=cargar_ruta, bgcolor="green", color="white")
         page.add(ft.Column([ft.Text("MI RUTA", size=18, weight="bold", color="black"), dd_chofer, btn_buscar, ft.Divider(), lista_viajes]))
 
+    # --- PANTALLA GESTIÓN (AQUÍ ESTABA EL PROBLEMA) ---
     def ir_a_gestion(id_op, guia, prov):
         state["id"] = id_op; state["guia"] = guia; state["proveedor"] = prov
         state["tiene_foto"] = False; state["ruta_foto"] = None
@@ -161,8 +145,10 @@ def main(page: ft.Page):
         btn_confirmar = ft.ElevatedButton("CONFIRMAR ENTREGA ✅", bgcolor="green", color="white", width=300, height=50)
         btn_foto = ft.ElevatedButton("📷 TOMAR FOTO", bgcolor="grey", color="white", height=45, icon="camera_alt")
 
-        # --- LOGICA LOCAL DE FOTO ---
-        def gestion_upload_result(e):
+        # --- CORRECCIÓN CRITICA: SINTAXIS SEGURA DE FILEPICKER ---
+        
+        # 1. Definimos las funciones PRIMERO
+        def on_upload(e):
             if e.error:
                 btn_foto.text = "❌ Error"; btn_foto.bgcolor = "red"; btn_foto.update()
                 btn_confirmar.disabled = True; btn_confirmar.update()
@@ -172,17 +158,23 @@ def main(page: ft.Page):
                 btn_foto.text = "✅ FOTO LISTA"; btn_foto.bgcolor = "green"; btn_foto.icon = "check"; btn_foto.update()
                 btn_confirmar.disabled = False; btn_confirmar.update()
 
-        def gestion_file_picked(e):
+        def on_pick(e):
             if e.files:
                 btn_foto.text = "⏳ Subiendo..."; btn_foto.bgcolor = "orange"; btn_foto.disabled = True; btn_foto.update()
                 btn_confirmar.disabled = True; btn_confirmar.update()
-                file_picker.upload(e.files)
+                fp.upload(e.files)
 
-        # RE-ASIGNAR funciones al picker global
-        file_picker.on_result = gestion_file_picked
-        file_picker.on_upload = gestion_upload_result
+        # 2. Creamos el FilePicker VACÍO (¡Sin argumentos!)
+        fp = ft.FilePicker()
         
-        btn_foto.on_click = lambda _: file_picker.pick_files(allow_multiple=False, file_type=ft.FilePickerFileType.IMAGE)
+        # 3. Asignamos los eventos DESPUÉS
+        fp.on_result = on_pick
+        fp.on_upload = on_upload
+        
+        # 4. Conectamos el botón al picker
+        btn_foto.on_click = lambda _: fp.pick_files(allow_multiple=False, file_type=ft.FilePickerFileType.IMAGE)
+
+        # ---------------------------------------------------------
 
         def guardar(estado):
             try:
@@ -234,8 +226,9 @@ def main(page: ft.Page):
             finally: conn.close()
 
         page.clean()
-        # VITAL: Volver a agregar el picker oculto al cambiar de pantalla
-        page.add(ft.Row([file_picker], visible=False))
+        # 5. AGREGAMOS EL PICKER AL CUERPO (OCULTO) - NO OVERLAY
+        # Esto soluciona el "Unknown Control" en móviles
+        page.add(ft.Row([fp], visible=False))
         
         page.add(ft.Column([
             ft.Text(f"Gestionar: {guia}", size=18, weight="bold", color="black"),
@@ -248,11 +241,12 @@ def main(page: ft.Page):
             ft.Container(height=20), ft.TextButton("VOLVER", on_click=lambda _: ir_a_principal())
         ]))
 
-    page.add(ft.Column([ft.Text("🚛", size=50), ft.Text("BIENVENIDO V66", size=30, weight="bold", color="black"), ft.Container(height=20), btn_inicio], horizontal_alignment="center"))
+    page.add(ft.Column([ft.Text("🚛", size=50), ft.Text("BIENVENIDO V67", size=30, weight="bold", color="black"), ft.Container(height=20), btn_inicio], horizontal_alignment="center"))
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8000))
     ft.app(target=main, view=ft.AppView.WEB_BROWSER, port=port, host="0.0.0.0")
+
 
 
 
