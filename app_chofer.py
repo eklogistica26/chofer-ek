@@ -15,9 +15,8 @@ DATABASE_URL = "postgresql://postgres.gwdypvvyjuqzvpbbzchk:Eklogisticasajetpaq@a
 BREVO_API_KEY = os.environ.get("BREVO_API_KEY", "") 
 EMAIL_REMITENTE = "eklogistica19@gmail.com" 
 
-# !!! IMPORTANTE: PON TU NUMERO AQUI SIN ESPACIOS NI GUIONES !!!
-# Ej: 2615555555 (El codigo agrega el 549 solo)
-NUMERO_BASE_RAW = "2613672674" 
+# TU NUMERO REAL (El codigo le agrega el formato internacional solo)
+NUMERO_BASE_RAW = "2615555555" 
 
 BASE_DIR = os.path.abspath(os.path.dirname(__file__))
 UPLOAD_FOLDER = os.path.join(BASE_DIR, 'uploads')
@@ -28,22 +27,15 @@ def get_db():
     try: return create_engine(DATABASE_URL, pool_pre_ping=True).connect()
     except: return None
 
-# --- UTILIDADES ---
 def limpiar_telefono_wsp(telefono):
-    """Deja solo los números y asegura formato internacional 549..."""
     if not telefono: return ""
     nums = "".join(filter(str.isdigit, str(telefono)))
-    
-    # Si parece un numero local sin codigo de pais (10 digitos), le agregamos 549
-    if len(nums) == 10:
-        return "549" + nums
-    # Si tiene 13 digitos (549...) lo dejamos asi
+    if len(nums) == 10: return "549" + nums
     return nums
 
-# Preparamos el numero de la base una sola vez
 NUMERO_BASE_FINAL = limpiar_telefono_wsp(NUMERO_BASE_RAW)
 
-# --- EMAIL ---
+# --- EMAIL (AHORA CON COPIA DE SEGURIDAD BCC) ---
 def enviar_email(destinatario, guia, ruta_foto, proveedor):
     if not BREVO_API_KEY: return
     conn = get_db()
@@ -55,8 +47,16 @@ def enviar_email(destinatario, guia, ruta_foto, proveedor):
         except: pass
         finally: conn.close()
     
-    if not email_prov: return
-
+    # Si el proveedor no tiene mail, igual intentamos mandar el de respaldo a nosotros
+    destinatarios_lista = []
+    if email_prov:
+        destinatarios_lista.append({"email": email_prov})
+    
+    # SI NO HAY DESTINATARIOS (PROVEEDOR SIN MAIL), AL MENOS NOS LO MANDAMOS A NOSOTROS
+    if not destinatarios_lista:
+        print("⚠️ Proveedor sin mail. Enviando solo copia interna.")
+    
+    # PREPARAR ADJUNTO
     adjuntos = []
     if ruta_foto and os.path.exists(ruta_foto):
         try:
@@ -67,6 +67,7 @@ def enviar_email(destinatario, guia, ruta_foto, proveedor):
 
     url = "https://api.brevo.com/v3/smtp/email"
     fecha_hora = datetime.now().strftime('%d/%m/%Y %H:%M')
+    
     html_content = f"""
     <html><body>
     <h3>Hola,</h3>
@@ -83,14 +84,27 @@ def enviar_email(destinatario, guia, ruta_foto, proveedor):
     
     payload = {
         "sender": {"name": "Logistica JetPaq", "email": EMAIL_REMITENTE},
-        "to": [{"email": email_prov}],
         "subject": f"ENTREGA REALIZADA - Guía: {guia}",
-        "htmlContent": html_content
+        "htmlContent": html_content,
+        # AQUI ESTA LA MAGIA: COPIA OCULTA A TU MAIL
+        "bcc": [{"email": EMAIL_REMITENTE, "name": "Archivo EK Logistica"}]
     }
+
+    # Si hay destinatario cliente, lo agregamos. Si no, Brevo usará solo el BCC o fallará si "to" es obligatorio vacio.
+    # Brevo requiere "to". Si no hay cliente, ponemos nuestro mail en "to" tambien.
+    if destinatarios_lista:
+        payload["to"] = destinatarios_lista
+    else:
+        payload["to"] = [{"email": EMAIL_REMITENTE}] # Auto-envío si no hay cliente
+
     if adjuntos: payload["attachment"] = adjuntos
+    
     headers = {"accept": "application/json", "api-key": BREVO_API_KEY, "content-type": "application/json"}
-    try: requests.post(url, json=payload, headers=headers)
-    except: pass
+    try: 
+        r = requests.post(url, json=payload, headers=headers)
+        print(f"📧 Mail Status: {r.status_code}")
+    except Exception as e:
+        print(f"❌ Error Mail: {e}")
 
 # --- ESTILOS CSS ---
 HTML_HEAD = """
@@ -103,10 +117,7 @@ HTML_HEAD = """
         .header { background: #1565C0; color: white; padding: 15px; text-align: center; position: sticky; top: 0; z-index: 100; box-shadow: 0 2px 4px rgba(0,0,0,0.2); display: flex; justify-content: space-between; align-items: center; }
         .header h2 { margin: 0; font-size: 1.1rem; flex-grow: 1; text-align: center; font-weight: 600; }
         .container { padding: 15px; max-width: 600px; margin: 0 auto; }
-        
         .card { background: white; padding: 20px; margin-bottom: 15px; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
-        
-        /* BOTONES */
         .btn { display: block; width: 100%; padding: 14px; border: none; border-radius: 8px; font-size: 16px; font-weight: 600; cursor: pointer; text-align: center; text-decoration: none; box-sizing: border-box; margin-top: 10px; transition: all 0.2s; }
         .btn:active { transform: scale(0.98); opacity: 0.9; }
         .btn-blue { background: #1976D2; color: white; }
@@ -117,25 +128,17 @@ HTML_HEAD = """
         .btn-purple { background: #7B1FA2; color: white; }
         .btn-grey { background: #757575; color: white; }
         .btn-outline { background: transparent; border: 1px solid #999; color: #555; }
-        
         input, select { width: 100%; padding: 12px; margin-top: 8px; border: 1px solid #ddd; border-radius: 8px; font-size: 16px; background: #fff; box-sizing: border-box; }
         label { font-weight: 600; color: #444; margin-top: 15px; display: block; font-size: 0.9rem; }
-        
         .tag { padding: 4px 8px; border-radius: 4px; font-size: 0.75rem; color: white; float: right; font-weight: bold; text-transform: uppercase; letter-spacing: 0.5px; }
         .tag-blue { background: #1976D2; } .tag-orange { background: #F57C00; }
-        
         .camera-btn { background-color: #E3F2FD; color: #1565C0; border: 2px solid #1976D2; border-radius: 8px; padding: 12px; text-align: center; cursor: pointer; margin-top: 5px; display: flex; align-items: center; justify-content: center; gap: 10px; font-weight: bold; }
-        
         .alert { padding: 12px; margin-bottom: 15px; border-radius: 8px; font-weight: 500; text-align: center; font-size: 0.9rem; }
         .alert-success { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
         .alert-error { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
-
-        /* NAV INFERIOR */
         .bottom-nav { position: fixed; bottom: 0; left: 0; width: 100%; background: white; border-top: 1px solid #eee; display: flex; justify-content: space-around; padding: 12px 0; z-index: 99; box-shadow: 0 -2px 5px rgba(0,0,0,0.05); }
         .nav-item { text-decoration: none; color: #777; text-align: center; font-size: 0.75rem; font-weight: 500; }
         .nav-icon { font-size: 1.4rem; display: block; margin-bottom: 3px; }
-        
-        /* SVG ICON */
         .truck-icon { width: 80px; height: 80px; margin-bottom: 10px; fill: #1976D2; }
     </style>
     <script>
@@ -152,8 +155,6 @@ HTML_HEAD = """
 </head>
 """
 
-# --- RUTAS ---
-
 @app.route('/', methods=['GET', 'POST'])
 def index():
     if request.method == 'POST':
@@ -169,12 +170,7 @@ def index():
         except: pass
         finally: conn.close()
         
-    # LOGO CAMION SVG (Profesional)
-    svg_truck = """
-    <svg class="truck-icon" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-        <path d="M20,8h-3V4H3C2.45,4,2,4.45,2,5v11h2c0,1.66,1.34,3,3,3s3-1.34,3-3h6c0,1.66,1.34,3,3,3s3-1.34,3-3h2v-5L20,8z M6,13.5 c-0.83,0-1.5-0.67-1.5-1.5s0.67-1.5,1.5-1.5s1.5,0.67,1.5,1.5S6.83,13.5,6,13.5z M19,17c-0.55,0-1-0.45-1-1s0.45-1,1-1s1,0.45,1,1 S19.55,17,19,17z M18,11V8.5h1.75L21,11H18z"/>
-    </svg>
-    """
+    svg_truck = """<svg class="truck-icon" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M20,8h-3V4H3C2.45,4,2,4.45,2,5v11h2c0,1.66,1.34,3,3,3s3-1.34,3-3h6c0,1.66,1.34,3,3,3s3-1.34,3-3h2v-5L20,8z M6,13.5 c-0.83,0-1.5-0.67-1.5-1.5s0.67-1.5,1.5-1.5s1.5,0.67,1.5,1.5S6.83,13.5,6,13.5z M19,17c-0.55,0-1-0.45-1-1s0.45-1,1-1s1,0.45,1,1 S19.55,17,19,17z M18,11V8.5h1.75L21,11H18z"/></svg>"""
         
     html = f"""
     <!DOCTYPE html>
@@ -224,13 +220,7 @@ def lista_viajes():
         
     cards_html = ""
     if not viajes:
-        cards_html = """
-        <div class='card' style='text-align:center; padding: 40px; border: 2px dashed #ddd;'>
-            <div style="font-size: 2rem;">🎉</div>
-            <h3>¡Todo Entregado!</h3>
-            <p style="color:#666;">No tienes viajes pendientes.</p>
-        </div>
-        """
+        cards_html = "<div class='card' style='text-align:center; padding: 40px; border: 2px dashed #ddd;'><div style='font-size: 2rem;'>🎉</div><h3>¡Todo Entregado!</h3><p style='color:#666;'>No tienes viajes pendientes.</p></div>"
     else:
         for v in viajes:
             color = "tag-blue" if v[6] == "En Reparto" else "tag-orange"
@@ -271,7 +261,6 @@ def lista_viajes():
             <br>
             <a href="/viajes" class="btn btn-green" style="margin-bottom: 60px;">🔄 ACTUALIZAR LISTA</a>
         </div>
-
         <div class="bottom-nav">
             <a href="/viajes" class="nav-item" style="color: #1976D2; font-weight:bold;">
                 <span class="nav-icon">📦</span>Ruta
@@ -297,12 +286,7 @@ def historial():
     movimientos = []
     if conn:
         try:
-            sql = text("""
-                SELECT detalle, fecha_hora, accion 
-                FROM historial_movimientos 
-                WHERE usuario = :u AND fecha_hora::date = CURRENT_DATE 
-                ORDER BY fecha_hora DESC
-            """)
+            sql = text("SELECT detalle, fecha_hora, accion FROM historial_movimientos WHERE usuario = :u AND fecha_hora::date = CURRENT_DATE ORDER BY fecha_hora DESC")
             movimientos = conn.execute(sql, {"u": chofer}).fetchall()
         except: pass
         finally: conn.close()
@@ -316,7 +300,6 @@ def historial():
             color = "#43A047"
             if "No Entregado" in m[0] or "Motivo" in m[0]: color = "#D32F2F"
             elif "Pendiente" in m[0]: color = "#F57C00"
-            
             filas_html += f"""
             <div style="background:white; padding:15px; border-radius:8px; margin-bottom:10px; border-left: 5px solid {color}; box-shadow: 0 1px 2px rgba(0,0,0,0.1);">
                 <div style="display:flex; justify-content:space-between;">
@@ -406,7 +389,7 @@ def gestion(id_op):
             finally: conn.close()
             
         if estado == "ENTREGADO" and tiene_foto:
-            flash("✅ Entregado. Enviando correo con foto...", "success")
+            flash("✅ Entregado. Enviando correo y guardando copia...", "success")
             enviar_email(recibe, op[0], ruta_foto, op[10])
         elif estado == "ENTREGADO":
             flash("✅ Entregado correctamente.", "success")
@@ -440,13 +423,11 @@ def gestion(id_op):
         </div>
         <div class="container">
             {mensajes_html}
-            
             <div class="card">
                 {cobranza_html}
                 <div style="color:#888; font-size:0.8rem; text-transform:uppercase; letter-spacing:1px; margin-bottom:5px;">Destinatario</div>
                 <h2 style="margin:0 0 5px 0; font-size:1.4rem;">{op[1]}</h2>
                 <div style="font-size:1.1rem; margin-bottom:15px;">📍 {op[2]} <br> <small style="color:#666;">({op[3]})</small></div>
-                
                 <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px;">
                     <a href="tel:{op[4]}" class="btn btn-grey" style="margin:0; font-size:0.9rem;">📞 Llamar</a>
                     <a href="{link_wa}" class="btn btn-wa" style="margin:0; font-size:0.9rem; {btn_wa_style}" target="_blank">💬 WhatsApp</a>
@@ -456,16 +437,13 @@ def gestion(id_op):
             <form method="POST" enctype="multipart/form-data">
                 <div class="card" style="border-top: 5px solid #43A047;">
                     <h3 style="margin-top:0; color:#2E7D32;">✅ Confirmar Entrega</h3>
-                    
                     <label>Quien Recibe:</label>
                     <input type="text" name="recibe" placeholder="Nombre y Apellido...">
-                    
                     <label>Comprobante:</label>
                     <label for="fileInput" id="cameraLabel" class="camera-btn">
                         <span class="camera-icon">📷</span> SUBIR FOTO
                     </label>
                     <input type="file" id="fileInput" name="foto" accept="image/*" capture="environment" style="display:none;" onchange="fileSelected(this)">
-                    
                     <button type="submit" name="estado" value="ENTREGADO" class="btn btn-green" style="margin-top:20px;">CONFIRMAR FINALIZADO</button>
                 </div>
                 
@@ -473,7 +451,6 @@ def gestion(id_op):
                     <h3 style="margin-top:0; color:#c62828;">❌ No Entregado</h3>
                     <label>Motivo:</label>
                     <input type="text" name="motivo" placeholder="Ej: Dirección incorrecta">
-                    
                     <div style="display:flex; gap:10px;">
                         <button type="submit" name="estado" value="Pendiente" class="btn btn-orange" style="flex:1;">PENDIENTE</button>
                         <button type="submit" name="estado" value="Reprogramado" class="btn btn-purple" style="flex:1;">REPROGRAMAR</button>
