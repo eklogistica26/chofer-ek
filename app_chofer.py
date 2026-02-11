@@ -6,6 +6,8 @@ import base64
 import requests
 import urllib.parse
 import re
+import threading
+import time
 
 app = Flask(__name__)
 app.secret_key = "secreto_super_seguro_choferes_ek"
@@ -18,6 +20,10 @@ EMAIL_REMITENTE = "eklogistica19@gmail.com"
 # TU NUMERO REAL (El codigo le agrega el formato internacional solo)
 NUMERO_BASE_RAW = "2615555555" 
 
+# URL DE TU APP EN RENDER (Para el auto-ping)
+# Si tu app tiene otro nombre, cambialo aquí:
+RENDER_APP_URL = "https://chofer-ek.onrender.com"
+
 BASE_DIR = os.path.abspath(os.path.dirname(__file__))
 UPLOAD_FOLDER = os.path.join(BASE_DIR, 'uploads')
 if not os.path.exists(UPLOAD_FOLDER): os.makedirs(UPLOAD_FOLDER)
@@ -27,6 +33,28 @@ def get_db():
     try: return create_engine(DATABASE_URL, pool_pre_ping=True).connect()
     except: return None
 
+# --- SISTEMA ANTI-DORMIR (KEEP ALIVE) ---
+def keep_alive_system():
+    """Este proceso corre en el fondo y visita la web cada 10 mins"""
+    print(">>> 🟢 INICIANDO SISTEMA ANTI-DORMIR")
+    while True:
+        time.sleep(600) # Esperar 10 minutos (600 segundos)
+        try:
+            print(f">>> ⏰ Despertador: Visitando {RENDER_APP_URL} ...")
+            response = requests.get(RENDER_APP_URL)
+            print(f">>> ✅ Respuesta Ping: {response.status_code}")
+        except Exception as e:
+            print(f">>> ❌ Error en Ping Anti-Dormir: {e}")
+
+# Iniciar el hilo en segundo plano (Solo si estamos en Render para no molestar en local)
+# Ojo: A veces Render no setea la var de entorno explícitamente, así que lo lanzamos siempre con cuidado.
+if os.environ.get("RENDER") or True: # Lo forzamos siempre por seguridad
+    # Verificamos que no se lance dos veces (truco de Flask)
+    if not app.debug or os.environ.get("WERKZEUG_RUN_MAIN") == "true":
+        t = threading.Thread(target=keep_alive_system)
+        t.daemon = True # Se muere si la app se muere
+        t.start()
+
 def limpiar_telefono_wsp(telefono):
     if not telefono: return ""
     nums = "".join(filter(str.isdigit, str(telefono)))
@@ -35,7 +63,7 @@ def limpiar_telefono_wsp(telefono):
 
 NUMERO_BASE_FINAL = limpiar_telefono_wsp(NUMERO_BASE_RAW)
 
-# --- EMAIL (AHORA CON COPIA DE SEGURIDAD BCC) ---
+# --- EMAIL (CON COPIA DE SEGURIDAD BCC) ---
 def enviar_email(destinatario, guia, ruta_foto, proveedor):
     if not BREVO_API_KEY: return
     conn = get_db()
@@ -47,16 +75,13 @@ def enviar_email(destinatario, guia, ruta_foto, proveedor):
         except: pass
         finally: conn.close()
     
-    # Si el proveedor no tiene mail, igual intentamos mandar el de respaldo a nosotros
     destinatarios_lista = []
     if email_prov:
         destinatarios_lista.append({"email": email_prov})
     
-    # SI NO HAY DESTINATARIOS (PROVEEDOR SIN MAIL), AL MENOS NOS LO MANDAMOS A NOSOTROS
     if not destinatarios_lista:
         print("⚠️ Proveedor sin mail. Enviando solo copia interna.")
     
-    # PREPARAR ADJUNTO
     adjuntos = []
     if ruta_foto and os.path.exists(ruta_foto):
         try:
@@ -86,16 +111,13 @@ def enviar_email(destinatario, guia, ruta_foto, proveedor):
         "sender": {"name": "Logistica JetPaq", "email": EMAIL_REMITENTE},
         "subject": f"ENTREGA REALIZADA - Guía: {guia}",
         "htmlContent": html_content,
-        # AQUI ESTA LA MAGIA: COPIA OCULTA A TU MAIL
         "bcc": [{"email": EMAIL_REMITENTE, "name": "Archivo EK Logistica"}]
     }
 
-    # Si hay destinatario cliente, lo agregamos. Si no, Brevo usará solo el BCC o fallará si "to" es obligatorio vacio.
-    # Brevo requiere "to". Si no hay cliente, ponemos nuestro mail en "to" tambien.
     if destinatarios_lista:
         payload["to"] = destinatarios_lista
     else:
-        payload["to"] = [{"email": EMAIL_REMITENTE}] # Auto-envío si no hay cliente
+        payload["to"] = [{"email": EMAIL_REMITENTE}]
 
     if adjuntos: payload["attachment"] = adjuntos
     
@@ -469,6 +491,7 @@ def gestion(id_op):
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 8000))
     app.run(host='0.0.0.0', port=port)
+
 
 
 
