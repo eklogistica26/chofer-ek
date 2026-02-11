@@ -17,11 +17,10 @@ DATABASE_URL = "postgresql://postgres.gwdypvvyjuqzvpbbzchk:Eklogisticasajetpaq@a
 BREVO_API_KEY = os.environ.get("BREVO_API_KEY", "") 
 EMAIL_REMITENTE = "eklogistica19@gmail.com" 
 
-# TU NUMERO REAL (El codigo le agrega el formato internacional solo)
-NUMERO_BASE_RAW = "2615555555" 
+# TU NUMERO REAL DE LA BASE (Actualizado)
+NUMERO_BASE_RAW = "2613672674" 
 
 # URL DE TU APP EN RENDER (Para el auto-ping)
-# Si tu app tiene otro nombre, cambialo aquí:
 RENDER_APP_URL = "https://chofer-ek.onrender.com"
 
 BASE_DIR = os.path.abspath(os.path.dirname(__file__))
@@ -35,24 +34,15 @@ def get_db():
 
 # --- SISTEMA ANTI-DORMIR (KEEP ALIVE) ---
 def keep_alive_system():
-    """Este proceso corre en el fondo y visita la web cada 10 mins"""
-    print(">>> 🟢 INICIANDO SISTEMA ANTI-DORMIR")
     while True:
-        time.sleep(600) # Esperar 10 minutos (600 segundos)
-        try:
-            print(f">>> ⏰ Despertador: Visitando {RENDER_APP_URL} ...")
-            response = requests.get(RENDER_APP_URL)
-            print(f">>> ✅ Respuesta Ping: {response.status_code}")
-        except Exception as e:
-            print(f">>> ❌ Error en Ping Anti-Dormir: {e}")
+        time.sleep(600) # 10 minutos
+        try: requests.get(RENDER_APP_URL)
+        except: pass
 
-# Iniciar el hilo en segundo plano (Solo si estamos en Render para no molestar en local)
-# Ojo: A veces Render no setea la var de entorno explícitamente, así que lo lanzamos siempre con cuidado.
-if os.environ.get("RENDER") or True: # Lo forzamos siempre por seguridad
-    # Verificamos que no se lance dos veces (truco de Flask)
+if os.environ.get("RENDER") or True:
     if not app.debug or os.environ.get("WERKZEUG_RUN_MAIN") == "true":
         t = threading.Thread(target=keep_alive_system)
-        t.daemon = True # Se muere si la app se muere
+        t.daemon = True
         t.start()
 
 def limpiar_telefono_wsp(telefono):
@@ -63,7 +53,7 @@ def limpiar_telefono_wsp(telefono):
 
 NUMERO_BASE_FINAL = limpiar_telefono_wsp(NUMERO_BASE_RAW)
 
-# --- EMAIL (CON COPIA DE SEGURIDAD BCC) ---
+# --- EMAIL ---
 def enviar_email(destinatario, guia, ruta_foto, proveedor):
     if not BREVO_API_KEY: return
     conn = get_db()
@@ -76,11 +66,7 @@ def enviar_email(destinatario, guia, ruta_foto, proveedor):
         finally: conn.close()
     
     destinatarios_lista = []
-    if email_prov:
-        destinatarios_lista.append({"email": email_prov})
-    
-    if not destinatarios_lista:
-        print("⚠️ Proveedor sin mail. Enviando solo copia interna.")
+    if email_prov: destinatarios_lista.append({"email": email_prov})
     
     adjuntos = []
     if ruta_foto and os.path.exists(ruta_foto):
@@ -114,19 +100,14 @@ def enviar_email(destinatario, guia, ruta_foto, proveedor):
         "bcc": [{"email": EMAIL_REMITENTE, "name": "Archivo EK Logistica"}]
     }
 
-    if destinatarios_lista:
-        payload["to"] = destinatarios_lista
-    else:
-        payload["to"] = [{"email": EMAIL_REMITENTE}]
+    if destinatarios_lista: payload["to"] = destinatarios_lista
+    else: payload["to"] = [{"email": EMAIL_REMITENTE}]
 
     if adjuntos: payload["attachment"] = adjuntos
     
     headers = {"accept": "application/json", "api-key": BREVO_API_KEY, "content-type": "application/json"}
-    try: 
-        r = requests.post(url, json=payload, headers=headers)
-        print(f"📧 Mail Status: {r.status_code}")
-    except Exception as e:
-        print(f"❌ Error Mail: {e}")
+    try: requests.post(url, json=payload, headers=headers)
+    except: pass
 
 # --- ESTILOS CSS ---
 HTML_HEAD = """
@@ -251,10 +232,11 @@ def lista_viajes():
             
             cards_html += f"""
             <div class="card">
-                <div style="margin-bottom: 10px; overflow: hidden;">
+                <div style="margin-bottom: 10px; overflow: hidden; display:flex; justify-content:space-between; align-items:center;">
+                    <span style="font-size: 0.8rem; font-weight:bold; color: #555;">🏢 {v[7]}</span>
                     <span class="tag {color}">{v[6]}</span>
-                    <h3 style="margin: 0; font-size: 1.1rem; color:#333;">{v[2]}</h3>
                 </div>
+                <h3 style="margin: 0 0 5px 0; font-size: 1.1rem; color:#333;">{v[2]}</h3>
                 <div style="color: #555; font-size: 0.95rem; margin-bottom: 12px;">
                     📍 {v[3]} <small>({v[4]})</small>
                 </div>
@@ -321,7 +303,7 @@ def historial():
             hora = m[1].strftime('%H:%M')
             color = "#43A047"
             if "No Entregado" in m[0] or "Motivo" in m[0]: color = "#D32F2F"
-            elif "Pendiente" in m[0]: color = "#F57C00"
+            elif "Pendiente" in m[0] or "Reprogramado" in m[0]: color = "#F57C00"
             filas_html += f"""
             <div style="background:white; padding:15px; border-radius:8px; margin-bottom:10px; border-left: 5px solid {color}; box-shadow: 0 1px 2px rgba(0,0,0,0.1);">
                 <div style="display:flex; justify-content:space-between;">
@@ -390,6 +372,11 @@ def gestion(id_op):
         recibe = request.form.get('recibe', '')
         motivo = request.form.get('motivo', '')
         
+        # DATOS REPROGRAMACION (PUNTO 1)
+        fecha_reprog = request.form.get('fecha_reprog', '')
+        hora_reprog = request.form.get('hora_reprog', '')
+
+        # VALIDACIONES
         if estado == "ENTREGADO":
             if not recibe: 
                 flash("❌ ERROR: Escribe quién recibió.", "error")
@@ -397,14 +384,34 @@ def gestion(id_op):
             if "jetpaq" not in op[10].lower() and not tiene_foto:
                 flash("📸 ERROR: Faltó la foto (Obligatoria).", "error")
                 return redirect(url_for('gestion', id_op=id_op))
-
-        detalle = f"Recibio: {recibe}" if estado == "ENTREGADO" else f"Motivo: {motivo}"
-        if tiene_foto: detalle += " [CON FOTO]"
         
+        # LOGICA ESTADOS Y DETALLE
+        nuevo_estado_db = estado # Por defecto es lo que viene del boton
+        detalle = ""
+
+        if estado == "ENTREGADO":
+            detalle = f"Recibio: {recibe}"
+            if tiene_foto: detalle += " [CON FOTO]"
+        
+        elif estado == "Pendiente": # Pendiente normal
+            detalle = f"No Entregado. Motivo: {motivo}"
+            # Se queda como 'Pendiente' en la base, asi el admin lo ve pero el chofer quizas lo ve todavia si no filtramos
+            # Lo mejor es pasarlo a 'En Deposito' o 'Pendiente'. Usaremos 'En Deposito' para que el admin lo reasigne.
+            nuevo_estado_db = "En Deposito" 
+
+        elif estado == "Reprogramado": # REPROGRAMACION (Tu solicitud)
+            if not fecha_reprog:
+                flash("❌ ERROR: Falta la fecha de reprogramación.", "error")
+                return redirect(url_for('gestion', id_op=id_op))
+            
+            detalle = f"Reprogramado para {fecha_reprog} {hora_reprog}. Motivo: {motivo}"
+            # PUNTO 1: VUELVE A DEPOSITO PARA QUE EL ADMIN LO ASIGNE DE NUEVO MAÑANA
+            nuevo_estado_db = "En Deposito" 
+
         conn = get_db()
         if conn:
             try:
-                conn.execute(text("UPDATE operaciones SET estado=:e, fecha_entrega=:f WHERE id=:i"), {"e": estado, "f": datetime.now(), "i": id_op})
+                conn.execute(text("UPDATE operaciones SET estado=:e, fecha_entrega=:f WHERE id=:i"), {"e": nuevo_estado_db, "f": datetime.now(), "i": id_op})
                 conn.execute(text("INSERT INTO historial_movimientos (operacion_id, usuario, accion, detalle, fecha_hora) VALUES (:o, :u, 'APP', :d, :f)"), {"o": id_op, "u": chofer, "d": detalle, "f": datetime.now()})
                 conn.commit()
             except: pass
@@ -413,10 +420,10 @@ def gestion(id_op):
         if estado == "ENTREGADO" and tiene_foto:
             flash("✅ Entregado. Enviando correo y guardando copia...", "success")
             enviar_email(recibe, op[0], ruta_foto, op[10])
-        elif estado == "ENTREGADO":
-            flash("✅ Entregado correctamente.", "success")
+        elif estado == "Reprogramado":
+            flash("📅 Reprogramado. Vuelve a base.", "success")
         else:
-            flash(f"⚠️ Guardado como: {estado}", "success")
+            flash(f"⚠️ Estado actualizado.", "success")
             
         return redirect(url_for('lista_viajes'))
 
@@ -439,6 +446,12 @@ def gestion(id_op):
     <!DOCTYPE html>
     <html>
     {HTML_HEAD}
+    <script>
+        function mostrarReprog() {{
+            var div = document.getElementById('div_reprog');
+            div.style.display = div.style.display === 'none' ? 'block' : 'none';
+        }}
+    </script>
     <body>
         <div class="header">
             <h2>Gestión de Entrega</h2>
@@ -472,10 +485,20 @@ def gestion(id_op):
                 <div class="card" style="border-top: 5px solid #D32F2F;">
                     <h3 style="margin-top:0; color:#c62828;">❌ No Entregado</h3>
                     <label>Motivo:</label>
-                    <input type="text" name="motivo" placeholder="Ej: Dirección incorrecta">
-                    <div style="display:flex; gap:10px;">
-                        <button type="submit" name="estado" value="Pendiente" class="btn btn-orange" style="flex:1;">PENDIENTE</button>
-                        <button type="submit" name="estado" value="Reprogramado" class="btn btn-purple" style="flex:1;">REPROGRAMAR</button>
+                    <input type="text" name="motivo" placeholder="Ej: Dirección incorrecta / No atiende">
+                    
+                    <div style="display:flex; gap:10px; margin-top:15px;">
+                        <button type="submit" name="estado" value="Pendiente" class="btn btn-orange" style="flex:1;">NO RESPONDE (Volver)</button>
+                    </div>
+                    
+                    <button type="button" onclick="mostrarReprog()" class="btn btn-purple" style="margin-top:10px;">📅 REPROGRAMAR</button>
+                    
+                    <div id="div_reprog" style="display:none; background:#f3e5f5; padding:10px; margin-top:10px; border-radius:8px;">
+                        <label>Nueva Fecha:</label>
+                        <input type="date" name="fecha_reprog">
+                        <label>Hora Aprox (Opcional):</label>
+                        <input type="time" name="hora_reprog">
+                        <button type="submit" name="estado" value="Reprogramado" class="btn btn-purple" style="margin-top:10px;">CONFIRMAR REPROGRAMACIÓN</button>
                     </div>
                 </div>
             </form>
