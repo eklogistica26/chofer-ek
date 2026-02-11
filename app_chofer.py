@@ -6,7 +6,6 @@ import requests
 import base64
 import threading 
 import shutil
-# --- FIX MAPA: Importamos correctamente ---
 import urllib.parse 
 
 # --- CONFIGURACIÓN DB ---
@@ -28,14 +27,13 @@ def get_db_connection():
     return None
 
 def main(page: ft.Page):
-    print(f"🚀 INICIANDO V62 (FIX MAPA Y BOTONES) - Flet Ver: {ft.version}")
+    print(f"🚀 INICIANDO V63 (FIX GESTION) - Flet Ver: {ft.version}")
     
-    page.title = "Choferes V62"
+    page.title = "Choferes V63"
     page.bgcolor = "white"
     page.theme_mode = ft.ThemeMode.LIGHT 
     page.scroll = "auto"
     
-    # Configurar carpeta uploads
     basedir = os.path.abspath(os.getcwd())
     upload_dir = os.path.join(basedir, "uploads")
     if os.path.exists(upload_dir):
@@ -44,7 +42,6 @@ def main(page: ft.Page):
     os.makedirs(upload_dir, exist_ok=True)
     page.upload_dir = upload_dir
     
-    # Estado global simple
     state = {"id": None, "guia": "", "proveedor": "", "tiene_foto": False, "ruta_foto": None}
 
     # --- EMAIL ---
@@ -83,14 +80,10 @@ def main(page: ft.Page):
     # --- NAVEGACION ---
     def abrir_mapa(domicilio, localidad):
         try:
-            # FIX MAPA: Usamos urllib.parse explícitamente
             q = urllib.parse.quote(f"{domicilio}, {localidad}")
             page.launch_url(f"https://www.google.com/maps/search/?api=1&query={q}")
         except Exception as e:
             print(f"Error mapa: {e}")
-            page.snack_bar = ft.SnackBar(ft.Text(f"Error mapa: {e}"), bgcolor="red")
-            page.snack_bar.open = True
-            page.update()
 
     def conectar(e):
         btn_inicio.text = "Cargando..."; btn_inicio.disabled = True; page.update()
@@ -104,14 +97,12 @@ def main(page: ft.Page):
         else: btn_inicio.text = "Error Conexión"; btn_inicio.disabled = False
         page.update()
 
-    # Componentes Inicio
     btn_inicio = ft.ElevatedButton("CONECTAR", on_click=conectar, bgcolor="blue", color="white", height=50)
     dd_chofer = ft.Dropdown(label="Chofer", bgcolor="#f0f2f5", label_style=ft.TextStyle(color="black"))
     
     # --- PANTALLAS ---
     def ir_a_principal():
         page.clean()
-        
         lista_viajes = ft.Column(spacing=10)
         
         def cargar_ruta(e):
@@ -127,7 +118,6 @@ def main(page: ft.Page):
                     for row in rows:
                         id_op, guia, dest, dom, loc, bultos, est, prov = row
                         color_est = "blue" if est == "En Reparto" else "orange"
-                        # Pasamos lambda con variables locales para evitar conflictos
                         card = ft.Container(bgcolor="white", padding=10, border=ft.border.all(1, "#ddd"), border_radius=8, content=ft.Column([
                                 ft.Row([ft.Text(dest[:25], weight="bold", color="black"), ft.Container(content=ft.Text(est[:10], color="white", size=10), bgcolor=color_est, padding=3, border_radius=3)], alignment="spaceBetween"),
                                 ft.Row([ft.Text("📍"), ft.Text(f"{dom}", size=12, color="#333", expand=True), ft.ElevatedButton("IR", on_click=lambda _,d=dom,l=loc: abrir_mapa(d,l))]),
@@ -150,19 +140,17 @@ def main(page: ft.Page):
         ]))
 
     def ir_a_gestion(id_op, guia, prov):
-        # 1. ACTUALIZAR ESTADO
         state["id"] = id_op; state["guia"] = guia; state["proveedor"] = prov
         state["tiene_foto"] = False; state["ruta_foto"] = None
 
-        # 2. CREAR CONTROLES LOCALES (IMPORTANTISIMO: Se crean NUEVOS cada vez)
         txt_recibe = ft.TextField(label="Quien recibe", border_color="grey", label_style=ft.TextStyle(color="black"))
         txt_motivo = ft.TextField(label="Motivo (No entregado)", border_color="grey", label_style=ft.TextStyle(color="black"))
         
-        # Botones
         btn_confirmar = ft.ElevatedButton("CONFIRMAR ENTREGA ✅", bgcolor="green", color="white", width=300, height=50)
+        # Usamos string para el icono, más seguro
         btn_foto = ft.ElevatedButton("📷 TOMAR FOTO", bgcolor="grey", color="white", height=45, icon="camera_alt")
 
-        # 3. LOGICA FILEPICKER LOCAL
+        # --- FIX: LOGICA FILEPICKER MODERNA ---
         def on_upload(e):
             if e.error:
                 btn_foto.text = "❌ Error"; btn_foto.bgcolor = "red"; btn_foto.update()
@@ -179,13 +167,14 @@ def main(page: ft.Page):
                 btn_confirmar.disabled = True; btn_confirmar.update()
                 fp.upload(e.files)
 
-        # FilePicker local
-        fp = ft.FilePicker(on_result=on_pick, on_upload=on_upload)
+        # 1. Crear vacío (SIN ARGUMENTOS)
+        fp = ft.FilePicker()
+        # 2. Asignar funciones después
+        fp.on_result = on_pick
+        fp.on_upload = on_upload
         
-        # Asignar acción al botón foto
         btn_foto.on_click = lambda _: fp.pick_files(allow_multiple=False, file_type=ft.FilePickerFileType.IMAGE)
 
-        # 4. LOGICA GUARDAR LOCAL
         def guardar(estado):
             try:
                 if estado == "ENTREGADO" and not txt_recibe.value:
@@ -193,7 +182,6 @@ def main(page: ft.Page):
                 if estado != "ENTREGADO" and not txt_motivo.value:
                     txt_motivo.error_text = "Requerido"; txt_motivo.update(); return
                 
-                # Regla JetPaq
                 if estado == "ENTREGADO" and "jetpaq" not in state["proveedor"].lower() and not state["tiene_foto"]:
                     page.snack_bar = ft.SnackBar(ft.Text("⚠️ FOTO OBLIGATORIA"), bgcolor="red")
                     page.snack_bar.open = True; page.update(); return
@@ -215,17 +203,14 @@ def main(page: ft.Page):
                     else:
                         page.snack_bar = ft.SnackBar(ft.Text("✅ Guardado"), bgcolor="green")
                     
-                    # Volver
                     ir_a_principal()
                     page.snack_bar.open = True
                     page.update()
             except Exception as e:
                 page.snack_bar = ft.SnackBar(ft.Text(f"Error: {e}"), bgcolor="red"); page.snack_bar.open = True; page.update()
 
-        # Asignar accion al boton confirmar
         btn_confirmar.on_click = lambda _: guardar("ENTREGADO")
 
-        # 5. DETALLES
         detalles_view = ft.Column()
         conn = get_db_connection()
         if conn:
@@ -239,9 +224,8 @@ def main(page: ft.Page):
             except: pass
             finally: conn.close()
 
-        # 6. ARMAR PANTALLA
         page.clean()
-        # IMPORTANTE: Agregar FP a la pagina (invisible)
+        # IMPORTANTE: Agregar FP (invisible) a la pagina antes de usarlo
         page.add(ft.Row([fp], visible=False)) 
         
         page.add(ft.Column([
@@ -255,8 +239,7 @@ def main(page: ft.Page):
             ft.Container(height=20), ft.TextButton("VOLVER", on_click=lambda _: ir_a_principal())
         ]))
 
-    # PANTALLA INICIAL
-    page.add(ft.Column([ft.Text("🚛", size=50), ft.Text("BIENVENIDO V62", size=30, weight="bold", color="black"), ft.Container(height=20), btn_inicio], horizontal_alignment="center"))
+    page.add(ft.Column([ft.Text("🚛", size=50), ft.Text("BIENVENIDO V63", size=30, weight="bold", color="black"), ft.Container(height=20), btn_inicio], horizontal_alignment="center"))
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8000))
