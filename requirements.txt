@@ -1,4 +1,5 @@
-flet==0.22.1
+flask
+gunicorn
 sqlalchemy
 psycopg2-binary
 requests
