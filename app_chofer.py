@@ -28,12 +28,11 @@ def get_db_connection():
     return None
 
 def main(page: ft.Page):
-    print(f"🚀 INICIANDO V59 (PUNTO MEDIO 0.62.0) - Flet Ver: {ft.version}")
+    print(f"🚀 INICIANDO V60 (FINAL 0.80.5) - Flet Ver: {ft.version}")
     
-    # EL TITULO CAMBIA PARA QUE SEPAS SI SE ACTUALIZO
-    page.title = "Choferes V59 - RESET"
+    page.title = "Choferes V60"
     page.bgcolor = "white"
-    page.theme_mode = "light" 
+    page.theme_mode = ft.ThemeMode.LIGHT 
     page.scroll = "auto"
     
     # --- CARPETA UPLOADS ---
@@ -105,12 +104,11 @@ def main(page: ft.Page):
         except: pass
 
     # ---------------------------------------------------------
-    # 2. CÁMARA (COMPATIBILIDAD 0.62.0)
+    # 2. CÁMARA (0.80.5)
     # ---------------------------------------------------------
     
     btn_confirmar_global = ft.ElevatedButton("CONFIRMAR ENTREGA ✅", bgcolor="green", color="white", width=300, height=50)
 
-    # Funciones SIN etiquetas de tipo para evitar errores
     def on_upload_result(e):
         if e.error:
             btn_foto.text = "❌ Error"
@@ -152,10 +150,9 @@ def main(page: ft.Page):
         else:
             print("Cancelado")
 
-    # CREACIÓN SEGURA
+    # CREACIÓN CORRECTA
     file_picker = ft.FilePicker()
     page.overlay.append(file_picker)
-    page.update() # Forzar renderizado
     
     file_picker.on_result = on_foto_seleccionada
     file_picker.on_upload = on_upload_result
@@ -180,7 +177,7 @@ def main(page: ft.Page):
         page.update()
 
     btn_inicio = ft.ElevatedButton("CONECTAR", on_click=conectar, bgcolor="blue", color="white", height=50)
-    vista_inicio = ft.Column([ft.Text("🚛", size=50), ft.Text("BIENVENIDO V59", size=30, weight="bold", color="black"), ft.Container(height=20), btn_inicio], horizontal_alignment="center")
+    vista_inicio = ft.Column([ft.Text("🚛", size=50), ft.Text("BIENVENIDO V60", size=30, weight="bold", color="black"), ft.Container(height=20), btn_inicio], horizontal_alignment="center")
 
     dd_chofer = ft.Dropdown(label="Chofer", bgcolor="#f0f2f5")
     lista_viajes = ft.Column(spacing=10)
@@ -223,7 +220,7 @@ def main(page: ft.Page):
         "📷 TOMAR FOTO", 
         bgcolor="grey", color="white", height=45,
         icon="camera_alt", 
-        on_click=lambda _: file_picker.pick_files(allow_multiple=False, file_type="image")
+        on_click=lambda _: file_picker.pick_files(allow_multiple=False, file_type=ft.FilePickerFileType.IMAGE)
     )
 
     def guardar(estado):
