@@ -27,9 +27,9 @@ def get_db_connection():
     return None
 
 def main(page: ft.Page):
-    print(f"🚀 INICIANDO V65 (CAMARA ETERNA) - Flet Ver: {ft.version}")
+    print(f"🚀 INICIANDO V66 (CAMARA EN BODY) - Flet Ver: {ft.version}")
     
-    page.title = "Choferes V65"
+    page.title = "Choferes V66"
     page.bgcolor = "white"
     page.theme_mode = ft.ThemeMode.LIGHT 
     page.scroll = "auto"
@@ -45,12 +45,18 @@ def main(page: ft.Page):
     state = {"id": None, "guia": "", "proveedor": "", "tiene_foto": False, "ruta_foto": None}
 
     # ---------------------------------------------------------
-    # 1. CÁMARA GLOBAL (SE CREA UNA SOLA VEZ AQUI)
+    # 1. CÁMARA GLOBAL (EN EL CUERPO, NO OVERLAY)
     # ---------------------------------------------------------
-    # Creamos el FilePicker AL INICIO DE TODO. Nunca se borra.
-    file_picker = ft.FilePicker()
-    page.overlay.append(file_picker)
-    page.update() # Aseguramos que el celular sepa que existe
+    # Definimos funciones vacías primero
+    def on_upload_dummy(e): pass
+    def on_pick_dummy(e): pass
+
+    # Creamos la cámara
+    file_picker = ft.FilePicker(on_result=on_pick_dummy, on_upload=on_upload_dummy)
+    
+    # ⚠️ TRUCO V66: Agregamos la cámara a la página DIRECTAMENTE (oculta)
+    # Esto evita el error de "Unknown control" en el overlay
+    page.add(ft.Row([file_picker], visible=False))
 
     # ---------------------------------------------------------
     # 2. EMAIL
@@ -112,7 +118,10 @@ def main(page: ft.Page):
     dd_chofer = ft.Dropdown(label="Chofer", bgcolor="#f0f2f5", label_style=ft.TextStyle(color="black"))
     
     def ir_a_principal():
+        # Limpiamos, pero hay que volver a agregar el FilePicker
         page.clean()
+        page.add(ft.Row([file_picker], visible=False)) # RE-AGREGAR SIEMPRE
+        
         lista_viajes = ft.Column(spacing=10)
         
         def cargar_ruta(e):
@@ -152,8 +161,7 @@ def main(page: ft.Page):
         btn_confirmar = ft.ElevatedButton("CONFIRMAR ENTREGA ✅", bgcolor="green", color="white", width=300, height=50)
         btn_foto = ft.ElevatedButton("📷 TOMAR FOTO", bgcolor="grey", color="white", height=45, icon="camera_alt")
 
-        # --- RE-CONECTAR LA CÁMARA GLOBAL A ESTA PANTALLA ---
-        # Definimos qué hacer cuando ESTA gestión reciba una foto
+        # --- LOGICA LOCAL DE FOTO ---
         def gestion_upload_result(e):
             if e.error:
                 btn_foto.text = "❌ Error"; btn_foto.bgcolor = "red"; btn_foto.update()
@@ -170,11 +178,10 @@ def main(page: ft.Page):
                 btn_confirmar.disabled = True; btn_confirmar.update()
                 file_picker.upload(e.files)
 
-        # ASIGNAMOS LAS FUNCIONES AL PICKER GLOBAL (EL ETERNO)
+        # RE-ASIGNAR funciones al picker global
         file_picker.on_result = gestion_file_picked
         file_picker.on_upload = gestion_upload_result
         
-        # El botón usa el picker global
         btn_foto.on_click = lambda _: file_picker.pick_files(allow_multiple=False, file_type=ft.FilePickerFileType.IMAGE)
 
         def guardar(estado):
@@ -227,7 +234,8 @@ def main(page: ft.Page):
             finally: conn.close()
 
         page.clean()
-        # YA NO AGREGAMOS EL PICKER AQUI, PORQUE YA EXISTE DESDE EL PRINCIPIO
+        # VITAL: Volver a agregar el picker oculto al cambiar de pantalla
+        page.add(ft.Row([file_picker], visible=False))
         
         page.add(ft.Column([
             ft.Text(f"Gestionar: {guia}", size=18, weight="bold", color="black"),
@@ -240,11 +248,12 @@ def main(page: ft.Page):
             ft.Container(height=20), ft.TextButton("VOLVER", on_click=lambda _: ir_a_principal())
         ]))
 
-    page.add(ft.Column([ft.Text("🚛", size=50), ft.Text("BIENVENIDO V65", size=30, weight="bold", color="black"), ft.Container(height=20), btn_inicio], horizontal_alignment="center"))
+    page.add(ft.Column([ft.Text("🚛", size=50), ft.Text("BIENVENIDO V66", size=30, weight="bold", color="black"), ft.Container(height=20), btn_inicio], horizontal_alignment="center"))
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8000))
     ft.app(target=main, view=ft.AppView.WEB_BROWSER, port=port, host="0.0.0.0")
+
 
 
 
