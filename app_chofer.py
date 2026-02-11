@@ -27,25 +27,26 @@ def get_db_connection():
     return None
 
 def main(page: ft.Page):
-    print("🚀 INICIANDO V68 (RETORNO A 0.22.1 - FUNCIONAL)...")
+    print("🚀 INICIANDO V69 (FLET 0.22.1 + FIX UPLOAD DIR)...")
     
-    page.title = "Choferes V68"
+    page.title = "Choferes V69"
     page.bgcolor = "white"
     page.theme_mode = "light" 
     page.scroll = "auto"
     
-    # Carpeta temporal
+    # 1. Configurar ruta ABSOLUTA para las fotos
     basedir = os.path.abspath(os.getcwd())
     upload_dir = os.path.join(basedir, "uploads")
-    if os.path.exists(upload_dir):
-        try: shutil.rmtree(upload_dir)
-        except: pass
-    os.makedirs(upload_dir, exist_ok=True)
-    page.upload_dir = upload_dir # Guardamos la ruta en la pagina
     
+    # Crear carpeta si no existe
+    if not os.path.exists(upload_dir):
+        os.makedirs(upload_dir)
+        
+    print(f"📂 Carpeta de fotos configurada en: {upload_dir}")
+
     state = {"id": None, "guia": "", "proveedor": "", "tiene_foto": False, "ruta_foto": None}
 
-    # --- EMAIL (BREVO API - FUNCIONA SIEMPRE) ---
+    # --- EMAIL ---
     def enviar_reporte_email_thread(destinatario_final, guia, ruta_imagen_servidor, proveedor_nombre):
         if not BREVO_API_KEY: return
         email_proveedor = None
@@ -59,12 +60,17 @@ def main(page: ft.Page):
         if not email_proveedor: return
 
         adjuntos = []
+        # VERIFICACIÓN DE FOTO ANTES DE ENVIAR
         if ruta_imagen_servidor and os.path.exists(ruta_imagen_servidor):
+            print(f"✅ Foto encontrada para adjuntar: {ruta_imagen_servidor}")
             try:
                 with open(ruta_imagen_servidor, "rb") as image_file:
                     encoded_string = base64.b64encode(image_file.read()).decode('utf-8')
                     adjuntos.append({"content": encoded_string, "name": f"remito_{guia}.jpg"})
-            except: pass
+            except Exception as e:
+                print(f"❌ Error leyendo foto: {e}")
+        else:
+            print(f"⚠️ No se encontró la foto en: {ruta_imagen_servidor}")
 
         url = "https://api.brevo.com/v3/smtp/email"
         payload = {
@@ -78,15 +84,22 @@ def main(page: ft.Page):
         try: requests.post(url, json=payload, headers=headers)
         except: pass
 
-    # --- CAMARA (ESTILO 0.22.1 - EL QUE FUNCIONABA) ---
+    # --- CAMARA ---
     def on_upload_result(e: ft.FilePickerUploadEvent):
         if e.error:
+            print(f"❌ Error Flet Upload: {e.error}")
             btn_foto.text = "Error al subir"
+            btn_foto.bgcolor = "red"
             btn_foto.update()
             return
-        # Foto subida exitosamente
+
+        # Construimos la ruta manual para estar seguros
+        nombre_archivo = e.file_name
+        ruta_final = os.path.join(upload_dir, nombre_archivo)
+        
         state["tiene_foto"] = True
-        state["ruta_foto"] = os.path.join(page.upload_dir, e.file_name)
+        state["ruta_foto"] = ruta_final
+        print(f"✅ Foto subida exitosamente a: {ruta_final}")
         
         btn_foto.text = "✅ FOTO LISTA"
         btn_foto.bgcolor = "green"
@@ -98,10 +111,9 @@ def main(page: ft.Page):
             btn_foto.text = "⏳ Subiendo..."
             btn_foto.bgcolor = "orange"
             btn_foto.update()
-            # En 0.22.1 esto sube el archivo
+            # Subir a la carpeta configurada
             file_picker.upload(e.files)
 
-    # CREACIÓN CORRECTA PARA 0.22.1 (CON ARGUMENTOS)
     file_picker = ft.FilePicker(on_result=on_foto_seleccionada, on_upload=on_upload_result)
     page.overlay.append(file_picker)
 
@@ -139,7 +151,6 @@ def main(page: ft.Page):
                 for row in rows:
                     id_op, guia, dest, dom, loc, bultos, est, prov = row
                     color_est = "blue" if est == "En Reparto" else "orange"
-                    # Usamos lambda correctamente
                     card = ft.Container(bgcolor="white", padding=10, border=ft.border.all(1, "#ddd"), border_radius=8, content=ft.Column([
                             ft.Row([ft.Text(dest[:25], weight="bold", color="black"), ft.Container(content=ft.Text(est[:10], color="white", size=10), bgcolor=color_est, padding=3, border_radius=3)], alignment="spaceBetween"),
                             ft.Row([ft.Text("📍"), ft.Text(f"{dom}", size=12, color="#333", expand=True), ft.ElevatedButton("IR", on_click=lambda _,d=dom,l=loc: abrir_mapa(d,l))]),
@@ -157,11 +168,9 @@ def main(page: ft.Page):
         page.clean()
         page.add(ft.Column([ft.Text("MI RUTA", size=18, weight="bold", color="black"), dd_chofer, btn_buscar, ft.Divider(), lista_viajes]))
 
-    # Variables globales de gestion
     txt_recibe = ft.TextField(label="Quien recibe", border_color="grey")
     txt_motivo = ft.TextField(label="Motivo (No entregado)", border_color="grey")
     
-    # Boton de camara que llama al file_picker global
     btn_foto = ft.ElevatedButton("📷 TOMAR FOTO", bgcolor="grey", color="white", height=45, icon=ft.icons.CAMERA_ALT, 
         on_click=lambda _: file_picker.pick_files(allow_multiple=False, file_type="image"))
 
@@ -171,7 +180,6 @@ def main(page: ft.Page):
         if estado == "ENTREGADO" and not txt_recibe.value: txt_recibe.error_text = "Requerido"; txt_recibe.update(); return
         if estado != "ENTREGADO" and not txt_motivo.value: txt_motivo.error_text = "Requerido"; txt_motivo.update(); return
         
-        # Validacion foto
         if estado == "ENTREGADO" and "jetpaq" not in state["proveedor"].lower() and not state["tiene_foto"]:
              page.snack_bar = ft.SnackBar(ft.Text("⚠️ FOTO OBLIGATORIA"), bgcolor="red"); page.snack_bar.open = True; page.update(); return
 
@@ -199,7 +207,6 @@ def main(page: ft.Page):
         txt_recibe.value = ""; txt_motivo.value = ""
         btn_foto.text = "📷 TOMAR FOTO"; btn_foto.bgcolor = "grey"; btn_foto.icon = ft.icons.CAMERA_ALT
 
-        # DETALLES
         detalles_view = ft.Column()
         conn = get_db_connection()
         if conn:
@@ -226,11 +233,14 @@ def main(page: ft.Page):
             ft.Container(height=20), ft.TextButton("VOLVER", on_click=lambda _: ir_a_principal())
         ]))
 
-    page.add(ft.Column([ft.Text("🚛", size=50), ft.Text("BIENVENIDO V68", size=30, weight="bold", color="black"), ft.Container(height=20), btn_inicio], horizontal_alignment="center"))
+    page.add(ft.Column([ft.Text("🚛", size=50), ft.Text("BIENVENIDO V69", size=30, weight="bold", color="black"), ft.Container(height=20), btn_inicio], horizontal_alignment="center"))
 
+# !!! ESTA LÍNEA ES EL ARREGLO MÁGICO !!!
+# Definimos "uploads" como la carpeta pública de subida
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8000))
-    ft.app(target=main, view=ft.AppView.WEB_BROWSER, port=port, host="0.0.0.0")
+    ft.app(target=main, view=ft.AppView.WEB_BROWSER, port=port, host="0.0.0.0", upload_dir="uploads")
+
 
 
 
