@@ -27,9 +27,9 @@ def get_db_connection():
     return None
 
 def main(page: ft.Page):
-    print(f"🚀 INICIANDO V64 (FIX OVERLAY + MAPA) - Flet Ver: {ft.version}")
+    print(f"🚀 INICIANDO V65 (CAMARA ETERNA) - Flet Ver: {ft.version}")
     
-    page.title = "Choferes V64"
+    page.title = "Choferes V65"
     page.bgcolor = "white"
     page.theme_mode = ft.ThemeMode.LIGHT 
     page.scroll = "auto"
@@ -44,12 +44,19 @@ def main(page: ft.Page):
     
     state = {"id": None, "guia": "", "proveedor": "", "tiene_foto": False, "ruta_foto": None}
 
-    # --- EMAIL ---
+    # ---------------------------------------------------------
+    # 1. CÁMARA GLOBAL (SE CREA UNA SOLA VEZ AQUI)
+    # ---------------------------------------------------------
+    # Creamos el FilePicker AL INICIO DE TODO. Nunca se borra.
+    file_picker = ft.FilePicker()
+    page.overlay.append(file_picker)
+    page.update() # Aseguramos que el celular sepa que existe
+
+    # ---------------------------------------------------------
+    # 2. EMAIL
+    # ---------------------------------------------------------
     def enviar_reporte_email_thread(destinatario_final, guia, ruta_imagen_servidor, proveedor_nombre):
-        if not BREVO_API_KEY: 
-            print("❌ No hay API KEY para enviar mail")
-            return
-            
+        if not BREVO_API_KEY: return
         email_proveedor = None
         conn = get_db_connection()
         if conn:
@@ -58,10 +65,7 @@ def main(page: ft.Page):
                 if res and res[0]: email_proveedor = res[0]
             except: pass
             finally: conn.close()
-            
-        if not email_proveedor: 
-            print("❌ Proveedor sin email")
-            return
+        if not email_proveedor: return
 
         adjuntos = []
         if ruta_imagen_servidor and os.path.exists(ruta_imagen_servidor):
@@ -70,8 +74,6 @@ def main(page: ft.Page):
                     encoded_string = base64.b64encode(image_file.read()).decode('utf-8')
                     adjuntos.append({"content": encoded_string, "name": f"remito_{guia}.jpg"})
             except: pass
-        else:
-            print("⚠️ No se encontró foto para adjuntar")
 
         url = "https://api.brevo.com/v3/smtp/email"
         payload = {
@@ -82,25 +84,17 @@ def main(page: ft.Page):
         }
         if adjuntos: payload["attachment"] = adjuntos
         headers = {"accept": "application/json", "api-key": BREVO_API_KEY, "content-type": "application/json"}
-        try: 
-            r = requests.post(url, json=payload, headers=headers)
-            print(f"📧 Mail status: {r.status_code}")
-        except Exception as e:
-            print(f"❌ Error enviando mail: {e}")
+        try: requests.post(url, json=payload, headers=headers)
+        except: pass
 
-    # --- NAVEGACION ---
+    # ---------------------------------------------------------
+    # 3. INTERFAZ
+    # ---------------------------------------------------------
     def abrir_mapa(domicilio, localidad):
         try:
-            full_address = f"{domicilio}, {localidad}"
-            q = urllib.parse.quote(full_address)
-            url_mapa = f"https://www.google.com/maps/search/?api=1&query={q}"
-            print(f"🗺️ Abriendo mapa: {url_mapa}")
-            page.launch_url(url_mapa)
-        except Exception as e:
-            print(f"❌ Error mapa: {e}")
-            page.snack_bar = ft.SnackBar(ft.Text("Error al abrir mapa"), bgcolor="red")
-            page.snack_bar.open = True
-            page.update()
+            q = urllib.parse.quote(f"{domicilio}, {localidad}")
+            page.launch_url(f"https://www.google.com/maps/search/?api=1&query={q}")
+        except: pass
 
     def conectar(e):
         btn_inicio.text = "Cargando..."; btn_inicio.disabled = True; page.update()
@@ -117,12 +111,8 @@ def main(page: ft.Page):
     btn_inicio = ft.ElevatedButton("CONECTAR", on_click=conectar, bgcolor="blue", color="white", height=50)
     dd_chofer = ft.Dropdown(label="Chofer", bgcolor="#f0f2f5", label_style=ft.TextStyle(color="black"))
     
-    # --- PANTALLAS ---
     def ir_a_principal():
-        # Limpiamos todo (incluyendo overlays viejos)
-        page.overlay.clear()
         page.clean()
-        
         lista_viajes = ft.Column(spacing=10)
         
         def cargar_ruta(e):
@@ -138,7 +128,6 @@ def main(page: ft.Page):
                     for row in rows:
                         id_op, guia, dest, dom, loc, bultos, est, prov = row
                         color_est = "blue" if est == "En Reparto" else "orange"
-                        # USAMOS variables locales para el lambda
                         card = ft.Container(bgcolor="white", padding=10, border=ft.border.all(1, "#ddd"), border_radius=8, content=ft.Column([
                                 ft.Row([ft.Text(dest[:25], weight="bold", color="black"), ft.Container(content=ft.Text(est[:10], color="white", size=10), bgcolor=color_est, padding=3, border_radius=3)], alignment="spaceBetween"),
                                 ft.Row([ft.Text("📍"), ft.Text(f"{dom}", size=12, color="#333", expand=True), ft.ElevatedButton("IR", on_click=lambda _,d=dom,l=loc: abrir_mapa(d,l))]),
@@ -151,14 +140,7 @@ def main(page: ft.Page):
             page.update()
 
         btn_buscar = ft.ElevatedButton("VER MIS VIAJES 🔍", on_click=cargar_ruta, bgcolor="green", color="white")
-        
-        page.add(ft.Column([
-            ft.Text("MI RUTA", size=18, weight="bold", color="black"), 
-            dd_chofer, 
-            btn_buscar, 
-            ft.Divider(), 
-            lista_viajes
-        ]))
+        page.add(ft.Column([ft.Text("MI RUTA", size=18, weight="bold", color="black"), dd_chofer, btn_buscar, ft.Divider(), lista_viajes]))
 
     def ir_a_gestion(id_op, guia, prov):
         state["id"] = id_op; state["guia"] = guia; state["proveedor"] = prov
@@ -170,10 +152,10 @@ def main(page: ft.Page):
         btn_confirmar = ft.ElevatedButton("CONFIRMAR ENTREGA ✅", bgcolor="green", color="white", width=300, height=50)
         btn_foto = ft.ElevatedButton("📷 TOMAR FOTO", bgcolor="grey", color="white", height=45, icon="camera_alt")
 
-        # --- LOGICA FOTO ---
-        def on_upload(e):
+        # --- RE-CONECTAR LA CÁMARA GLOBAL A ESTA PANTALLA ---
+        # Definimos qué hacer cuando ESTA gestión reciba una foto
+        def gestion_upload_result(e):
             if e.error:
-                print(f"Error upload: {e.error}")
                 btn_foto.text = "❌ Error"; btn_foto.bgcolor = "red"; btn_foto.update()
                 btn_confirmar.disabled = True; btn_confirmar.update()
             else:
@@ -182,24 +164,18 @@ def main(page: ft.Page):
                 btn_foto.text = "✅ FOTO LISTA"; btn_foto.bgcolor = "green"; btn_foto.icon = "check"; btn_foto.update()
                 btn_confirmar.disabled = False; btn_confirmar.update()
 
-        def on_pick(e):
+        def gestion_file_picked(e):
             if e.files:
                 btn_foto.text = "⏳ Subiendo..."; btn_foto.bgcolor = "orange"; btn_foto.disabled = True; btn_foto.update()
                 btn_confirmar.disabled = True; btn_confirmar.update()
-                fp.upload(e.files)
+                file_picker.upload(e.files)
 
-        # 1. Crear FP vacío
-        fp = ft.FilePicker()
-        # 2. Asignar funciones
-        fp.on_result = on_pick
-        fp.on_upload = on_upload
+        # ASIGNAMOS LAS FUNCIONES AL PICKER GLOBAL (EL ETERNO)
+        file_picker.on_result = gestion_file_picked
+        file_picker.on_upload = gestion_upload_result
         
-        # 3. CRITICO: LIMPIAR OVERLAY Y AGREGAR EL NUEVO
-        page.overlay.clear()
-        page.overlay.append(fp)
-        page.update() # IMPORTANTE: Refrescar para que Flet sepa que existe
-        
-        btn_foto.on_click = lambda _: fp.pick_files(allow_multiple=False, file_type=ft.FilePickerFileType.IMAGE)
+        # El botón usa el picker global
+        btn_foto.on_click = lambda _: file_picker.pick_files(allow_multiple=False, file_type=ft.FilePickerFileType.IMAGE)
 
         def guardar(estado):
             try:
@@ -223,7 +199,6 @@ def main(page: ft.Page):
                     conn.close()
 
                     if estado == "ENTREGADO" and state["tiene_foto"]:
-                        print("Enviando mail...")
                         t = threading.Thread(target=enviar_reporte_email_thread, args=(txt_recibe.value, state["guia"], state["ruta_foto"], state["proveedor"]))
                         t.start()
                         page.snack_bar = ft.SnackBar(ft.Text("✅ Guardado. Enviando correo..."), bgcolor="green")
@@ -234,7 +209,6 @@ def main(page: ft.Page):
                     page.snack_bar.open = True
                     page.update()
             except Exception as e:
-                print(f"Error guardar: {e}")
                 page.snack_bar = ft.SnackBar(ft.Text(f"Error: {e}"), bgcolor="red"); page.snack_bar.open = True; page.update()
 
         btn_confirmar.on_click = lambda _: guardar("ENTREGADO")
@@ -253,6 +227,8 @@ def main(page: ft.Page):
             finally: conn.close()
 
         page.clean()
+        # YA NO AGREGAMOS EL PICKER AQUI, PORQUE YA EXISTE DESDE EL PRINCIPIO
+        
         page.add(ft.Column([
             ft.Text(f"Gestionar: {guia}", size=18, weight="bold", color="black"),
             ft.Text(f"Cliente: {prov}", size=14, color="grey"),
@@ -264,7 +240,7 @@ def main(page: ft.Page):
             ft.Container(height=20), ft.TextButton("VOLVER", on_click=lambda _: ir_a_principal())
         ]))
 
-    page.add(ft.Column([ft.Text("🚛", size=50), ft.Text("BIENVENIDO V64", size=30, weight="bold", color="black"), ft.Container(height=20), btn_inicio], horizontal_alignment="center"))
+    page.add(ft.Column([ft.Text("🚛", size=50), ft.Text("BIENVENIDO V65", size=30, weight="bold", color="black"), ft.Container(height=20), btn_inicio], horizontal_alignment="center"))
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8000))
