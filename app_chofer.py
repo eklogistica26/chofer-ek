@@ -27,9 +27,9 @@ def get_db_connection():
     return None
 
 def main(page: ft.Page):
-    print(f"🚀 INICIANDO V63 (FIX GESTION) - Flet Ver: {ft.version}")
+    print(f"🚀 INICIANDO V64 (FIX OVERLAY + MAPA) - Flet Ver: {ft.version}")
     
-    page.title = "Choferes V63"
+    page.title = "Choferes V64"
     page.bgcolor = "white"
     page.theme_mode = ft.ThemeMode.LIGHT 
     page.scroll = "auto"
@@ -46,7 +46,10 @@ def main(page: ft.Page):
 
     # --- EMAIL ---
     def enviar_reporte_email_thread(destinatario_final, guia, ruta_imagen_servidor, proveedor_nombre):
-        if not BREVO_API_KEY: return
+        if not BREVO_API_KEY: 
+            print("❌ No hay API KEY para enviar mail")
+            return
+            
         email_proveedor = None
         conn = get_db_connection()
         if conn:
@@ -55,7 +58,10 @@ def main(page: ft.Page):
                 if res and res[0]: email_proveedor = res[0]
             except: pass
             finally: conn.close()
-        if not email_proveedor: return
+            
+        if not email_proveedor: 
+            print("❌ Proveedor sin email")
+            return
 
         adjuntos = []
         if ruta_imagen_servidor and os.path.exists(ruta_imagen_servidor):
@@ -64,6 +70,8 @@ def main(page: ft.Page):
                     encoded_string = base64.b64encode(image_file.read()).decode('utf-8')
                     adjuntos.append({"content": encoded_string, "name": f"remito_{guia}.jpg"})
             except: pass
+        else:
+            print("⚠️ No se encontró foto para adjuntar")
 
         url = "https://api.brevo.com/v3/smtp/email"
         payload = {
@@ -74,16 +82,25 @@ def main(page: ft.Page):
         }
         if adjuntos: payload["attachment"] = adjuntos
         headers = {"accept": "application/json", "api-key": BREVO_API_KEY, "content-type": "application/json"}
-        try: requests.post(url, json=payload, headers=headers)
-        except: pass
+        try: 
+            r = requests.post(url, json=payload, headers=headers)
+            print(f"📧 Mail status: {r.status_code}")
+        except Exception as e:
+            print(f"❌ Error enviando mail: {e}")
 
     # --- NAVEGACION ---
     def abrir_mapa(domicilio, localidad):
         try:
-            q = urllib.parse.quote(f"{domicilio}, {localidad}")
-            page.launch_url(f"https://www.google.com/maps/search/?api=1&query={q}")
+            full_address = f"{domicilio}, {localidad}"
+            q = urllib.parse.quote(full_address)
+            url_mapa = f"https://www.google.com/maps/search/?api=1&query={q}"
+            print(f"🗺️ Abriendo mapa: {url_mapa}")
+            page.launch_url(url_mapa)
         except Exception as e:
-            print(f"Error mapa: {e}")
+            print(f"❌ Error mapa: {e}")
+            page.snack_bar = ft.SnackBar(ft.Text("Error al abrir mapa"), bgcolor="red")
+            page.snack_bar.open = True
+            page.update()
 
     def conectar(e):
         btn_inicio.text = "Cargando..."; btn_inicio.disabled = True; page.update()
@@ -102,7 +119,10 @@ def main(page: ft.Page):
     
     # --- PANTALLAS ---
     def ir_a_principal():
+        # Limpiamos todo (incluyendo overlays viejos)
+        page.overlay.clear()
         page.clean()
+        
         lista_viajes = ft.Column(spacing=10)
         
         def cargar_ruta(e):
@@ -118,6 +138,7 @@ def main(page: ft.Page):
                     for row in rows:
                         id_op, guia, dest, dom, loc, bultos, est, prov = row
                         color_est = "blue" if est == "En Reparto" else "orange"
+                        # USAMOS variables locales para el lambda
                         card = ft.Container(bgcolor="white", padding=10, border=ft.border.all(1, "#ddd"), border_radius=8, content=ft.Column([
                                 ft.Row([ft.Text(dest[:25], weight="bold", color="black"), ft.Container(content=ft.Text(est[:10], color="white", size=10), bgcolor=color_est, padding=3, border_radius=3)], alignment="spaceBetween"),
                                 ft.Row([ft.Text("📍"), ft.Text(f"{dom}", size=12, color="#333", expand=True), ft.ElevatedButton("IR", on_click=lambda _,d=dom,l=loc: abrir_mapa(d,l))]),
@@ -147,12 +168,12 @@ def main(page: ft.Page):
         txt_motivo = ft.TextField(label="Motivo (No entregado)", border_color="grey", label_style=ft.TextStyle(color="black"))
         
         btn_confirmar = ft.ElevatedButton("CONFIRMAR ENTREGA ✅", bgcolor="green", color="white", width=300, height=50)
-        # Usamos string para el icono, más seguro
         btn_foto = ft.ElevatedButton("📷 TOMAR FOTO", bgcolor="grey", color="white", height=45, icon="camera_alt")
 
-        # --- FIX: LOGICA FILEPICKER MODERNA ---
+        # --- LOGICA FOTO ---
         def on_upload(e):
             if e.error:
+                print(f"Error upload: {e.error}")
                 btn_foto.text = "❌ Error"; btn_foto.bgcolor = "red"; btn_foto.update()
                 btn_confirmar.disabled = True; btn_confirmar.update()
             else:
@@ -167,11 +188,16 @@ def main(page: ft.Page):
                 btn_confirmar.disabled = True; btn_confirmar.update()
                 fp.upload(e.files)
 
-        # 1. Crear vacío (SIN ARGUMENTOS)
+        # 1. Crear FP vacío
         fp = ft.FilePicker()
-        # 2. Asignar funciones después
+        # 2. Asignar funciones
         fp.on_result = on_pick
         fp.on_upload = on_upload
+        
+        # 3. CRITICO: LIMPIAR OVERLAY Y AGREGAR EL NUEVO
+        page.overlay.clear()
+        page.overlay.append(fp)
+        page.update() # IMPORTANTE: Refrescar para que Flet sepa que existe
         
         btn_foto.on_click = lambda _: fp.pick_files(allow_multiple=False, file_type=ft.FilePickerFileType.IMAGE)
 
@@ -197,6 +223,7 @@ def main(page: ft.Page):
                     conn.close()
 
                     if estado == "ENTREGADO" and state["tiene_foto"]:
+                        print("Enviando mail...")
                         t = threading.Thread(target=enviar_reporte_email_thread, args=(txt_recibe.value, state["guia"], state["ruta_foto"], state["proveedor"]))
                         t.start()
                         page.snack_bar = ft.SnackBar(ft.Text("✅ Guardado. Enviando correo..."), bgcolor="green")
@@ -207,6 +234,7 @@ def main(page: ft.Page):
                     page.snack_bar.open = True
                     page.update()
             except Exception as e:
+                print(f"Error guardar: {e}")
                 page.snack_bar = ft.SnackBar(ft.Text(f"Error: {e}"), bgcolor="red"); page.snack_bar.open = True; page.update()
 
         btn_confirmar.on_click = lambda _: guardar("ENTREGADO")
@@ -225,9 +253,6 @@ def main(page: ft.Page):
             finally: conn.close()
 
         page.clean()
-        # IMPORTANTE: Agregar FP (invisible) a la pagina antes de usarlo
-        page.add(ft.Row([fp], visible=False)) 
-        
         page.add(ft.Column([
             ft.Text(f"Gestionar: {guia}", size=18, weight="bold", color="black"),
             ft.Text(f"Cliente: {prov}", size=14, color="grey"),
@@ -239,7 +264,7 @@ def main(page: ft.Page):
             ft.Container(height=20), ft.TextButton("VOLVER", on_click=lambda _: ir_a_principal())
         ]))
 
-    page.add(ft.Column([ft.Text("🚛", size=50), ft.Text("BIENVENIDO V63", size=30, weight="bold", color="black"), ft.Container(height=20), btn_inicio], horizontal_alignment="center"))
+    page.add(ft.Column([ft.Text("🚛", size=50), ft.Text("BIENVENIDO V64", size=30, weight="bold", color="black"), ft.Container(height=20), btn_inicio], horizontal_alignment="center"))
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8000))
