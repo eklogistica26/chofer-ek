@@ -28,14 +28,15 @@ def get_db_connection():
     return None
 
 def main(page: ft.Page):
-    print(f"🚀 INICIANDO V58 (ICONOS DE TEXTO) - Flet Ver: {ft.version}")
+    print(f"🚀 INICIANDO V59 (PUNTO MEDIO 0.62.0) - Flet Ver: {ft.version}")
     
-    page.title = "Choferes EK - V58"
+    # EL TITULO CAMBIA PARA QUE SEPAS SI SE ACTUALIZO
+    page.title = "Choferes V59 - RESET"
     page.bgcolor = "white"
-    page.theme_mode = ft.ThemeMode.LIGHT 
+    page.theme_mode = "light" 
     page.scroll = "auto"
     
-    # --- CONFIGURACIÓN CARPETA SUBIDA ---
+    # --- CARPETA UPLOADS ---
     basedir = os.path.abspath(os.getcwd())
     upload_dir = os.path.join(basedir, "uploads")
     if os.path.exists(upload_dir):
@@ -104,16 +105,15 @@ def main(page: ft.Page):
         except: pass
 
     # ---------------------------------------------------------
-    # 2. CÁMARA (SIN CONSTANTES DE ICONOS)
+    # 2. CÁMARA (COMPATIBILIDAD 0.62.0)
     # ---------------------------------------------------------
     
     btn_confirmar_global = ft.ElevatedButton("CONFIRMAR ENTREGA ✅", bgcolor="green", color="white", width=300, height=50)
 
-    # Funciones del FilePicker
-    # IMPORTANTE: No usamos etiquetas de tipo (ft.FilePickerUploadEvent) para evitar errores de importación
+    # Funciones SIN etiquetas de tipo para evitar errores
     def on_upload_result(e):
         if e.error:
-            btn_foto.text = "❌ Error al subir"
+            btn_foto.text = "❌ Error"
             btn_foto.bgcolor = "red"
             btn_foto.update()
             
@@ -127,8 +127,7 @@ def main(page: ft.Page):
         
         btn_foto.text = "✅ FOTO LISTA"
         btn_foto.bgcolor = "green"
-        # --- CAMBIO CRITICO: USAMOS TEXTO, NO CONSTANTE ---
-        btn_foto.icon = "check" 
+        btn_foto.icon = "check"
         btn_foto.disabled = False
         btn_foto.update()
         
@@ -153,12 +152,11 @@ def main(page: ft.Page):
         else:
             print("Cancelado")
 
-    # --- INICIALIZACIÓN SEGURA ---
-    # 1. Crear vacío
+    # CREACIÓN SEGURA
     file_picker = ft.FilePicker()
-    # 2. Asignar página (Overlay)
     page.overlay.append(file_picker)
-    # 3. Asignar eventos DESPUÉS
+    page.update() # Forzar renderizado
+    
     file_picker.on_result = on_foto_seleccionada
     file_picker.on_upload = on_upload_result
 
@@ -182,9 +180,9 @@ def main(page: ft.Page):
         page.update()
 
     btn_inicio = ft.ElevatedButton("CONECTAR", on_click=conectar, bgcolor="blue", color="white", height=50)
-    vista_inicio = ft.Column([ft.Text("🚛", size=50), ft.Text("BIENVENIDO V58", size=30, weight="bold", color="black"), ft.Container(height=20), btn_inicio], horizontal_alignment="center")
+    vista_inicio = ft.Column([ft.Text("🚛", size=50), ft.Text("BIENVENIDO V59", size=30, weight="bold", color="black"), ft.Container(height=20), btn_inicio], horizontal_alignment="center")
 
-    dd_chofer = ft.Dropdown(label="Chofer", bgcolor="#f0f2f5", label_style=ft.TextStyle(color="black"))
+    dd_chofer = ft.Dropdown(label="Chofer", bgcolor="#f0f2f5")
     lista_viajes = ft.Column(spacing=10)
 
     def cargar_ruta(e):
@@ -217,16 +215,15 @@ def main(page: ft.Page):
         page.clean(); page.add(ft.Column([ft.Text("MI RUTA", size=18, weight="bold", color="black"), dd_chofer, btn_buscar, ft.Divider(), lista_viajes]))
 
     # --- GESTION ---
-    txt_recibe = ft.TextField(label="Quien recibe", border_color="grey", label_style=ft.TextStyle(color="black"))
-    txt_motivo = ft.TextField(label="Motivo (No entregado)", border_color="grey", label_style=ft.TextStyle(color="black"))
+    txt_recibe = ft.TextField(label="Quien recibe", border_color="grey")
+    txt_motivo = ft.TextField(label="Motivo (No entregado)", border_color="grey")
     
     # Boton de cámara
     btn_foto = ft.ElevatedButton(
         "📷 TOMAR FOTO", 
         bgcolor="grey", color="white", height=45,
-        # --- CAMBIO CRITICO: USAMOS TEXTO, NO CONSTANTE ---
         icon="camera_alt", 
-        on_click=lambda _: file_picker.pick_files(allow_multiple=False, file_type=ft.FilePickerFileType.IMAGE)
+        on_click=lambda _: file_picker.pick_files(allow_multiple=False, file_type="image")
     )
 
     def guardar(estado):
@@ -270,11 +267,7 @@ def main(page: ft.Page):
     def ir_a_gestion(id_op, guia, prov):
         state["id"] = id_op; state["guia"] = guia; state["proveedor"] = prov; state["tiene_foto"] = False; state["ruta_foto"] = None
         txt_recibe.value = ""; txt_motivo.value = ""
-        # Reset visual del botón de foto
-        btn_foto.text = "📷 TOMAR FOTO"
-        btn_foto.bgcolor = "grey"
-        btn_foto.icon = "camera_alt" # --- CAMBIO CRITICO ---
-        btn_foto.disabled = False
+        btn_foto.text = "📷 TOMAR FOTO"; btn_foto.bgcolor = "grey"; btn_foto.icon = "camera_alt"; btn_foto.disabled = False
         
         btn_confirmar_global.disabled = False
         btn_confirmar_global.text = "CONFIRMAR ENTREGA ✅"
@@ -314,6 +307,7 @@ def main(page: ft.Page):
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8000))
     ft.app(target=main, view=ft.AppView.WEB_BROWSER, port=port, host="0.0.0.0")
+
 
 
 
