@@ -1,245 +1,283 @@
-import flet as ft
+from flask import Flask, request, render_template_string, redirect, url_for, session
 from sqlalchemy import create_engine, text
 from datetime import datetime
 import os
-import requests
 import base64
-import threading 
-import shutil
-import urllib.parse 
+import requests
 
-# --- CONFIGURACIÓN DB ---
+app = Flask(__name__)
+app.secret_key = "secreto_super_seguro_choferes_ek"
+
+# --- CONFIGURACIÓN DB Y EMAIL ---
 DATABASE_URL = "postgresql://postgres.gwdypvvyjuqzvpbbzchk:Eklogisticasajetpaq@aws-0-us-west-2.pooler.supabase.com:6543/postgres"
 BREVO_API_KEY = os.environ.get("BREVO_API_KEY", "") 
 EMAIL_REMITENTE = "eklogistica19@gmail.com" 
 
-engine = None
-try:
-    engine = create_engine(DATABASE_URL, pool_pre_ping=True, pool_recycle=3600)
-except:
-    pass
+# Configurar carpeta de subida
+BASE_DIR = os.path.abspath(os.path.dirname(__file__))
+UPLOAD_FOLDER = os.path.join(BASE_DIR, 'uploads')
+if not os.path.exists(UPLOAD_FOLDER):
+    os.makedirs(UPLOAD_FOLDER)
 
-def get_db_connection():
+app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
+
+# --- DB CONNECTION ---
+def get_db():
     try:
-        if engine: return engine.connect()
+        engine = create_engine(DATABASE_URL, pool_pre_ping=True)
+        return engine.connect()
     except:
         return None
-    return None
 
-def main(page: ft.Page):
-    print("🚀 INICIANDO V69 (FLET 0.22.1 + FIX UPLOAD DIR)...")
+# --- EMAIL ---
+def enviar_email(destinatario, guia, ruta_foto, proveedor):
+    if not BREVO_API_KEY: return
+    conn = get_db()
+    email_prov = None
+    if conn:
+        try:
+            res = conn.execute(text("SELECT email_reportes FROM clientes_principales WHERE nombre = :n"), {"n": proveedor}).fetchone()
+            if res: email_prov = res[0]
+        except: pass
+        finally: conn.close()
     
-    page.title = "Choferes V69"
-    page.bgcolor = "white"
-    page.theme_mode = "light" 
-    page.scroll = "auto"
-    
-    # 1. Configurar ruta ABSOLUTA para las fotos
-    basedir = os.path.abspath(os.getcwd())
-    upload_dir = os.path.join(basedir, "uploads")
-    
-    # Crear carpeta si no existe
-    if not os.path.exists(upload_dir):
-        os.makedirs(upload_dir)
-        
-    print(f"📂 Carpeta de fotos configurada en: {upload_dir}")
+    if not email_prov: return
 
-    state = {"id": None, "guia": "", "proveedor": "", "tiene_foto": False, "ruta_foto": None}
-
-    # --- EMAIL ---
-    def enviar_reporte_email_thread(destinatario_final, guia, ruta_imagen_servidor, proveedor_nombre):
-        if not BREVO_API_KEY: return
-        email_proveedor = None
-        conn = get_db_connection()
-        if conn:
-            try:
-                res = conn.execute(text("SELECT email_reportes FROM clientes_principales WHERE nombre = :n"), {"n": proveedor_nombre}).fetchone()
-                if res and res[0]: email_proveedor = res[0]
-            except: pass
-            finally: conn.close()
-        if not email_proveedor: return
-
-        adjuntos = []
-        # VERIFICACIÓN DE FOTO ANTES DE ENVIAR
-        if ruta_imagen_servidor and os.path.exists(ruta_imagen_servidor):
-            print(f"✅ Foto encontrada para adjuntar: {ruta_imagen_servidor}")
-            try:
-                with open(ruta_imagen_servidor, "rb") as image_file:
-                    encoded_string = base64.b64encode(image_file.read()).decode('utf-8')
-                    adjuntos.append({"content": encoded_string, "name": f"remito_{guia}.jpg"})
-            except Exception as e:
-                print(f"❌ Error leyendo foto: {e}")
-        else:
-            print(f"⚠️ No se encontró la foto en: {ruta_imagen_servidor}")
-
-        url = "https://api.brevo.com/v3/smtp/email"
-        payload = {
-            "sender": {"name": "Logistica EK", "email": EMAIL_REMITENTE},
-            "to": [{"email": email_proveedor}],
-            "subject": f"ENTREGA REALIZADA - Guía: {guia}",
-            "htmlContent": f"<html><body><h3>Entrega Exitosa</h3><p>Guía: {guia}<br>Recibió: {destinatario_final}</p></body></html>"
-        }
-        if adjuntos: payload["attachment"] = adjuntos
-        headers = {"accept": "application/json", "api-key": BREVO_API_KEY, "content-type": "application/json"}
-        try: requests.post(url, json=payload, headers=headers)
+    # Preparar adjunto
+    adjuntos = []
+    if ruta_foto and os.path.exists(ruta_foto):
+        try:
+            with open(ruta_foto, "rb") as f:
+                content = base64.b64encode(f.read()).decode('utf-8')
+                adjuntos.append({"content": content, "name": f"remito_{guia}.jpg"})
         except: pass
 
-    # --- CAMARA ---
-    def on_upload_result(e: ft.FilePickerUploadEvent):
-        if e.error:
-            print(f"❌ Error Flet Upload: {e.error}")
-            btn_foto.text = "Error al subir"
-            btn_foto.bgcolor = "red"
-            btn_foto.update()
-            return
+    url = "https://api.brevo.com/v3/smtp/email"
+    payload = {
+        "sender": {"name": "Logistica EK", "email": EMAIL_REMITENTE},
+        "to": [{"email": email_prov}],
+        "subject": f"ENTREGA REALIZADA - Guía: {guia}",
+        "htmlContent": f"<html><body><h3>Entrega Exitosa</h3><p>Guía: {guia}<br>Recibió: {destinatario}</p></body></html>"
+    }
+    if adjuntos: payload["attachment"] = adjuntos
+    headers = {"accept": "application/json", "api-key": BREVO_API_KEY, "content-type": "application/json"}
+    try: requests.post(url, json=payload, headers=headers)
+    except: pass
 
-        # Construimos la ruta manual para estar seguros
-        nombre_archivo = e.file_name
-        ruta_final = os.path.join(upload_dir, nombre_archivo)
-        
-        state["tiene_foto"] = True
-        state["ruta_foto"] = ruta_final
-        print(f"✅ Foto subida exitosamente a: {ruta_final}")
-        
-        btn_foto.text = "✅ FOTO LISTA"
-        btn_foto.bgcolor = "green"
-        btn_foto.icon = ft.icons.CHECK
-        btn_foto.update()
+# --- ESTILOS CSS (Diseño bonito tipo App) ---
+CSS = """
+<style>
+    body { font-family: sans-serif; background: #f4f4f4; margin: 0; padding: 0; }
+    .header { background: #2196F3; color: white; padding: 20px; text-align: center; }
+    .container { padding: 15px; max-width: 600px; margin: 0 auto; }
+    .card { background: white; padding: 15px; margin-bottom: 15px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+    .btn { display: block; width: 100%; padding: 12px; border: none; border-radius: 5px; font-size: 16px; cursor: pointer; text-align: center; text-decoration: none; box-sizing: border-box; margin-top: 10px; }
+    .btn-blue { background: #2196F3; color: white; }
+    .btn-green { background: #4CAF50; color: white; }
+    .btn-red { background: #f44336; color: white; }
+    .btn-grey { background: #757575; color: white; }
+    input, select { width: 100%; padding: 10px; margin-top: 5px; border: 1px solid #ddd; border-radius: 4px; box-sizing: border-box; }
+    label { font-weight: bold; color: #333; margin-top: 10px; display: block; }
+    .tag { padding: 4px 8px; border-radius: 4px; font-size: 12px; color: white; float: right; }
+    .tag-blue { background: #2196F3; } .tag-orange { background: #ff9800; }
+    .file-upload { border: 2px dashed #ddd; padding: 20px; text-align: center; margin-top: 10px; border-radius: 5px; }
+</style>
+"""
 
-    def on_foto_seleccionada(e: ft.FilePickerResultEvent):
-        if e.files:
-            btn_foto.text = "⏳ Subiendo..."
-            btn_foto.bgcolor = "orange"
-            btn_foto.update()
-            # Subir a la carpeta configurada
-            file_picker.upload(e.files)
+# --- RUTAS ---
 
-    file_picker = ft.FilePicker(on_result=on_foto_seleccionada, on_upload=on_upload_result)
-    page.overlay.append(file_picker)
-
-    # --- INTERFAZ ---
-    def abrir_mapa(domicilio, localidad):
-        q = urllib.parse.quote(f"{domicilio}, {localidad}")
-        page.launch_url(f"https://www.google.com/maps/search/?api=1&query={q}")
-
-    def conectar(e):
-        btn_inicio.text = "Cargando..."; btn_inicio.disabled = True; page.update()
-        conn = get_db_connection()
-        if conn:
-            try:
-                res = conn.execute(text("SELECT nombre FROM choferes ORDER BY nombre")).fetchall()
-                dd_chofer.options = [ft.dropdown.Option(r[0]) for r in res]
-                ir_a_principal()
-            except: btn_inicio.text = "Error DB"; btn_inicio.disabled = False
-        else: btn_inicio.text = "Error Conexión"; btn_inicio.disabled = False
-        page.update()
-
-    btn_inicio = ft.ElevatedButton("CONECTAR", on_click=conectar, bgcolor="blue", color="white", height=50)
-    dd_chofer = ft.Dropdown(label="Chofer", bgcolor="#f0f2f5")
-    lista_viajes = ft.Column(spacing=10)
-
-    def cargar_ruta(e):
-        chofer = dd_chofer.value
-        if not chofer: return
-        lista_viajes.controls.clear(); lista_viajes.controls.append(ft.Text("Buscando...", color="blue")); page.update()
-        conn = get_db_connection(); lista_viajes.controls.clear()
-        if conn:
-            try:
-                sql = text("SELECT id, guia_remito, destinatario, domicilio, localidad, bultos, estado, proveedor FROM operaciones WHERE chofer_asignado = :c AND estado IN ('En Reparto', 'Pendiente') ORDER BY id ASC")
-                rows = conn.execute(sql, {"c": chofer}).fetchall()
-                if not rows: lista_viajes.controls.append(ft.Text("✅ Sin viajes pendientes", color="green"))
-                for row in rows:
-                    id_op, guia, dest, dom, loc, bultos, est, prov = row
-                    color_est = "blue" if est == "En Reparto" else "orange"
-                    card = ft.Container(bgcolor="white", padding=10, border=ft.border.all(1, "#ddd"), border_radius=8, content=ft.Column([
-                            ft.Row([ft.Text(dest[:25], weight="bold", color="black"), ft.Container(content=ft.Text(est[:10], color="white", size=10), bgcolor=color_est, padding=3, border_radius=3)], alignment="spaceBetween"),
-                            ft.Row([ft.Text("📍"), ft.Text(f"{dom}", size=12, color="#333", expand=True), ft.ElevatedButton("IR", on_click=lambda _,d=dom,l=loc: abrir_mapa(d,l))]),
-                            ft.Text(f"Guía: {guia} | Bultos: {bultos}", size=12, color="black"),
-                            ft.ElevatedButton("GESTIONAR", bgcolor="blue", color="white", width=280, on_click=lambda _,x=id_op,g=guia,p=prov: ir_a_gestion(x,g,p))
-                        ]))
-                    lista_viajes.controls.append(card)
-            except: pass
-            finally: conn.close()
-        page.update()
-
-    btn_buscar = ft.ElevatedButton("VER MIS VIAJES 🔍", on_click=cargar_ruta, bgcolor="green", color="white")
-
-    def ir_a_principal():
-        page.clean()
-        page.add(ft.Column([ft.Text("MI RUTA", size=18, weight="bold", color="black"), dd_chofer, btn_buscar, ft.Divider(), lista_viajes]))
-
-    txt_recibe = ft.TextField(label="Quien recibe", border_color="grey")
-    txt_motivo = ft.TextField(label="Motivo (No entregado)", border_color="grey")
+@app.route('/', methods=['GET', 'POST'])
+def index():
+    if request.method == 'POST':
+        session['chofer'] = request.form.get('chofer')
+        return redirect(url_for('lista_viajes'))
     
-    btn_foto = ft.ElevatedButton("📷 TOMAR FOTO", bgcolor="grey", color="white", height=45, icon=ft.icons.CAMERA_ALT, 
-        on_click=lambda _: file_picker.pick_files(allow_multiple=False, file_type="image"))
-
-    def guardar(estado):
-        id_op = state["id"]
-        if not id_op: return
-        if estado == "ENTREGADO" and not txt_recibe.value: txt_recibe.error_text = "Requerido"; txt_recibe.update(); return
-        if estado != "ENTREGADO" and not txt_motivo.value: txt_motivo.error_text = "Requerido"; txt_motivo.update(); return
+    conn = get_db()
+    choferes = []
+    if conn:
+        try:
+            res = conn.execute(text("SELECT nombre FROM choferes ORDER BY nombre")).fetchall()
+            choferes = [r[0] for r in res]
+        except: pass
+        finally: conn.close()
         
-        if estado == "ENTREGADO" and "jetpaq" not in state["proveedor"].lower() and not state["tiene_foto"]:
-             page.snack_bar = ft.SnackBar(ft.Text("⚠️ FOTO OBLIGATORIA"), bgcolor="red"); page.snack_bar.open = True; page.update(); return
+    html = f"""
+    {CSS}
+    <div class="header"><h1>🚛 Choferes EK</h1></div>
+    <div class="container">
+        <div class="card">
+            <h3>Bienvenido</h3>
+            <form method="POST">
+                <label>Selecciona tu nombre:</label>
+                <select name="chofer" required>
+                    <option value="">-- Seleccionar --</option>
+                    {"".join([f'<option value="{c}">{c}</option>' for c in choferes])}
+                </select>
+                <button type="submit" class="btn btn-blue">CONECTAR</button>
+            </form>
+        </div>
+    </div>
+    """
+    return render_template_string(html)
 
-        det = f"Recibio: {txt_recibe.value}" if estado == "ENTREGADO" else f"Motivo: {txt_motivo.value}"
-        if state["tiene_foto"]: det += " [CON FOTO]"
+@app.route('/viajes')
+def lista_viajes():
+    chofer = session.get('chofer')
+    if not chofer: return redirect(url_for('index'))
+    
+    conn = get_db()
+    viajes = []
+    if conn:
+        try:
+            sql = text("SELECT id, guia_remito, destinatario, domicilio, localidad, bultos, estado, proveedor FROM operaciones WHERE chofer_asignado = :c AND estado IN ('En Reparto', 'Pendiente') ORDER BY id ASC")
+            viajes = conn.execute(sql, {"c": chofer}).fetchall()
+        except: pass
+        finally: conn.close()
+        
+    cards_html = ""
+    if not viajes:
+        cards_html = "<div class='card' style='text-align:center; color:green;'>✅ Sin viajes pendientes</div>"
+    else:
+        for v in viajes:
+            color = "tag-blue" if v[6] == "En Reparto" else "tag-orange"
+            # MAPA LINK
+            q = f"{v[3]}, {v[4]}"
+            mapa_url = f"https://www.google.com/maps/search/?api=1&query={q}"
+            
+            cards_html += f"""
+            <div class="card">
+                <span class="tag {color}">{v[6]}</span>
+                <h3>{v[2]}</h3>
+                <p>📍 {v[3]} ({v[4]})</p>
+                <p>📦 Guía: <b>{v[1]}</b> | Bultos: {v[5]}</p>
+                <div style="display:flex; gap:5px;">
+                    <a href="{mapa_url}" target="_blank" class="btn btn-grey" style="flex:1;">🗺️ MAPA</a>
+                    <a href="/gestion/{v[0]}" class="btn btn-blue" style="flex:2;">GESTIONAR</a>
+                </div>
+            </div>
+            """
+            
+    html = f"""
+    {CSS}
+    <div class="header">
+        <h2>Hola, {chofer}</h2>
+        <a href="/" style="color:white; font-size:12px;">(Cambiar)</a>
+    </div>
+    <div class="container">
+        {cards_html}
+        <br>
+        <a href="/viajes" class="btn btn-green">🔄 ACTUALIZAR</a>
+    </div>
+    """
+    return render_template_string(html)
 
-        conn = get_db_connection()
+@app.route('/gestion/<int:id_op>', methods=['GET', 'POST'])
+def gestion(id_op):
+    chofer = session.get('chofer')
+    if not chofer: return redirect(url_for('index'))
+    
+    conn = get_db()
+    op = None
+    if conn:
+        try:
+            sql = text("SELECT guia_remito, destinatario, domicilio, localidad, celular, tipo_urgencia, tipo_carga, es_contra_reembolso, monto_recaudacion, info_intercambio, proveedor FROM operaciones WHERE id = :i")
+            op = conn.execute(sql, {"i": id_op}).fetchone()
+        except: pass
+        finally: conn.close()
+        
+    if not op: return "Error: Viaje no encontrado"
+
+    if request.method == 'POST':
+        estado = request.form.get('estado')
+        
+        # PROCESAR SUBIDA DE FOTO
+        ruta_foto = None
+        tiene_foto = False
+        archivo = request.files.get('foto')
+        if archivo and archivo.filename != '':
+            filename = f"foto_{id_op}_{int(datetime.now().timestamp())}.jpg"
+            ruta_foto = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+            archivo.save(ruta_foto)
+            tiene_foto = True
+            
+        recibe = request.form.get('recibe', '')
+        motivo = request.form.get('motivo', '')
+        
+        # Validaciones
+        if estado == "ENTREGADO":
+            if not recibe: return "ERROR: Falta quien recibe"
+            # JetPaq rule
+            if "jetpaq" not in op[10].lower() and not tiene_foto:
+                return "ERROR: FOTO OBLIGATORIA (Salvo JetPaq) - Vuelve atrás e intentalo."
+
+        detalle = f"Recibio: {recibe}" if estado == "ENTREGADO" else f"Motivo: {motivo}"
+        if tiene_foto: detalle += " [CON FOTO]"
+        
+        # GUARDAR DB
+        conn = get_db()
         if conn:
             try:
                 conn.execute(text("UPDATE operaciones SET estado=:e, fecha_entrega=:f WHERE id=:i"), {"e": estado, "f": datetime.now(), "i": id_op})
-                conn.execute(text("INSERT INTO historial_movimientos (operacion_id, usuario, accion, detalle, fecha_hora) VALUES (:o, :u, 'APP', :d, :f)"), {"o": id_op, "u": dd_chofer.value, "d": det, "f": datetime.now()})
+                conn.execute(text("INSERT INTO historial_movimientos (operacion_id, usuario, accion, detalle, fecha_hora) VALUES (:o, :u, 'APP', :d, :f)"), {"o": id_op, "u": chofer, "d": detalle, "f": datetime.now()})
                 conn.commit()
-                if estado == "ENTREGADO" and state["tiene_foto"]:
-                    t = threading.Thread(target=enviar_reporte_email_thread, args=(txt_recibe.value, state["guia"], state["ruta_foto"], state["proveedor"]))
-                    t.start()
-                    page.snack_bar = ft.SnackBar(ft.Text("✅ Guardado. Enviando correo..."), bgcolor="green")
-                else: page.snack_bar = ft.SnackBar(ft.Text("✅ Guardado"), bgcolor="green")
-                ir_a_principal(); cargar_ruta(None); page.snack_bar.open = True; page.update()
-            except: pass
+            except Exception as e:
+                return f"Error DB: {e}"
             finally: conn.close()
+            
+        # ENVIAR EMAIL
+        if estado == "ENTREGADO" and tiene_foto:
+            enviar_email(recibe, op[0], ruta_foto, op[10])
+            
+        return redirect(url_for('lista_viajes'))
 
-    def ir_a_gestion(id_op, guia, prov):
-        state["id"] = id_op; state["guia"] = guia; state["proveedor"] = prov
-        state["tiene_foto"] = False; state["ruta_foto"] = None
-        txt_recibe.value = ""; txt_motivo.value = ""
-        btn_foto.text = "📷 TOMAR FOTO"; btn_foto.bgcolor = "grey"; btn_foto.icon = ft.icons.CAMERA_ALT
+    # RENDERIZAR FORMULARIO
+    cobranza_html = ""
+    if op[7]: # es_contra_reembolso
+        cobranza_html = f"<div style='background:#ffebee; padding:10px; border-radius:5px; margin-bottom:10px; border:1px solid red;'>💰 <b>COBRAR: $ {op[8]}</b><br>📝 {op[9]}</div>"
 
-        detalles_view = ft.Column()
-        conn = get_db_connection()
-        if conn:
-            try:
-                sql_det = text("SELECT celular, tipo_urgencia, tipo_carga, es_contra_reembolso, monto_recaudacion, info_intercambio, destinatario, domicilio, localidad FROM operaciones WHERE id = :i")
-                res = conn.execute(sql_det, {"i": id_op}).fetchone()
-                if res:
-                    cel, urg, tipo, es_cr, monto_cr, info_cr, dest, dom, loc = res
-                    info_pago = f"💰 COBRAR: $ {monto_cr}\n📝 {info_cr}" if es_cr else ""
-                    detalles_view.controls = [ft.Container(bgcolor="#e3f2fd", padding=10, border_radius=5, content=ft.Column([ft.Text(f"👤 {dest}", weight="bold", size=16, color="black"), ft.Text(f"📍 {dom} ({loc})", color="black"), ft.Text(f"📞 {cel or 'Sin celular'}", color="blue", weight="bold"), ft.Divider(), ft.Row([ft.Text(f"⚡ {urg}", color="red" if "URGENTE" in urg else "black", weight="bold"), ft.Text(f"📦 {tipo}", color="black")], alignment="spaceBetween"), ft.Text(info_pago, color="red", weight="bold", size=16) if es_cr else ft.Container()]))]
-            except: pass
-            finally: conn.close()
+    html = f"""
+    {CSS}
+    <div class="header"><h2>Gestionar Guía: {op[0]}</h2></div>
+    <div class="container">
+        <div class="card">
+            {cobranza_html}
+            <h3>👤 {op[1]}</h3>
+            <p>📍 {op[2]} ({op[3]})</p>
+            <p>📞 {op[4]}</p>
+            <hr>
+            <p>⚡ {op[5]} | 📦 {op[6]}</p>
+        </div>
+        
+        <form method="POST" enctype="multipart/form-data">
+            <div class="card">
+                <h3>✅ Entrega Exitosa</h3>
+                <label>Quién recibe:</label>
+                <input type="text" name="recibe">
+                
+                <label>📷 FOTO (Remito/Lugar):</label>
+                <input type="file" name="foto" accept="image/*" capture="environment" class="file-upload">
+                
+                <button type="submit" name="estado" value="ENTREGADO" class="btn btn-green">CONFIRMAR ENTREGA</button>
+            </div>
+            
+            <div class="card">
+                <h3>❌ No Entregado</h3>
+                <label>Motivo:</label>
+                <input type="text" name="motivo">
+                <div style="display:flex; gap:5px;">
+                    <button type="submit" name="estado" value="Pendiente" class="btn btn-orange" style="flex:1; background:orange;">PENDIENTE</button>
+                    <button type="submit" name="estado" value="Reprogramado" class="btn btn-purple" style="flex:1; background:purple; color:white;">REPROGRAMAR</button>
+                </div>
+            </div>
+        </form>
+        <a href="/viajes" class="btn btn-grey">VOLVER</a>
+    </div>
+    """
+    return render_template_string(html)
 
-        page.clean()
-        page.add(ft.Column([
-            ft.Text(f"Gestionar: {guia}", size=18, weight="bold", color="black"),
-            ft.Text(f"Cliente: {prov}", size=14, color="grey"),
-            detalles_view, ft.Divider(),
-            ft.Text("ENTREGA EXITOSA:", weight="bold", color="black"),
-            txt_recibe, btn_foto, ft.Container(height=10),
-            ft.ElevatedButton("CONFIRMAR ENTREGA ✅", bgcolor="green", color="white", width=300, height=50, on_click=lambda _: guardar("ENTREGADO")),
-            ft.Divider(), ft.Text("NO ENTREGADO:", weight="bold", color="black"), txt_motivo,
-            ft.Row([ft.ElevatedButton("PENDIENTE", bgcolor="orange", color="white", expand=True, on_click=lambda _: guardar("Pendiente")), ft.ElevatedButton("REPROGRAMAR", bgcolor="purple", color="white", expand=True, on_click=lambda _: guardar("Reprogramado"))]),
-            ft.Container(height=20), ft.TextButton("VOLVER", on_click=lambda _: ir_a_principal())
-        ]))
-
-    page.add(ft.Column([ft.Text("🚛", size=50), ft.Text("BIENVENIDO V69", size=30, weight="bold", color="black"), ft.Container(height=20), btn_inicio], horizontal_alignment="center"))
-
-# !!! ESTA LÍNEA ES EL ARREGLO MÁGICO !!!
-# Definimos "uploads" como la carpeta pública de subida
-if __name__ == "__main__":
+if __name__ == '__main__':
     port = int(os.environ.get("PORT", 8000))
-    ft.app(target=main, view=ft.AppView.WEB_BROWSER, port=port, host="0.0.0.0", upload_dir="uploads")
+    app.run(host='0.0.0.0', port=port)
 
 
 
