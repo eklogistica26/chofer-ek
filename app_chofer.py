@@ -1,4 +1,4 @@
-from flask import Flask, request, render_template_string, redirect, url_for, session
+from flask import Flask, request, render_template_string, redirect, url_for, session, flash
 from sqlalchemy import create_engine, text
 from datetime import datetime
 import os
@@ -29,7 +29,7 @@ def get_db():
     except:
         return None
 
-# --- EMAIL ---
+# --- EMAIL (DISEÑO "CANCHERO" RECUPERADO) ---
 def enviar_email(destinatario, guia, ruta_foto, proveedor):
     if not BREVO_API_KEY: return
     conn = get_db()
@@ -53,35 +53,79 @@ def enviar_email(destinatario, guia, ruta_foto, proveedor):
         except: pass
 
     url = "https://api.brevo.com/v3/smtp/email"
+    
+    # HTML FORMATO FLET (RECUPERADO)
+    fecha_hora = datetime.now().strftime('%d/%m/%Y %H:%M')
+    html_content = f"""
+    <html><body>
+    <h3>Hola,</h3>
+    <p>Se informa la entrega exitosa.</p>
+    <ul>
+        <li><b>Fecha:</b> {fecha_hora}</li>
+        <li><b>Guía:</b> {guia}</li>
+        <li><b>Proveedor:</b> {proveedor}</li>
+        <li><b>Recibió:</b> {destinatario}</li>
+    </ul>
+    <p>Atte.<br><b>Equipo EK Logística</b></p>
+    </body></html>
+    """
+    
     payload = {
         "sender": {"name": "Logistica EK", "email": EMAIL_REMITENTE},
         "to": [{"email": email_prov}],
         "subject": f"ENTREGA REALIZADA - Guía: {guia}",
-        "htmlContent": f"<html><body><h3>Entrega Exitosa</h3><p>Guía: {guia}<br>Recibió: {destinatario}</p></body></html>"
+        "htmlContent": html_content
     }
     if adjuntos: payload["attachment"] = adjuntos
     headers = {"accept": "application/json", "api-key": BREVO_API_KEY, "content-type": "application/json"}
     try: requests.post(url, json=payload, headers=headers)
     except: pass
 
-# --- ESTILOS CSS (Diseño bonito tipo App) ---
-CSS = """
-<style>
-    body { font-family: sans-serif; background: #f4f4f4; margin: 0; padding: 0; }
-    .header { background: #2196F3; color: white; padding: 20px; text-align: center; }
-    .container { padding: 15px; max-width: 600px; margin: 0 auto; }
-    .card { background: white; padding: 15px; margin-bottom: 15px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
-    .btn { display: block; width: 100%; padding: 12px; border: none; border-radius: 5px; font-size: 16px; cursor: pointer; text-align: center; text-decoration: none; box-sizing: border-box; margin-top: 10px; }
-    .btn-blue { background: #2196F3; color: white; }
-    .btn-green { background: #4CAF50; color: white; }
-    .btn-red { background: #f44336; color: white; }
-    .btn-grey { background: #757575; color: white; }
-    input, select { width: 100%; padding: 10px; margin-top: 5px; border: 1px solid #ddd; border-radius: 4px; box-sizing: border-box; }
-    label { font-weight: bold; color: #333; margin-top: 10px; display: block; }
-    .tag { padding: 4px 8px; border-radius: 4px; font-size: 12px; color: white; float: right; }
-    .tag-blue { background: #2196F3; } .tag-orange { background: #ff9800; }
-    .file-upload { border: 2px dashed #ddd; padding: 20px; text-align: center; margin-top: 10px; border-radius: 5px; }
-</style>
+# --- ESTILOS CSS (DISEÑO MÓVIL OPTIMIZADO) ---
+# Agregamos viewport meta tag para que se vea bien en celular
+HTML_HEAD = """
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Choferes EK</title>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background: #f0f2f5; margin: 0; padding: 0; font-size: 16px; }
+        .header { background: #2196F3; color: white; padding: 15px; text-align: center; position: sticky; top: 0; z-index: 100; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        .header h2 { margin: 0; font-size: 1.2rem; }
+        .container { padding: 15px; max-width: 600px; margin: 0 auto; }
+        
+        /* TARJETAS */
+        .card { background: white; padding: 20px; margin-bottom: 15px; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+        
+        /* BOTONES GRANDES */
+        .btn { display: block; width: 100%; padding: 15px; border: none; border-radius: 8px; font-size: 16px; font-weight: bold; cursor: pointer; text-align: center; text-decoration: none; box-sizing: border-box; margin-top: 10px; transition: opacity 0.2s; }
+        .btn:active { opacity: 0.8; }
+        .btn-blue { background: #2196F3; color: white; }
+        .btn-green { background: #4CAF50; color: white; }
+        .btn-red { background: #f44336; color: white; }
+        .btn-orange { background: #ff9800; color: white; }
+        .btn-purple { background: #9c27b0; color: white; }
+        .btn-grey { background: #757575; color: white; }
+        
+        /* INPUTS MEJORADOS */
+        input, select { width: 100%; padding: 12px; margin-top: 8px; border: 1px solid #ccc; border-radius: 8px; font-size: 16px; box-sizing: border-box; background: #fff; }
+        label { font-weight: 600; color: #444; margin-top: 15px; display: block; }
+        
+        /* ETIQUETAS */
+        .tag { padding: 4px 8px; border-radius: 4px; font-size: 0.85rem; color: white; float: right; font-weight: bold; }
+        .tag-blue { background: #2196F3; } .tag-orange { background: #ff9800; }
+        
+        /* AREA DE CARGA DE FOTO */
+        .file-upload { border: 2px dashed #bbb; padding: 30px; text-align: center; margin-top: 10px; border-radius: 8px; background: #fafafa; cursor: pointer; }
+        
+        /* MENSAJES DE ALERTA */
+        .alert { padding: 15px; margin-bottom: 15px; border-radius: 8px; font-weight: bold; text-align: center; animation: fadeIn 0.5s; }
+        .alert-success { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
+        .alert-error { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
+        
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: translateY(0); } }
+    </style>
+</head>
 """
 
 # --- RUTAS ---
@@ -102,21 +146,26 @@ def index():
         finally: conn.close()
         
     html = f"""
-    {CSS}
-    <div class="header"><h1>🚛 Choferes EK</h1></div>
-    <div class="container">
-        <div class="card">
-            <h3>Bienvenido</h3>
-            <form method="POST">
-                <label>Selecciona tu nombre:</label>
-                <select name="chofer" required>
-                    <option value="">-- Seleccionar --</option>
-                    {"".join([f'<option value="{c}">{c}</option>' for c in choferes])}
-                </select>
-                <button type="submit" class="btn btn-blue">CONECTAR</button>
-            </form>
+    <!DOCTYPE html>
+    <html>
+    {HTML_HEAD}
+    <body>
+        <div class="header"><h1>🚛 Choferes EK</h1></div>
+        <div class="container">
+            <div class="card" style="text-align: center;">
+                <h2 style="margin-bottom: 20px;">Iniciar Turno</h2>
+                <form method="POST">
+                    <label style="text-align: left;">Selecciona tu nombre:</label>
+                    <select name="chofer" required style="margin-bottom: 20px;">
+                        <option value="">-- Seleccionar --</option>
+                        {"".join([f'<option value="{c}">{c}</option>' for c in choferes])}
+                    </select>
+                    <button type="submit" class="btn btn-blue">CONECTAR</button>
+                </form>
+            </div>
         </div>
-    </div>
+    </body>
+    </html>
     """
     return render_template_string(html)
 
@@ -124,6 +173,13 @@ def index():
 def lista_viajes():
     chofer = session.get('chofer')
     if not chofer: return redirect(url_for('index'))
+    
+    # MENSAJES FLASH (ALERTA DE ÉXITO)
+    mensajes_html = ""
+    mensajes = session.pop('_flashes', [])
+    for categoria, mensaje in mensajes:
+        clase = "alert-success" if categoria == "success" else "alert-error"
+        mensajes_html += f'<div class="alert {clase}">{mensaje}</div>'
     
     conn = get_db()
     viajes = []
@@ -136,21 +192,24 @@ def lista_viajes():
         
     cards_html = ""
     if not viajes:
-        cards_html = "<div class='card' style='text-align:center; color:green;'>✅ Sin viajes pendientes</div>"
+        cards_html = "<div class='card' style='text-align:center; color:green;'>✅ <b>¡Todo entregado!</b><br>No tienes viajes pendientes.</div>"
     else:
         for v in viajes:
             color = "tag-blue" if v[6] == "En Reparto" else "tag-orange"
-            # MAPA LINK
             q = f"{v[3]}, {v[4]}"
             mapa_url = f"https://www.google.com/maps/search/?api=1&query={q}"
             
             cards_html += f"""
             <div class="card">
                 <span class="tag {color}">{v[6]}</span>
-                <h3>{v[2]}</h3>
-                <p>📍 {v[3]} ({v[4]})</p>
-                <p>📦 Guía: <b>{v[1]}</b> | Bultos: {v[5]}</p>
-                <div style="display:flex; gap:5px;">
+                <h3 style="margin: 0 0 10px 0;">{v[2]}</h3>
+                <div style="color: #666; font-size: 0.9rem; margin-bottom: 10px;">
+                    📍 {v[3]} <br> ({v[4]})
+                </div>
+                <div style="background: #f9f9f9; padding: 8px; border-radius: 5px; font-size: 0.9rem; margin-bottom: 15px;">
+                    📦 Guía: <b>{v[1]}</b> | Bultos: {v[5]}
+                </div>
+                <div style="display:flex; gap:10px;">
                     <a href="{mapa_url}" target="_blank" class="btn btn-grey" style="flex:1;">🗺️ MAPA</a>
                     <a href="/gestion/{v[0]}" class="btn btn-blue" style="flex:2;">GESTIONAR</a>
                 </div>
@@ -158,16 +217,22 @@ def lista_viajes():
             """
             
     html = f"""
-    {CSS}
-    <div class="header">
-        <h2>Hola, {chofer}</h2>
-        <a href="/" style="color:white; font-size:12px;">(Cambiar)</a>
-    </div>
-    <div class="container">
-        {cards_html}
-        <br>
-        <a href="/viajes" class="btn btn-green">🔄 ACTUALIZAR</a>
-    </div>
+    <!DOCTYPE html>
+    <html>
+    {HTML_HEAD}
+    <body>
+        <div class="header">
+            <h2>Hola, {chofer}</h2>
+            <a href="/" style="color:white; font-size:0.8rem; text-decoration:underline;">(Salir)</a>
+        </div>
+        <div class="container">
+            {mensajes_html}
+            {cards_html}
+            <br>
+            <a href="/viajes" class="btn btn-green">🔄 ACTUALIZAR LISTA</a>
+        </div>
+    </body>
+    </html>
     """
     return render_template_string(html)
 
@@ -205,10 +270,13 @@ def gestion(id_op):
         
         # Validaciones
         if estado == "ENTREGADO":
-            if not recibe: return "ERROR: Falta quien recibe"
+            if not recibe: 
+                flash("❌ ERROR: Debes indicar quién recibe.", "error")
+                return redirect(url_for('gestion', id_op=id_op))
             # JetPaq rule
             if "jetpaq" not in op[10].lower() and not tiene_foto:
-                return "ERROR: FOTO OBLIGATORIA (Salvo JetPaq) - Vuelve atrás e intentalo."
+                flash("⚠️ ERROR: FOTO OBLIGATORIA (Salvo JetPaq).", "error")
+                return redirect(url_for('gestion', id_op=id_op))
 
         detalle = f"Recibio: {recibe}" if estado == "ENTREGADO" else f"Motivo: {motivo}"
         if tiene_foto: detalle += " [CON FOTO]"
@@ -221,63 +289,92 @@ def gestion(id_op):
                 conn.execute(text("INSERT INTO historial_movimientos (operacion_id, usuario, accion, detalle, fecha_hora) VALUES (:o, :u, 'APP', :d, :f)"), {"o": id_op, "u": chofer, "d": detalle, "f": datetime.now()})
                 conn.commit()
             except Exception as e:
-                return f"Error DB: {e}"
+                flash(f"Error Base de Datos: {e}", "error")
+                return redirect(url_for('gestion', id_op=id_op))
             finally: conn.close()
             
         # ENVIAR EMAIL
         if estado == "ENTREGADO" and tiene_foto:
+            flash("✅ Entregado. Enviando correo con foto...", "success")
             enviar_email(recibe, op[0], ruta_foto, op[10])
+        elif estado == "ENTREGADO":
+            flash("✅ Entregado correctamente.", "success")
+        else:
+            flash(f"⚠️ Marcado como: {estado}", "success")
             
         return redirect(url_for('lista_viajes'))
 
-    # RENDERIZAR FORMULARIO
+    # MENSAJES FLASH
+    mensajes_html = ""
+    mensajes = session.pop('_flashes', [])
+    for categoria, mensaje in mensajes:
+        clase = "alert-success" if categoria == "success" else "alert-error"
+        mensajes_html += f'<div class="alert {clase}">{mensaje}</div>'
+
+    # INFO COBRANZA
     cobranza_html = ""
     if op[7]: # es_contra_reembolso
-        cobranza_html = f"<div style='background:#ffebee; padding:10px; border-radius:5px; margin-bottom:10px; border:1px solid red;'>💰 <b>COBRAR: $ {op[8]}</b><br>📝 {op[9]}</div>"
+        cobranza_html = f"<div style='background:#ffebee; padding:15px; border-radius:8px; margin-bottom:20px; border:2px solid #f44336; color:#d32f2f;'>💰 <b>COBRAR: $ {op[8]}</b><br><small>{op[9]}</small></div>"
 
     html = f"""
-    {CSS}
-    <div class="header"><h2>Gestionar Guía: {op[0]}</h2></div>
-    <div class="container">
-        <div class="card">
-            {cobranza_html}
-            <h3>👤 {op[1]}</h3>
-            <p>📍 {op[2]} ({op[3]})</p>
-            <p>📞 {op[4]}</p>
-            <hr>
-            <p>⚡ {op[5]} | 📦 {op[6]}</p>
+    <!DOCTYPE html>
+    <html>
+    {HTML_HEAD}
+    <body>
+        <div class="header">
+            <h2>Gestión: {op[0]}</h2>
         </div>
-        
-        <form method="POST" enctype="multipart/form-data">
-            <div class="card">
-                <h3>✅ Entrega Exitosa</h3>
-                <label>Quién recibe:</label>
-                <input type="text" name="recibe">
-                
-                <label>📷 FOTO (Remito/Lugar):</label>
-                <input type="file" name="foto" accept="image/*" capture="environment" class="file-upload">
-                
-                <button type="submit" name="estado" value="ENTREGADO" class="btn btn-green">CONFIRMAR ENTREGA</button>
-            </div>
+        <div class="container">
+            {mensajes_html}
             
             <div class="card">
-                <h3>❌ No Entregado</h3>
-                <label>Motivo:</label>
-                <input type="text" name="motivo">
-                <div style="display:flex; gap:5px;">
-                    <button type="submit" name="estado" value="Pendiente" class="btn btn-orange" style="flex:1; background:orange;">PENDIENTE</button>
-                    <button type="submit" name="estado" value="Reprogramado" class="btn btn-purple" style="flex:1; background:purple; color:white;">REPROGRAMAR</button>
-                </div>
+                {cobranza_html}
+                <h2 style="margin-top:0;">👤 {op[1]}</h2>
+                <p>📍 <a href="https://www.google.com/maps/search/?api=1&query={op[2]}, {op[3]}" target="_blank" style="color:#2196F3; font-weight:bold; text-decoration:none;">{op[2]} ({op[3]})</a></p>
+                <p>📞 <a href="tel:{op[4]}" style="color:#2196F3; font-weight:bold; text-decoration:none;">{op[4]}</a></p>
+                <hr style="border:0; border-top:1px solid #eee; margin:15px 0;">
+                <p>⚡ Urgencia: <b>{op[5]}</b></p> 
+                <p>📦 Carga: <b>{op[6]}</b></p>
             </div>
-        </form>
-        <a href="/viajes" class="btn btn-grey">VOLVER</a>
-    </div>
+            
+            <form method="POST" enctype="multipart/form-data">
+                <div class="card">
+                    <h3 style="color:#4CAF50;">✅ Entrega Exitosa</h3>
+                    <label>Quién recibe:</label>
+                    <input type="text" name="recibe" placeholder="Nombre y Apellido">
+                    
+                    <label>📷 FOTO (Remito/Lugar):</label>
+                    <div class="file-upload" onclick="document.getElementById('fileInput').click();">
+                        <span style="font-size:2rem;">📸</span><br>
+                        Tocar para abrir cámara o galería
+                    </div>
+                    <input type="file" id="fileInput" name="foto" accept="image/*" capture="environment" style="display:none;" onchange="alert('✅ Foto seleccionada: ' + this.files[0].name)">
+                    
+                    <button type="submit" name="estado" value="ENTREGADO" class="btn btn-green">CONFIRMAR ENTREGA</button>
+                </div>
+                
+                <div class="card">
+                    <h3 style="color:#f44336;">❌ No Entregado</h3>
+                    <label>Motivo:</label>
+                    <input type="text" name="motivo" placeholder="Ej: No estaba, Dir. incorrecta">
+                    <div style="display:flex; gap:10px;">
+                        <button type="submit" name="estado" value="Pendiente" class="btn btn-orange" style="flex:1;">PENDIENTE</button>
+                        <button type="submit" name="estado" value="Reprogramado" class="btn btn-purple" style="flex:1;">REPROGRAMAR</button>
+                    </div>
+                </div>
+            </form>
+            <br>
+            <a href="/viajes" class="btn btn-grey">VOLVER A LA LISTA</a>
+        </div>
+    </body>
+    </html>
     """
     return render_template_string(html)
 
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 8000))
     app.run(host='0.0.0.0', port=port)
+
 
 
 
