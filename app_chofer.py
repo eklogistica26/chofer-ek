@@ -6,8 +6,6 @@ import base64
 import requests
 import urllib.parse
 import re
-import threading
-import time
 
 app = Flask(__name__)
 app.secret_key = "secreto_super_seguro_choferes_ek"
@@ -17,11 +15,8 @@ DATABASE_URL = "postgresql://postgres.gwdypvvyjuqzvpbbzchk:Eklogisticasajetpaq@a
 BREVO_API_KEY = os.environ.get("BREVO_API_KEY", "") 
 EMAIL_REMITENTE = "eklogistica19@gmail.com" 
 
-# TU NUMERO REAL DE LA BASE (Actualizado)
-NUMERO_BASE_RAW = "2613672674" 
-
-# URL DE TU APP EN RENDER (Para el auto-ping)
-RENDER_APP_URL = "https://chofer-ek.onrender.com"
+# TU NUMERO REAL (El codigo le agrega el formato internacional solo)
+NUMERO_BASE_RAW = "2615555555" 
 
 BASE_DIR = os.path.abspath(os.path.dirname(__file__))
 UPLOAD_FOLDER = os.path.join(BASE_DIR, 'uploads')
@@ -32,19 +27,6 @@ def get_db():
     try: return create_engine(DATABASE_URL, pool_pre_ping=True).connect()
     except: return None
 
-# --- SISTEMA ANTI-DORMIR (KEEP ALIVE) ---
-def keep_alive_system():
-    while True:
-        time.sleep(600) # 10 minutos
-        try: requests.get(RENDER_APP_URL)
-        except: pass
-
-if os.environ.get("RENDER") or True:
-    if not app.debug or os.environ.get("WERKZEUG_RUN_MAIN") == "true":
-        t = threading.Thread(target=keep_alive_system)
-        t.daemon = True
-        t.start()
-
 def limpiar_telefono_wsp(telefono):
     if not telefono: return ""
     nums = "".join(filter(str.isdigit, str(telefono)))
@@ -53,8 +35,8 @@ def limpiar_telefono_wsp(telefono):
 
 NUMERO_BASE_FINAL = limpiar_telefono_wsp(NUMERO_BASE_RAW)
 
-# --- EMAIL ---
-def enviar_email(destinatario, guia, ruta_foto, proveedor):
+# --- EMAIL AUTOMÁTICO (AHORA SOPORTA MÚLTIPLES FOTOS) ---
+def enviar_email(destinatario, guia, rutas_fotos, proveedor):
     if not BREVO_API_KEY: return
     conn = get_db()
     email_prov = None
@@ -66,15 +48,23 @@ def enviar_email(destinatario, guia, ruta_foto, proveedor):
         finally: conn.close()
     
     destinatarios_lista = []
-    if email_prov: destinatarios_lista.append({"email": email_prov})
+    if email_prov:
+        destinatarios_lista.append({"email": email_prov})
     
+    if not destinatarios_lista:
+        print("⚠️ Proveedor sin mail. Enviando solo copia interna.")
+    
+    # PREPARAR MÚLTIPLES ADJUNTOS
     adjuntos = []
-    if ruta_foto and os.path.exists(ruta_foto):
-        try:
-            with open(ruta_foto, "rb") as f:
-                content = base64.b64encode(f.read()).decode('utf-8')
-                adjuntos.append({"content": content, "name": f"remito_{guia}.jpg"})
-        except: pass
+    if rutas_fotos:
+        for i, ruta in enumerate(rutas_fotos):
+            if os.path.exists(ruta):
+                try:
+                    with open(ruta, "rb") as f:
+                        content = base64.b64encode(f.read()).decode('utf-8')
+                        # Le ponemos parte 1, parte 2, etc.
+                        adjuntos.append({"content": content, "name": f"remito_{guia}_hoja_{i+1}.jpg"})
+                except: pass
 
     url = "https://api.brevo.com/v3/smtp/email"
     fecha_hora = datetime.now().strftime('%d/%m/%Y %H:%M')
@@ -82,14 +72,15 @@ def enviar_email(destinatario, guia, ruta_foto, proveedor):
     html_content = f"""
     <html><body>
     <h3>Hola,</h3>
-    <p>Se informa la entrega exitosa. <b>Adjuntamos la foto del remito/guía conformado.</b></p>
+    <p>Se informa la entrega exitosa. <b>Adjuntamos las fotos del remito/guía conformado.</b></p>
     <ul>
         <li><b>Fecha:</b> {fecha_hora}</li>
         <li><b>Guía:</b> {guia}</li>
         <li><b>Proveedor:</b> {proveedor}</li>
         <li><b>Recibió:</b> {destinatario}</li>
+        <li><b>Hojas adjuntas:</b> {len(rutas_fotos)}</li>
     </ul>
-    <p>Atte.<br><b>Equipo JetPaq / EK</b></p>
+    <p>Atte.<br><b>Equipo JetPaq / EK Logística</b></p>
     </body></html>
     """
     
@@ -100,14 +91,19 @@ def enviar_email(destinatario, guia, ruta_foto, proveedor):
         "bcc": [{"email": EMAIL_REMITENTE, "name": "Archivo EK Logistica"}]
     }
 
-    if destinatarios_lista: payload["to"] = destinatarios_lista
-    else: payload["to"] = [{"email": EMAIL_REMITENTE}]
+    if destinatarios_lista:
+        payload["to"] = destinatarios_lista
+    else:
+        payload["to"] = [{"email": EMAIL_REMITENTE}] 
 
     if adjuntos: payload["attachment"] = adjuntos
     
     headers = {"accept": "application/json", "api-key": BREVO_API_KEY, "content-type": "application/json"}
-    try: requests.post(url, json=payload, headers=headers)
-    except: pass
+    try: 
+        r = requests.post(url, json=payload, headers=headers)
+        print(f"📧 Mail Status: {r.status_code}")
+    except Exception as e:
+        print(f"❌ Error Mail: {e}")
 
 # --- ESTILOS CSS ---
 HTML_HEAD = """
@@ -147,11 +143,16 @@ HTML_HEAD = """
     <script>
         function fileSelected(input) {
             var btn = document.getElementById('cameraLabel');
-            if (input.files && input.files[0]) {
+            if (input.files && input.files.length > 0) {
                 btn.style.backgroundColor = '#43A047';
                 btn.style.color = 'white';
                 btn.style.borderColor = '#43A047';
-                btn.innerHTML = '✅ Foto Lista';
+                
+                if (input.files.length === 1) {
+                    btn.innerHTML = '✅ 1 Foto Lista';
+                } else {
+                    btn.innerHTML = '✅ ' + input.files.length + ' Fotos Listas';
+                }
             }
         }
     </script>
@@ -232,16 +233,15 @@ def lista_viajes():
             
             cards_html += f"""
             <div class="card">
-                <div style="margin-bottom: 10px; overflow: hidden; display:flex; justify-content:space-between; align-items:center;">
-                    <span style="font-size: 0.8rem; font-weight:bold; color: #555;">🏢 {v[7]}</span>
+                <div style="margin-bottom: 10px; overflow: hidden;">
                     <span class="tag {color}">{v[6]}</span>
+                    <h3 style="margin: 0; font-size: 1.1rem; color:#333;">{v[2]}</h3>
                 </div>
-                <h3 style="margin: 0 0 5px 0; font-size: 1.1rem; color:#333;">{v[2]}</h3>
                 <div style="color: #555; font-size: 0.95rem; margin-bottom: 12px;">
                     📍 {v[3]} <small>({v[4]})</small>
                 </div>
                 <div style="background: #f0f7ff; padding: 10px; border-radius: 6px; font-size: 0.85rem; color: #444; margin-bottom: 15px; border-left: 4px solid #1976D2;">
-                    📦 Guía: <b>{v[1]}</b>  |  Bultos: {v[5]}
+                    📦 Guía: <b>{v[1]}</b> &nbsp;|&nbsp; Bultos: {v[5]}
                 </div>
                 <div style="display:flex; gap:10px;">
                     <a href="{mapa_url}" target="_blank" class="btn btn-outline" style="flex:1; margin-top:0;">🗺️ Mapa</a>
@@ -303,7 +303,7 @@ def historial():
             hora = m[1].strftime('%H:%M')
             color = "#43A047"
             if "No Entregado" in m[0] or "Motivo" in m[0]: color = "#D32F2F"
-            elif "Pendiente" in m[0] or "Reprogramado" in m[0]: color = "#F57C00"
+            elif "Pendiente" in m[0]: color = "#F57C00"
             filas_html += f"""
             <div style="background:white; padding:15px; border-radius:8px; margin-bottom:10px; border-left: 5px solid {color}; box-shadow: 0 1px 2px rgba(0,0,0,0.1);">
                 <div style="display:flex; justify-content:space-between;">
@@ -360,23 +360,22 @@ def gestion(id_op):
     if request.method == 'POST':
         estado = request.form.get('estado')
         
-        ruta_foto = None
+        # PROCESAR MÚLTIPLES FOTOS
+        archivos = request.files.getlist('fotos')
+        rutas_fotos = []
         tiene_foto = False
-        archivo = request.files.get('foto')
-        if archivo and archivo.filename != '':
-            filename = f"foto_{id_op}_{int(datetime.now().timestamp())}.jpg"
-            ruta_foto = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-            archivo.save(ruta_foto)
-            tiene_foto = True
+
+        for i, archivo in enumerate(archivos):
+            if archivo and archivo.filename != '':
+                filename = f"foto_{id_op}_{i}_{int(datetime.now().timestamp())}.jpg"
+                ruta_foto = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+                archivo.save(ruta_foto)
+                rutas_fotos.append(ruta_foto)
+                tiene_foto = True
             
         recibe = request.form.get('recibe', '')
         motivo = request.form.get('motivo', '')
         
-        # DATOS REPROGRAMACION (PUNTO 1)
-        fecha_reprog = request.form.get('fecha_reprog', '')
-        hora_reprog = request.form.get('hora_reprog', '')
-
-        # VALIDACIONES
         if estado == "ENTREGADO":
             if not recibe: 
                 flash("❌ ERROR: Escribe quién recibió.", "error")
@@ -384,46 +383,27 @@ def gestion(id_op):
             if "jetpaq" not in op[10].lower() and not tiene_foto:
                 flash("📸 ERROR: Faltó la foto (Obligatoria).", "error")
                 return redirect(url_for('gestion', id_op=id_op))
+
+        detalle = f"Recibio: {recibe}" if estado == "ENTREGADO" else f"Motivo: {motivo}"
+        if tiene_foto: 
+            detalle += f" [{len(rutas_fotos)} FOTO(S)]"
         
-        # LOGICA ESTADOS Y DETALLE
-        nuevo_estado_db = estado # Por defecto es lo que viene del boton
-        detalle = ""
-
-        if estado == "ENTREGADO":
-            detalle = f"Recibio: {recibe}"
-            if tiene_foto: detalle += " [CON FOTO]"
-        
-        elif estado == "Pendiente": # Pendiente normal
-            detalle = f"No Entregado. Motivo: {motivo}"
-            # Se queda como 'Pendiente' en la base, asi el admin lo ve pero el chofer quizas lo ve todavia si no filtramos
-            # Lo mejor es pasarlo a 'En Deposito' o 'Pendiente'. Usaremos 'En Deposito' para que el admin lo reasigne.
-            nuevo_estado_db = "En Deposito" 
-
-        elif estado == "Reprogramado": # REPROGRAMACION (Tu solicitud)
-            if not fecha_reprog:
-                flash("❌ ERROR: Falta la fecha de reprogramación.", "error")
-                return redirect(url_for('gestion', id_op=id_op))
-            
-            detalle = f"Reprogramado para {fecha_reprog} {hora_reprog}. Motivo: {motivo}"
-            # PUNTO 1: VUELVE A DEPOSITO PARA QUE EL ADMIN LO ASIGNE DE NUEVO MAÑANA
-            nuevo_estado_db = "En Deposito" 
-
         conn = get_db()
         if conn:
             try:
-                conn.execute(text("UPDATE operaciones SET estado=:e, fecha_entrega=:f WHERE id=:i"), {"e": nuevo_estado_db, "f": datetime.now(), "i": id_op})
+                conn.execute(text("UPDATE operaciones SET estado=:e, fecha_entrega=:f WHERE id=:i"), {"e": estado, "f": datetime.now(), "i": id_op})
                 conn.execute(text("INSERT INTO historial_movimientos (operacion_id, usuario, accion, detalle, fecha_hora) VALUES (:o, :u, 'APP', :d, :f)"), {"o": id_op, "u": chofer, "d": detalle, "f": datetime.now()})
                 conn.commit()
             except: pass
             finally: conn.close()
             
         if estado == "ENTREGADO" and tiene_foto:
-            flash("✅ Entregado. Enviando correo y guardando copia...", "success")
-            enviar_email(recibe, op[0], ruta_foto, op[10])
-        elif estado == "Reprogramado":
-            flash("📅 Reprogramado. Vuelve a base.", "success")
+            flash(f"✅ Entregado. Subiendo {len(rutas_fotos)} foto(s) y enviando correo...", "success")
+            enviar_email(recibe, op[0], rutas_fotos, op[10])
+        elif estado == "ENTREGADO":
+            flash("✅ Entregado correctamente.", "success")
         else:
-            flash(f"⚠️ Estado actualizado.", "success")
+            flash(f"⚠️ Guardado como: {estado}", "success")
             
         return redirect(url_for('lista_viajes'))
 
@@ -446,12 +426,6 @@ def gestion(id_op):
     <!DOCTYPE html>
     <html>
     {HTML_HEAD}
-    <script>
-        function mostrarReprog() {{
-            var div = document.getElementById('div_reprog');
-            div.style.display = div.style.display === 'none' ? 'block' : 'none';
-        }}
-    </script>
     <body>
         <div class="header">
             <h2>Gestión de Entrega</h2>
@@ -474,31 +448,22 @@ def gestion(id_op):
                     <h3 style="margin-top:0; color:#2E7D32;">✅ Confirmar Entrega</h3>
                     <label>Quien Recibe:</label>
                     <input type="text" name="recibe" placeholder="Nombre y Apellido...">
-                    <label>Comprobante:</label>
+                    <label>Comprobante (Puedes elegir varias):</label>
                     <label for="fileInput" id="cameraLabel" class="camera-btn">
-                        <span class="camera-icon">📷</span> SUBIR FOTO
+                        <span class="camera-icon">📷</span> SUBIR FOTO(S)
                     </label>
-                    <input type="file" id="fileInput" name="foto" accept="image/*" capture="environment" style="display:none;" onchange="fileSelected(this)">
+                    <input type="file" id="fileInput" name="fotos" accept="image/*" capture="environment" multiple style="display:none;" onchange="fileSelected(this)">
+                    
                     <button type="submit" name="estado" value="ENTREGADO" class="btn btn-green" style="margin-top:20px;">CONFIRMAR FINALIZADO</button>
                 </div>
                 
                 <div class="card" style="border-top: 5px solid #D32F2F;">
                     <h3 style="margin-top:0; color:#c62828;">❌ No Entregado</h3>
                     <label>Motivo:</label>
-                    <input type="text" name="motivo" placeholder="Ej: Dirección incorrecta / No atiende">
-                    
-                    <div style="display:flex; gap:10px; margin-top:15px;">
-                        <button type="submit" name="estado" value="Pendiente" class="btn btn-orange" style="flex:1;">NO RESPONDE (Volver)</button>
-                    </div>
-                    
-                    <button type="button" onclick="mostrarReprog()" class="btn btn-purple" style="margin-top:10px;">📅 REPROGRAMAR</button>
-                    
-                    <div id="div_reprog" style="display:none; background:#f3e5f5; padding:10px; margin-top:10px; border-radius:8px;">
-                        <label>Nueva Fecha:</label>
-                        <input type="date" name="fecha_reprog">
-                        <label>Hora Aprox (Opcional):</label>
-                        <input type="time" name="hora_reprog">
-                        <button type="submit" name="estado" value="Reprogramado" class="btn btn-purple" style="margin-top:10px;">CONFIRMAR REPROGRAMACIÓN</button>
+                    <input type="text" name="motivo" placeholder="Ej: Dirección incorrecta">
+                    <div style="display:flex; gap:10px;">
+                        <button type="submit" name="estado" value="Pendiente" class="btn btn-orange" style="flex:1;">PENDIENTE</button>
+                        <button type="submit" name="estado" value="Reprogramado" class="btn btn-purple" style="flex:1;">REPROGRAMAR</button>
                     </div>
                 </div>
             </form>
