@@ -35,7 +35,7 @@ def limpiar_telefono_wsp(telefono):
 
 NUMERO_BASE_FINAL = limpiar_telefono_wsp(NUMERO_BASE_RAW)
 
-# --- EMAIL AUTOMÁTICO (AHORA SOPORTA MÚLTIPLES FOTOS) ---
+# --- EMAIL AUTOMÁTICO (SOPORTA MÚLTIPLES FOTOS) ---
 def enviar_email(destinatario, guia, rutas_fotos, proveedor):
     if not BREVO_API_KEY: return
     conn = get_db()
@@ -62,8 +62,9 @@ def enviar_email(destinatario, guia, rutas_fotos, proveedor):
                 try:
                     with open(ruta, "rb") as f:
                         content = base64.b64encode(f.read()).decode('utf-8')
-                        # Le ponemos parte 1, parte 2, etc.
-                        adjuntos.append({"content": content, "name": f"remito_{guia}_hoja_{i+1}.jpg"})
+                        # Nombre de archivo dinámico si hay varias hojas
+                        nombre_adjunto = f"remito_{guia}.jpg" if len(rutas_fotos) == 1 else f"remito_{guia}_hoja_{i+1}.jpg"
+                        adjuntos.append({"content": content, "name": nombre_adjunto})
                 except: pass
 
     url = "https://api.brevo.com/v3/smtp/email"
@@ -78,7 +79,7 @@ def enviar_email(destinatario, guia, rutas_fotos, proveedor):
         <li><b>Guía:</b> {guia}</li>
         <li><b>Proveedor:</b> {proveedor}</li>
         <li><b>Recibió:</b> {destinatario}</li>
-        <li><b>Hojas adjuntas:</b> {len(rutas_fotos)}</li>
+        <li><b>Fotos adjuntas:</b> {len(rutas_fotos)}</li>
     </ul>
     <p>Atte.<br><b>Equipo JetPaq / EK Logística</b></p>
     </body></html>
@@ -105,7 +106,7 @@ def enviar_email(destinatario, guia, rutas_fotos, proveedor):
     except Exception as e:
         print(f"❌ Error Mail: {e}")
 
-# --- ESTILOS CSS ---
+# --- ESTILOS CSS Y JAVASCRIPT ---
 HTML_HEAD = """
 <head>
     <meta charset="UTF-8">
@@ -141,19 +142,35 @@ HTML_HEAD = """
         .truck-icon { width: 80px; height: 80px; margin-bottom: 10px; fill: #1976D2; }
     </style>
     <script>
+        let fotoCount = 1;
+        
         function fileSelected(input) {
-            var btn = document.getElementById('cameraLabel');
+            var btn = input.previousElementSibling; // Toma el label justo antes del input
             if (input.files && input.files.length > 0) {
                 btn.style.backgroundColor = '#43A047';
                 btn.style.color = 'white';
                 btn.style.borderColor = '#43A047';
                 
                 if (input.files.length === 1) {
-                    btn.innerHTML = '✅ 1 Foto Lista';
+                    btn.innerHTML = '✅ 1 Foto lista';
                 } else {
-                    btn.innerHTML = '✅ ' + input.files.length + ' Fotos Listas';
+                    btn.innerHTML = '✅ ' + input.files.length + ' Fotos listas';
                 }
             }
+        }
+
+        function agregarInputFoto() {
+            fotoCount++;
+            var container = document.getElementById('fotos-container');
+            var div = document.createElement('div');
+            div.style.marginTop = '10px';
+            div.innerHTML = `
+                <label class="camera-btn" onclick="this.nextElementSibling.click()">
+                    <span class="camera-icon">📷</span> AGREGAR FOTO ` + fotoCount + `
+                </label>
+                <input type="file" name="fotos" accept="image/*" multiple style="display:none;" onchange="fileSelected(this)">
+            `;
+            container.appendChild(div);
         }
     </script>
 </head>
@@ -241,7 +258,7 @@ def lista_viajes():
                     📍 {v[3]} <small>({v[4]})</small>
                 </div>
                 <div style="background: #f0f7ff; padding: 10px; border-radius: 6px; font-size: 0.85rem; color: #444; margin-bottom: 15px; border-left: 4px solid #1976D2;">
-                    📦 Guía: <b>{v[1]}</b> &nbsp;|&nbsp; Bultos: {v[5]}
+                    📦 Guía: <b>{v[1]}</b>  |  Bultos: {v[5]}
                 </div>
                 <div style="display:flex; gap:10px;">
                     <a href="{mapa_url}" target="_blank" class="btn btn-outline" style="flex:1; margin-top:0;">🗺️ Mapa</a>
@@ -360,7 +377,7 @@ def gestion(id_op):
     if request.method == 'POST':
         estado = request.form.get('estado')
         
-        # PROCESAR MÚLTIPLES FOTOS
+        # PROCESAR MÚLTIPLES FOTOS (La magia backend )
         archivos = request.files.getlist('fotos')
         rutas_fotos = []
         tiene_foto = False
@@ -448,13 +465,22 @@ def gestion(id_op):
                     <h3 style="margin-top:0; color:#2E7D32;">✅ Confirmar Entrega</h3>
                     <label>Quien Recibe:</label>
                     <input type="text" name="recibe" placeholder="Nombre y Apellido...">
-                    <label>Comprobante (Puedes elegir varias):</label>
-                    <label for="fileInput" id="cameraLabel" class="camera-btn">
-                        <span class="camera-icon">📷</span> SUBIR FOTO(S)
-                    </label>
-                    <input type="file" id="fileInput" name="fotos" accept="image/*" capture="environment" multiple style="display:none;" onchange="fileSelected(this)">
                     
-                    <button type="submit" name="estado" value="ENTREGADO" class="btn btn-green" style="margin-top:20px;">CONFIRMAR FINALIZADO</button>
+                    <label>Comprobante (Puedes tomar varias o elegir de la galería):</label>
+                    <div id="fotos-container">
+                        <div style="margin-top: 5px;">
+                            <label class="camera-btn" onclick="this.nextElementSibling.click()">
+                                <span class="camera-icon">📷</span> SUBIR FOTO(S)
+                            </label>
+                            <input type="file" name="fotos" accept="image/*" multiple style="display:none;" onchange="fileSelected(this)">
+                        </div>
+                    </div>
+                    
+                    <button type="button" onclick="agregarInputFoto()" class="btn btn-outline" style="margin-top:12px; padding:10px; font-size:0.9rem; border: 2px dashed #1976D2; color: #1976D2; font-weight:bold;">
+                        ➕ Añadir otra foto manualmente
+                    </button>
+                    
+                    <button type="submit" name="estado" value="ENTREGADO" class="btn btn-green" style="margin-top:20px;" onclick="setTimeout(() => {{ this.innerHTML='⏳ Subiendo fotos, no cierre la app...'; this.style.opacity='0.7'; }}, 50);">CONFIRMAR FINALIZADO</button>
                 </div>
                 
                 <div class="card" style="border-top: 5px solid #D32F2F;">
@@ -479,6 +505,7 @@ def gestion(id_op):
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 8000))
     app.run(host='0.0.0.0', port=port)
+
 
 
 
