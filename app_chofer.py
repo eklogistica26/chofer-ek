@@ -5,17 +5,13 @@ import os
 import base64
 import requests
 import urllib.parse
-import re
 
 app = Flask(__name__)
 app.secret_key = "secreto_super_seguro_choferes_ek"
 
-# --- CONFIGURACIÓN ---
 DATABASE_URL = "postgresql://postgres.gwdypvvyjuqzvpbbzchk:Eklogisticasajetpaq@aws-0-us-west-2.pooler.supabase.com:6543/postgres"
 BREVO_API_KEY = os.environ.get("BREVO_API_KEY", "") 
 EMAIL_REMITENTE = "eklogistica19@gmail.com" 
-
-# TU NUMERO REAL (El codigo le agrega el formato internacional solo)
 NUMERO_BASE_RAW = "2615555555" 
 
 BASE_DIR = os.path.abspath(os.path.dirname(__file__))
@@ -35,8 +31,7 @@ def limpiar_telefono_wsp(telefono):
 
 NUMERO_BASE_FINAL = limpiar_telefono_wsp(NUMERO_BASE_RAW)
 
-# --- EMAIL AUTOMÁTICO (SOPORTA MÚLTIPLES FOTOS) ---
-def enviar_email(destinatario, guia, rutas_fotos, proveedor):
+def enviar_email(destinatario, guia, rutas_fotos, proveedor, tipo_op="Entrega"):
     if not BREVO_API_KEY: return
     conn = get_db()
     email_prov = None
@@ -51,10 +46,6 @@ def enviar_email(destinatario, guia, rutas_fotos, proveedor):
     if email_prov:
         destinatarios_lista.append({"email": email_prov})
     
-    if not destinatarios_lista:
-        print("⚠️ Proveedor sin mail. Enviando solo copia interna.")
-    
-    # PREPARAR MÚLTIPLES ADJUNTOS
     adjuntos = []
     if rutas_fotos:
         for i, ruta in enumerate(rutas_fotos):
@@ -62,23 +53,26 @@ def enviar_email(destinatario, guia, rutas_fotos, proveedor):
                 try:
                     with open(ruta, "rb") as f:
                         content = base64.b64encode(f.read()).decode('utf-8')
-                        # Nombre de archivo dinámico si hay varias hojas
-                        nombre_adjunto = f"remito_{guia}.jpg" if len(rutas_fotos) == 1 else f"remito_{guia}_hoja_{i+1}.jpg"
+                        nombre_adjunto = f"comprobante_{guia}.jpg" if len(rutas_fotos) == 1 else f"comprobante_{guia}_hoja_{i+1}.jpg"
                         adjuntos.append({"content": content, "name": nombre_adjunto})
                 except: pass
 
     url = "https://api.brevo.com/v3/smtp/email"
     fecha_hora = datetime.now().strftime('%d/%m/%Y %H:%M')
     
+    verbo = "ENTREGA" if tipo_op == "Entrega" else "RETIRO"
+    quien = "Recibió" if tipo_op == "Entrega" else "Entregó bultos"
+    
     html_content = f"""
     <html><body>
     <h3>Hola,</h3>
-    <p>Se informa la entrega exitosa. <b>Adjuntamos las fotos del remito/guía conformado.</b></p>
+    <p>Se informa la finalización exitosa del viaje. <b>Adjuntamos las fotos del comprobante conformado.</b></p>
     <ul>
+        <li><b>Tipo:</b> {verbo}</li>
         <li><b>Fecha:</b> {fecha_hora}</li>
-        <li><b>Guía:</b> {guia}</li>
+        <li><b>Guía/Orden:</b> {guia}</li>
         <li><b>Proveedor:</b> {proveedor}</li>
-        <li><b>Recibió:</b> {destinatario}</li>
+        <li><b>{quien}:</b> {destinatario}</li>
         <li><b>Fotos adjuntas:</b> {len(rutas_fotos)}</li>
     </ul>
     <p>Atte.<br><b>Equipo JetPaq / EK Logística</b></p>
@@ -87,7 +81,7 @@ def enviar_email(destinatario, guia, rutas_fotos, proveedor):
     
     payload = {
         "sender": {"name": "Logistica JetPaq", "email": EMAIL_REMITENTE},
-        "subject": f"ENTREGA REALIZADA - Guía: {guia}",
+        "subject": f"{verbo} REALIZADO/A - Guía: {guia}",
         "htmlContent": html_content,
         "bcc": [{"email": EMAIL_REMITENTE, "name": "Archivo EK Logistica"}]
     }
@@ -100,13 +94,9 @@ def enviar_email(destinatario, guia, rutas_fotos, proveedor):
     if adjuntos: payload["attachment"] = adjuntos
     
     headers = {"accept": "application/json", "api-key": BREVO_API_KEY, "content-type": "application/json"}
-    try: 
-        r = requests.post(url, json=payload, headers=headers)
-        print(f"📧 Mail Status: {r.status_code}")
-    except Exception as e:
-        print(f"❌ Error Mail: {e}")
+    try: requests.post(url, json=payload, headers=headers)
+    except: pass
 
-# --- ESTILOS CSS Y JAVASCRIPT ---
 HTML_HEAD = """
 <head>
     <meta charset="UTF-8">
@@ -131,7 +121,7 @@ HTML_HEAD = """
         input, select { width: 100%; padding: 12px; margin-top: 8px; border: 1px solid #ddd; border-radius: 8px; font-size: 16px; background: #fff; box-sizing: border-box; }
         label { font-weight: 600; color: #444; margin-top: 15px; display: block; font-size: 0.9rem; }
         .tag { padding: 4px 8px; border-radius: 4px; font-size: 0.75rem; color: white; float: right; font-weight: bold; text-transform: uppercase; letter-spacing: 0.5px; }
-        .tag-blue { background: #1976D2; } .tag-orange { background: #F57C00; }
+        .tag-blue { background: #1976D2; } .tag-orange { background: #F57C00; } .tag-purple { background: #7B1FA2; }
         .camera-btn { background-color: #E3F2FD; color: #1565C0; border: 2px solid #1976D2; border-radius: 8px; padding: 12px; text-align: center; cursor: pointer; margin-top: 5px; display: flex; align-items: center; justify-content: center; gap: 10px; font-weight: bold; }
         .alert { padding: 12px; margin-bottom: 15px; border-radius: 8px; font-weight: 500; text-align: center; font-size: 0.9rem; }
         .alert-success { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
@@ -143,22 +133,16 @@ HTML_HEAD = """
     </style>
     <script>
         let fotoCount = 1;
-        
         function fileSelected(input) {
-            var btn = input.previousElementSibling; // Toma el label justo antes del input
+            var btn = input.previousElementSibling;
             if (input.files && input.files.length > 0) {
                 btn.style.backgroundColor = '#43A047';
                 btn.style.color = 'white';
                 btn.style.borderColor = '#43A047';
-                
-                if (input.files.length === 1) {
-                    btn.innerHTML = '✅ 1 Foto lista';
-                } else {
-                    btn.innerHTML = '✅ ' + input.files.length + ' Fotos listas';
-                }
+                if (input.files.length === 1) { btn.innerHTML = '✅ 1 Foto lista'; } 
+                else { btn.innerHTML = '✅ ' + input.files.length + ' Fotos listas'; }
             }
         }
-
         function agregarInputFoto() {
             fotoCount++;
             var container = document.getElementById('fotos-container');
@@ -234,31 +218,40 @@ def lista_viajes():
     viajes = []
     if conn:
         try:
-            sql = text("SELECT id, guia_remito, destinatario, domicilio, localidad, bultos, estado, proveedor FROM operaciones WHERE chofer_asignado = :c AND estado IN ('En Reparto', 'Pendiente') ORDER BY id ASC")
+            # TRAEMOS tipo_servicio EN EL INDEX 8
+            sql = text("SELECT id, guia_remito, destinatario, domicilio, localidad, bultos, estado, proveedor, tipo_servicio FROM operaciones WHERE chofer_asignado = :c AND estado IN ('En Reparto', 'Pendiente') ORDER BY id ASC")
             viajes = conn.execute(sql, {"c": chofer}).fetchall()
         except: pass
         finally: conn.close()
         
     cards_html = ""
     if not viajes:
-        cards_html = "<div class='card' style='text-align:center; padding: 40px; border: 2px dashed #ddd;'><div style='font-size: 2rem;'>🎉</div><h3>¡Todo Entregado!</h3><p style='color:#666;'>No tienes viajes pendientes.</p></div>"
+        cards_html = "<div class='card' style='text-align:center; padding: 40px; border: 2px dashed #ddd;'><div style='font-size: 2rem;'>🎉</div><h3>¡Todo Completado!</h3><p style='color:#666;'>No tienes viajes pendientes.</p></div>"
     else:
         for v in viajes:
             color = "tag-blue" if v[6] == "En Reparto" else "tag-orange"
             q = f"{v[3]}, {v[4]}"
             mapa_url = f"https://www.google.com/maps/search/?api=1&query={q}"
             
+            tipo_srv = v[8] or ""
+            if "Retiro" in tipo_srv:
+                badge_tipo = '<span class="tag tag-purple" style="float:left; margin-right:5px;">🔄 RETIRO</span>'
+            else:
+                badge_tipo = '<span class="tag tag-blue" style="float:left; margin-right:5px;">🚚 ENTREGA</span>'
+            
             cards_html += f"""
             <div class="card">
                 <div style="margin-bottom: 10px; overflow: hidden;">
+                    {badge_tipo}
                     <span class="tag {color}">{v[6]}</span>
+                    <div style="clear:both; margin-bottom:8px;"></div>
                     <h3 style="margin: 0; font-size: 1.1rem; color:#333;">{v[2]}</h3>
                 </div>
                 <div style="color: #555; font-size: 0.95rem; margin-bottom: 12px;">
                     📍 {v[3]} <small>({v[4]})</small>
                 </div>
                 <div style="background: #f0f7ff; padding: 10px; border-radius: 6px; font-size: 0.85rem; color: #444; margin-bottom: 15px; border-left: 4px solid #1976D2;">
-                    📦 Guía: <b>{v[1]}</b>  |  Bultos: {v[5]}
+                    📦 Guía/Orden: <b>{v[1] or 'S/G'}</b>  |  Bultos: {v[5]}
                 </div>
                 <div style="display:flex; gap:10px;">
                     <a href="{mapa_url}" target="_blank" class="btn btn-outline" style="flex:1; margin-top:0;">🗺️ Mapa</a>
@@ -367,17 +360,17 @@ def gestion(id_op):
     op = None
     if conn:
         try:
-            sql = text("SELECT guia_remito, destinatario, domicilio, localidad, celular, tipo_urgencia, tipo_carga, es_contra_reembolso, monto_recaudacion, info_intercambio, proveedor FROM operaciones WHERE id = :i")
+            sql = text("SELECT guia_remito, destinatario, domicilio, localidad, celular, tipo_urgencia, tipo_carga, es_contra_reembolso, monto_recaudacion, info_intercambio, proveedor, tipo_servicio FROM operaciones WHERE id = :i")
             op = conn.execute(sql, {"i": id_op}).fetchone()
         except: pass
         finally: conn.close()
         
     if not op: return "Error: Viaje no encontrado"
+    
+    es_retiro = "Retiro" in (op[11] or "")
 
     if request.method == 'POST':
         estado = request.form.get('estado')
-        
-        # PROCESAR MÚLTIPLES FOTOS (La magia backend )
         archivos = request.files.getlist('fotos')
         rutas_fotos = []
         tiene_foto = False
@@ -395,7 +388,7 @@ def gestion(id_op):
         
         if estado == "ENTREGADO":
             if not recibe: 
-                flash("❌ ERROR: Escribe quién recibió.", "error")
+                flash("❌ ERROR: Escribe el nombre de la persona.", "error")
                 return redirect(url_for('gestion', id_op=id_op))
             if "jetpaq" not in op[10].lower() and not tiene_foto:
                 flash("📸 ERROR: Faltó la foto (Obligatoria).", "error")
@@ -415,10 +408,11 @@ def gestion(id_op):
             finally: conn.close()
             
         if estado == "ENTREGADO" and tiene_foto:
-            flash(f"✅ Entregado. Subiendo {len(rutas_fotos)} foto(s) y enviando correo...", "success")
-            enviar_email(recibe, op[0], rutas_fotos, op[10])
+            flash(f"✅ Gestionado. Subiendo foto(s) y enviando correo...", "success")
+            tipo_para_mail = "Retiro" if es_retiro else "Entrega"
+            enviar_email(recibe, op[0] or "RET", rutas_fotos, op[10], tipo_op=tipo_para_mail)
         elif estado == "ENTREGADO":
-            flash("✅ Entregado correctamente.", "success")
+            flash("✅ Confirmado correctamente.", "success")
         else:
             flash(f"⚠️ Guardado como: {estado}", "success")
             
@@ -438,6 +432,20 @@ def gestion(id_op):
     mensaje_wa = urllib.parse.quote(f"Hola, soy el chofer de JetPaq. Estoy en camino con tu envío (Guía: {op[0]}).")
     link_wa = f"https://wa.me/{telefono_limpio}?text={mensaje_wa}" if telefono_limpio else "#"
     btn_wa_style = "opacity:0.5; pointer-events:none;" if not telefono_limpio else ""
+    
+    # TEXTOS DINÁMICOS DEPENDIENDO SI ES ENTREGA O RETIRO
+    if es_retiro:
+        titulo_principal = "Gestión de Retiro"
+        box_verde_titulo = "✅ Confirmar Retiro"
+        box_verde_label = "Quien entrega los bultos (Remitente):"
+        btn_verde_txt = "CONFIRMAR RETIRO EXITOSO"
+        box_roja_titulo = "❌ No Retirado"
+    else:
+        titulo_principal = "Gestión de Entrega"
+        box_verde_titulo = "✅ Confirmar Entrega"
+        box_verde_label = "Quien Recibe:"
+        btn_verde_txt = "CONFIRMAR FINALIZADO"
+        box_roja_titulo = "❌ No Entregado"
 
     html = f"""
     <!DOCTYPE html>
@@ -445,13 +453,13 @@ def gestion(id_op):
     {HTML_HEAD}
     <body>
         <div class="header">
-            <h2>Gestión de Entrega</h2>
+            <h2>{titulo_principal}</h2>
         </div>
         <div class="container">
             {mensajes_html}
             <div class="card">
                 {cobranza_html}
-                <div style="color:#888; font-size:0.8rem; text-transform:uppercase; letter-spacing:1px; margin-bottom:5px;">Destinatario</div>
+                <div style="color:#888; font-size:0.8rem; text-transform:uppercase; letter-spacing:1px; margin-bottom:5px;">Cliente / Destino</div>
                 <h2 style="margin:0 0 5px 0; font-size:1.4rem;">{op[1]}</h2>
                 <div style="font-size:1.1rem; margin-bottom:15px;">📍 {op[2]} <br> <small style="color:#666;">({op[3]})</small></div>
                 <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px;">
@@ -462,8 +470,8 @@ def gestion(id_op):
             
             <form method="POST" enctype="multipart/form-data">
                 <div class="card" style="border-top: 5px solid #43A047;">
-                    <h3 style="margin-top:0; color:#2E7D32;">✅ Confirmar Entrega</h3>
-                    <label>Quien Recibe:</label>
+                    <h3 style="margin-top:0; color:#2E7D32;">{box_verde_titulo}</h3>
+                    <label>{box_verde_label}</label>
                     <input type="text" name="recibe" placeholder="Nombre y Apellido...">
                     
                     <label>Comprobante (Puedes tomar varias o elegir de la galería):</label>
@@ -480,13 +488,13 @@ def gestion(id_op):
                         ➕ Añadir otra foto manualmente
                     </button>
                     
-                    <button type="submit" name="estado" value="ENTREGADO" class="btn btn-green" style="margin-top:20px;" onclick="setTimeout(() => {{ this.innerHTML='⏳ Subiendo fotos, no cierre la app...'; this.style.opacity='0.7'; }}, 50);">CONFIRMAR FINALIZADO</button>
+                    <button type="submit" name="estado" value="ENTREGADO" class="btn btn-green" style="margin-top:20px;" onclick="setTimeout(() => {{ this.innerHTML='⏳ Subiendo fotos, no cierre la app...'; this.style.opacity='0.7'; }}, 50);">{btn_verde_txt}</button>
                 </div>
                 
                 <div class="card" style="border-top: 5px solid #D32F2F;">
-                    <h3 style="margin-top:0; color:#c62828;">❌ No Entregado</h3>
+                    <h3 style="margin-top:0; color:#c62828;">{box_roja_titulo}</h3>
                     <label>Motivo:</label>
-                    <input type="text" name="motivo" placeholder="Ej: Dirección incorrecta">
+                    <input type="text" name="motivo" placeholder="Ej: Dirección incorrecta / Cerrado">
                     <div style="display:flex; gap:10px;">
                         <button type="submit" name="estado" value="Pendiente" class="btn btn-orange" style="flex:1;">PENDIENTE</button>
                         <button type="submit" name="estado" value="Reprogramado" class="btn btn-purple" style="flex:1;">REPROGRAMAR</button>
