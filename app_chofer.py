@@ -5,6 +5,7 @@ import os
 import base64
 import requests
 import urllib.parse
+import re
 
 app = Flask(__name__)
 app.secret_key = "secreto_super_seguro_choferes_ek"
@@ -34,7 +35,7 @@ def limpiar_telefono_wsp(telefono):
 
 NUMERO_BASE_FINAL = limpiar_telefono_wsp(NUMERO_BASE_RAW)
 
-# --- EMAIL CON COPIA DE SEGURIDAD BCC ---
+# --- EMAIL (AHORA CON COPIA DE SEGURIDAD BCC) ---
 def enviar_email(destinatario, guia, ruta_foto, proveedor):
     if not BREVO_API_KEY: return
     conn = get_db()
@@ -46,13 +47,16 @@ def enviar_email(destinatario, guia, ruta_foto, proveedor):
         except: pass
         finally: conn.close()
     
+    # Si el proveedor no tiene mail, igual intentamos mandar el de respaldo a nosotros
     destinatarios_lista = []
     if email_prov:
         destinatarios_lista.append({"email": email_prov})
     
+    # SI NO HAY DESTINATARIOS (PROVEEDOR SIN MAIL), AL MENOS NOS LO MANDAMOS A NOSOTROS
     if not destinatarios_lista:
         print("⚠️ Proveedor sin mail. Enviando solo copia interna.")
     
+    # PREPARAR ADJUNTO
     adjuntos = []
     if ruta_foto and os.path.exists(ruta_foto):
         try:
@@ -82,13 +86,15 @@ def enviar_email(destinatario, guia, ruta_foto, proveedor):
         "sender": {"name": "Logistica JetPaq", "email": EMAIL_REMITENTE},
         "subject": f"ENTREGA REALIZADA - Guía: {guia}",
         "htmlContent": html_content,
+        # AQUI ESTA LA MAGIA: COPIA OCULTA A TU MAIL
         "bcc": [{"email": EMAIL_REMITENTE, "name": "Archivo EK Logistica"}]
     }
 
+    # Si hay destinatario cliente, lo agregamos. Si no, Brevo usará solo el BCC o fallará si "to" es obligatorio vacio.
     if destinatarios_lista:
         payload["to"] = destinatarios_lista
     else:
-        payload["to"] = [{"email": EMAIL_REMITENTE}]
+        payload["to"] = [{"email": EMAIL_REMITENTE}] # Auto-envío si no hay cliente
 
     if adjuntos: payload["attachment"] = adjuntos
     
@@ -124,7 +130,7 @@ HTML_HEAD = """
         input, select { width: 100%; padding: 12px; margin-top: 8px; border: 1px solid #ddd; border-radius: 8px; font-size: 16px; background: #fff; box-sizing: border-box; }
         label { font-weight: 600; color: #444; margin-top: 15px; display: block; font-size: 0.9rem; }
         .tag { padding: 4px 8px; border-radius: 4px; font-size: 0.75rem; color: white; float: right; font-weight: bold; text-transform: uppercase; letter-spacing: 0.5px; }
-        .tag-blue { background: #1976D2; } .tag-purple { background: #7B1FA2; }
+        .tag-blue { background: #1976D2; } .tag-purple { background: #7B1FA2; } .tag-orange { background: #F57C00; }
         .camera-btn { background-color: #E3F2FD; color: #1565C0; border: 2px solid #1976D2; border-radius: 8px; padding: 12px; text-align: center; cursor: pointer; margin-top: 5px; display: flex; align-items: center; justify-content: center; gap: 10px; font-weight: bold; }
         .alert { padding: 12px; margin-bottom: 15px; border-radius: 8px; font-weight: 500; text-align: center; font-size: 0.9rem; }
         .alert-success { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
@@ -246,7 +252,7 @@ def lista_viajes():
                     📍 {v[3]} <small>({v[4]})</small>
                 </div>
                 <div style="background: #f0f7ff; padding: 10px; border-radius: 6px; font-size: 0.85rem; color: #444; margin-bottom: 15px; border-left: 4px solid #1976D2;">
-                    📦 Guía: <b>{v[1]}</b>  |  Bultos: {v[5]}
+                    📦 Guía: <b>{v[1]}</b> &nbsp;|&nbsp; Bultos: {v[5]}
                 </div>
                 <div style="display:flex; gap:10px;">
                     <a href="{mapa_url}" target="_blank" class="btn btn-outline" style="flex:1; margin-top:0;">🗺️ Mapa</a>
@@ -523,10 +529,10 @@ def gestion(id_op):
                     <button type="submit" id="submit_falla" style="display:none;"></button>
                     
                     <script>
-                        function enviarFallo() {
+                        function enviarFallo() {{
                             document.getElementById('hidden_estado').value = document.getElementById('estado_select').value;
                             document.getElementById('submit_falla').click();
-                        }
+                        }}
                     </script>
                 </div>
             </form>
