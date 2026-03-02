@@ -10,12 +10,17 @@ import re
 app = Flask(__name__)
 app.secret_key = "secreto_super_seguro_choferes_ek"
 
-# --- CONFIGURACIÓN ---
-DATABASE_URL = "postgresql://postgres.gwdypvvyjuqzvpbbzchk:Eklogisticasajetpaq@aws-0-us-west-2.pooler.supabase.com:6543/postgres"
+# --- CONFIGURACIÓN DE SEGURIDAD (LEE DE RENDER O .ENV) ---
+DATABASE_URL = os.environ.get("DB_URL") 
+if not DATABASE_URL:
+    # Si falla, usa este respaldo local por si estás probando en tu PC
+    from dotenv import load_dotenv
+    load_dotenv()
+    DATABASE_URL = os.getenv("DB_URL")
+
 BREVO_API_KEY = os.environ.get("BREVO_API_KEY", "") 
 EMAIL_REMITENTE = "eklogistica19@gmail.com" 
 
-# TU NUMERO REAL (El codigo le agrega el formato internacional solo)
 NUMERO_BASE_RAW = "2615555555" 
 
 BASE_DIR = os.path.abspath(os.path.dirname(__file__))
@@ -25,7 +30,9 @@ app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 
 def get_db():
     try: return create_engine(DATABASE_URL, pool_pre_ping=True).connect()
-    except: return None
+    except Exception as e:
+        print("Error de DB:", e)
+        return None
 
 def limpiar_telefono_wsp(telefono):
     if not telefono: return ""
@@ -35,7 +42,6 @@ def limpiar_telefono_wsp(telefono):
 
 NUMERO_BASE_FINAL = limpiar_telefono_wsp(NUMERO_BASE_RAW)
 
-# --- EMAIL (AHORA CON COPIA DE SEGURIDAD BCC) ---
 def enviar_email(destinatario, guia, ruta_foto, proveedor):
     if not BREVO_API_KEY: return
     conn = get_db()
@@ -100,7 +106,6 @@ def enviar_email(destinatario, guia, ruta_foto, proveedor):
     except Exception as e:
         print(f"❌ Error Mail: {e}")
 
-# --- ESTILOS CSS ---
 HTML_HEAD = """
 <head>
     <meta charset="UTF-8">
@@ -216,7 +221,7 @@ def lista_viajes():
     viajes = []
     if conn:
         try:
-            sql = text("SELECT id, guia_remito, destinatario, domicilio, localidad, bultos, estado, proveedor, tipo_servicio FROM operaciones WHERE chofer_asignado = :c AND UPPER(estado) = 'EN REPARTO' ORDER BY id ASC")
+            sql = text("SELECT id, guia_remito, destinatario, domicilio, localidad, bultos, estado, proveedor, tipo_servicio FROM operaciones WHERE chofer_asignado = :c AND UPPER(estado) IN ('EN REPARTO', 'PENDIENTE') ORDER BY id ASC")
             viajes = conn.execute(sql, {"c": chofer}).fetchall()
         except Exception as e: 
             print("Error cargando viajes:", e)
@@ -399,7 +404,6 @@ def gestion(id_op):
 
         estado_db = "EN REPARTO"
         detalle_historial = ""
-        fecha_ingreso_nueva = None
         
         if estado_btn == "ENTREGADO":
             estado_db = "ENTREGADO"
@@ -414,9 +418,7 @@ def gestion(id_op):
             estado_db = "EN DEPOSITO" 
             if fecha_repro:
                 try:
-                    f_obj = datetime.strptime(fecha_repro, "%Y-%m-%d").date()
-                    fecha_ingreso_nueva = f_obj
-                    f_str = f_obj.strftime("%d/%m/%Y")
+                    f_str = datetime.strptime(fecha_repro, "%Y-%m-%d").strftime("%d/%m/%Y")
                     detalle_historial = f"Reprogramado para el {f_str}. Motivo: {motivo}"
                 except:
                     detalle_historial = f"Reprogramado. Motivo: {motivo}"
@@ -427,8 +429,12 @@ def gestion(id_op):
         if conn:
             try:
                 if estado_btn == "Reprogramado":
-                    if fecha_ingreso_nueva:
-                        conn.execute(text("UPDATE operaciones SET estado=:e, chofer_asignado=NULL, fecha_ingreso=:f_nueva WHERE id=:i"), {"e": estado_db, "f_nueva": fecha_ingreso_nueva, "i": id_op})
+                    if fecha_repro:
+                        try:
+                            f_dt = datetime.strptime(fecha_repro, "%Y-%m-%d")
+                            conn.execute(text("UPDATE operaciones SET estado=:e, chofer_asignado=NULL, fecha_salida=:fs WHERE id=:i"), {"e": estado_db, "fs": f_dt, "i": id_op})
+                        except:
+                            conn.execute(text("UPDATE operaciones SET estado=:e, chofer_asignado=NULL WHERE id=:i"), {"e": estado_db, "i": id_op})
                     else:
                         conn.execute(text("UPDATE operaciones SET estado=:e, chofer_asignado=NULL WHERE id=:i"), {"e": estado_db, "i": id_op})
                 else:
