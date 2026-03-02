@@ -47,16 +47,13 @@ def enviar_email(destinatario, guia, ruta_foto, proveedor):
         except: pass
         finally: conn.close()
     
-    # Si el proveedor no tiene mail, igual intentamos mandar el de respaldo a nosotros
     destinatarios_lista = []
     if email_prov:
         destinatarios_lista.append({"email": email_prov})
     
-    # SI NO HAY DESTINATARIOS (PROVEEDOR SIN MAIL), AL MENOS NOS LO MANDAMOS A NOSOTROS
     if not destinatarios_lista:
         print("⚠️ Proveedor sin mail. Enviando solo copia interna.")
     
-    # PREPARAR ADJUNTO
     adjuntos = []
     if ruta_foto and os.path.exists(ruta_foto):
         try:
@@ -86,15 +83,13 @@ def enviar_email(destinatario, guia, ruta_foto, proveedor):
         "sender": {"name": "Logistica JetPaq", "email": EMAIL_REMITENTE},
         "subject": f"ENTREGA REALIZADA - Guía: {guia}",
         "htmlContent": html_content,
-        # AQUI ESTA LA MAGIA: COPIA OCULTA A TU MAIL
         "bcc": [{"email": EMAIL_REMITENTE, "name": "Archivo EK Logistica"}]
     }
 
-    # Si hay destinatario cliente, lo agregamos. Si no, Brevo usará solo el BCC o fallará si "to" es obligatorio vacio.
     if destinatarios_lista:
         payload["to"] = destinatarios_lista
     else:
-        payload["to"] = [{"email": EMAIL_REMITENTE}] # Auto-envío si no hay cliente
+        payload["to"] = [{"email": EMAIL_REMITENTE}]
 
     if adjuntos: payload["attachment"] = adjuntos
     
@@ -221,7 +216,6 @@ def lista_viajes():
     viajes = []
     if conn:
         try:
-            # Seleccionamos EN REPARTO asegurándonos que el motor no discrimine mayúsculas (ILIKE o UPPER)
             sql = text("SELECT id, guia_remito, destinatario, domicilio, localidad, bultos, estado, proveedor, tipo_servicio FROM operaciones WHERE chofer_asignado = :c AND UPPER(estado) = 'EN REPARTO' ORDER BY id ASC")
             viajes = conn.execute(sql, {"c": chofer}).fetchall()
         except Exception as e: 
@@ -252,7 +246,7 @@ def lista_viajes():
                     📍 {v[3]} <small>({v[4]})</small>
                 </div>
                 <div style="background: #f0f7ff; padding: 10px; border-radius: 6px; font-size: 0.85rem; color: #444; margin-bottom: 15px; border-left: 4px solid #1976D2;">
-                    📦 Guía: <b>{v[1]}</b> &nbsp;|&nbsp; Bultos: {v[5]}
+                    📦 Guía: <b>{v[1]}</b>  |  Bultos: {v[5]}
                 </div>
                 <div style="display:flex; gap:10px;">
                     <a href="{mapa_url}" target="_blank" class="btn btn-outline" style="flex:1; margin-top:0;">🗺️ Mapa</a>
@@ -313,7 +307,7 @@ def historial():
         for m in movimientos:
             hora = m[1].strftime('%H:%M')
             color = "#43A047"
-            if "Reprogramado" in m[0] or "Motivo" in m[0] or "Devuelto" in m[0]: color = "#D32F2F"
+            if "No Entregado" in m[0] or "Motivo" in m[0]: color = "#D32F2F"
             elif "Pendiente" in m[0]: color = "#F57C00"
             filas_html += f"""
             <div style="background:white; padding:15px; border-radius:8px; margin-bottom:10px; border-left: 5px solid {color}; box-shadow: 0 1px 2px rgba(0,0,0,0.1);">
@@ -403,9 +397,9 @@ def gestion(id_op):
                 flash("❌ ERROR: Debes escribir un motivo.", "error")
                 return redirect(url_for('gestion', id_op=id_op))
 
-        # LOGICA INTELIGENTE DE ESTADOS
         estado_db = "EN REPARTO"
         detalle_historial = ""
+        fecha_ingreso_nueva = None
         
         if estado_btn == "ENTREGADO":
             estado_db = "ENTREGADO"
@@ -417,10 +411,12 @@ def gestion(id_op):
             detalle_historial = f"Pendiente en calle. Motivo: {motivo}"
             
         elif estado_btn == "Reprogramado":
-            estado_db = "EN DEPOSITO" # Vuelve a la base para la oficina
+            estado_db = "EN DEPOSITO" 
             if fecha_repro:
                 try:
-                    f_str = datetime.strptime(fecha_repro, "%Y-%m-%d").strftime("%d/%m/%Y")
+                    f_obj = datetime.strptime(fecha_repro, "%Y-%m-%d").date()
+                    fecha_ingreso_nueva = f_obj
+                    f_str = f_obj.strftime("%d/%m/%Y")
                     detalle_historial = f"Reprogramado para el {f_str}. Motivo: {motivo}"
                 except:
                     detalle_historial = f"Reprogramado. Motivo: {motivo}"
@@ -431,7 +427,10 @@ def gestion(id_op):
         if conn:
             try:
                 if estado_btn == "Reprogramado":
-                    conn.execute(text("UPDATE operaciones SET estado=:e, chofer_asignado=NULL WHERE id=:i"), {"e": estado_db, "i": id_op})
+                    if fecha_ingreso_nueva:
+                        conn.execute(text("UPDATE operaciones SET estado=:e, chofer_asignado=NULL, fecha_ingreso=:f_nueva WHERE id=:i"), {"e": estado_db, "f_nueva": fecha_ingreso_nueva, "i": id_op})
+                    else:
+                        conn.execute(text("UPDATE operaciones SET estado=:e, chofer_asignado=NULL WHERE id=:i"), {"e": estado_db, "i": id_op})
                 else:
                     conn.execute(text("UPDATE operaciones SET estado=:e, fecha_entrega=:f WHERE id=:i"), {"e": estado_db, "f": datetime.now(), "i": id_op})
                 
