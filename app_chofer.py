@@ -5,7 +5,6 @@ import os
 import base64
 import requests
 import urllib.parse
-import re
 
 app = Flask(__name__)
 app.secret_key = "secreto_super_seguro_choferes_ek"
@@ -125,7 +124,7 @@ HTML_HEAD = """
         input, select { width: 100%; padding: 12px; margin-top: 8px; border: 1px solid #ddd; border-radius: 8px; font-size: 16px; background: #fff; box-sizing: border-box; }
         label { font-weight: 600; color: #444; margin-top: 15px; display: block; font-size: 0.9rem; }
         .tag { padding: 4px 8px; border-radius: 4px; font-size: 0.75rem; color: white; float: right; font-weight: bold; text-transform: uppercase; letter-spacing: 0.5px; }
-        .tag-blue { background: #1976D2; } .tag-orange { background: #F57C00; }
+        .tag-blue { background: #1976D2; } .tag-purple { background: #7B1FA2; }
         .camera-btn { background-color: #E3F2FD; color: #1565C0; border: 2px solid #1976D2; border-radius: 8px; padding: 12px; text-align: center; cursor: pointer; margin-top: 5px; display: flex; align-items: center; justify-content: center; gap: 10px; font-weight: bold; }
         .alert { padding: 12px; margin-bottom: 15px; border-radius: 8px; font-weight: 500; text-align: center; font-size: 0.9rem; }
         .alert-success { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
@@ -143,6 +142,15 @@ HTML_HEAD = """
                 btn.style.color = 'white';
                 btn.style.borderColor = '#43A047';
                 btn.innerHTML = '✅ Foto Lista';
+            }
+        }
+        function toggleReprogramar() {
+            var val = document.getElementById('estado_select').value;
+            var repDiv = document.getElementById('div_reprogramar');
+            if (val === 'Reprogramado') {
+                repDiv.style.display = 'block';
+            } else {
+                repDiv.style.display = 'none';
             }
         }
     </script>
@@ -207,8 +215,8 @@ def lista_viajes():
     viajes = []
     if conn:
         try:
-            # Solo busca los que estan en reparto real, si esta "Pendiente" tambien es "EN REPARTO" en la DB
-            sql = text("SELECT id, guia_remito, destinatario, domicilio, localidad, bultos, estado, proveedor FROM operaciones WHERE chofer_asignado = :c AND estado = 'EN REPARTO' ORDER BY id ASC")
+            # Seleccionamos EN REPARTO asegurándonos que el motor no discrimine mayúsculas (ILIKE o UPPER)
+            sql = text("SELECT id, guia_remito, destinatario, domicilio, localidad, bultos, estado, proveedor, tipo_servicio FROM operaciones WHERE chofer_asignado = :c AND UPPER(estado) = 'EN REPARTO' ORDER BY id ASC")
             viajes = conn.execute(sql, {"c": chofer}).fetchall()
         except Exception as e: 
             print("Error cargando viajes:", e)
@@ -219,14 +227,19 @@ def lista_viajes():
         cards_html = "<div class='card' style='text-align:center; padding: 40px; border: 2px dashed #ddd;'><div style='font-size: 2rem;'>🎉</div><h3>¡Todo Entregado!</h3><p style='color:#666;'>No tienes viajes pendientes.</p></div>"
     else:
         for v in viajes:
-            color = "tag-blue"
+            tipo_srv = v[8] if v[8] else ""
+            es_retiro = "Retiro" in tipo_srv
+            
+            lbl_tipo = "🔄 RETIRO" if es_retiro else "🚚 ENTREGA"
+            color_tipo = "tag-purple" if es_retiro else "tag-blue"
+            
             q = f"{v[3]}, {v[4]}"
             mapa_url = f"https://www.google.com/maps/search/?api=1&query={q}"
             
             cards_html += f"""
             <div class="card">
                 <div style="margin-bottom: 10px; overflow: hidden;">
-                    <span class="tag {color}">{v[6]}</span>
+                    <span class="tag {color_tipo}">{lbl_tipo}</span>
                     <h3 style="margin: 0; font-size: 1.1rem; color:#333;">{v[2]}</h3>
                 </div>
                 <div style="color: #555; font-size: 0.95rem; margin-bottom: 12px;">
@@ -342,15 +355,21 @@ def gestion(id_op):
     op = None
     if conn:
         try:
-            sql = text("SELECT guia_remito, destinatario, domicilio, localidad, celular, tipo_urgencia, tipo_carga, es_contra_reembolso, monto_recaudacion, info_intercambio, proveedor, estado FROM operaciones WHERE id = :i")
+            sql = text("SELECT guia_remito, destinatario, domicilio, localidad, celular, tipo_urgencia, tipo_carga, es_contra_reembolso, monto_recaudacion, info_intercambio, proveedor, tipo_servicio FROM operaciones WHERE id = :i")
             op = conn.execute(sql, {"i": id_op}).fetchone()
         except: pass
         finally: conn.close()
         
     if not op: return "Error: Viaje no encontrado"
 
+    tipo_srv = op[11] if len(op) > 11 and op[11] else ""
+    es_retiro = "Retiro" in tipo_srv
+    
+    txt_exito = "✅ CONFIRMAR RETIRO" if es_retiro else "✅ CONFIRMAR ENTREGA"
+    txt_falla = "❌ No Retirado" if es_retiro else "❌ No Entregado"
+
     if request.method == 'POST':
-        estado_btn = request.form.get('estado') # Puede ser ENTREGADO, Pendiente, o Reprogramado
+        estado_btn = request.form.get('estado')
         
         ruta_foto = None
         tiene_foto = False
@@ -365,7 +384,6 @@ def gestion(id_op):
         motivo = request.form.get('motivo', '').strip()
         fecha_repro = request.form.get('fecha_repro', '')
         
-        # VALIDACIONES PREVIAS
         if estado_btn == "ENTREGADO":
             if not recibe: 
                 flash("❌ ERROR: Escribe quién recibió.", "error")
@@ -376,11 +394,11 @@ def gestion(id_op):
                 
         if estado_btn in ["Pendiente", "Reprogramado"]:
             if not motivo:
-                flash("❌ ERROR: Debes escribir un motivo por el cual no entregaste.", "error")
+                flash("❌ ERROR: Debes escribir un motivo.", "error")
                 return redirect(url_for('gestion', id_op=id_op))
 
-        # LOGICA INTELIGENTE DE ESTADOS PARA OFICINA VS CALLE
-        estado_db = op[11] # Por defecto el que tenia
+        # LOGICA INTELIGENTE DE ESTADOS
+        estado_db = "EN REPARTO"
         detalle_historial = ""
         
         if estado_btn == "ENTREGADO":
@@ -389,13 +407,11 @@ def gestion(id_op):
             if tiene_foto: detalle_historial += " [CON FOTO]"
             
         elif estado_btn == "Pendiente":
-            # El chofer lo intenta mas tarde. Queda en su ruta.
             estado_db = "EN REPARTO" 
             detalle_historial = f"Pendiente en calle. Motivo: {motivo}"
             
         elif estado_btn == "Reprogramado":
-            # El chofer lo devuelve al deposito.
-            estado_db = "EN DEPOSITO"
+            estado_db = "EN DEPOSITO" # Vuelve a la base para la oficina
             if fecha_repro:
                 try:
                     f_str = datetime.strptime(fecha_repro, "%Y-%m-%d").strftime("%d/%m/%Y")
@@ -408,25 +424,21 @@ def gestion(id_op):
         conn = get_db()
         if conn:
             try:
-                # Si vuelve a deposito, le quitamos el chofer asi la oficina lo asigna otra vez
                 if estado_btn == "Reprogramado":
                     conn.execute(text("UPDATE operaciones SET estado=:e, chofer_asignado=NULL WHERE id=:i"), {"e": estado_db, "i": id_op})
                 else:
-                    # En reparto o Entregado
                     conn.execute(text("UPDATE operaciones SET estado=:e, fecha_entrega=:f WHERE id=:i"), {"e": estado_db, "f": datetime.now(), "i": id_op})
                 
-                # Guardamos la historia del movimiento
                 conn.execute(text("INSERT INTO historial_movimientos (operacion_id, usuario, accion, detalle, fecha_hora) VALUES (:o, :u, 'APP', :d, :f)"), {"o": id_op, "u": chofer, "d": detalle_historial, "f": datetime.now()})
                 conn.commit()
             except Exception as e: print("Error actualizando DB:", e)
             finally: conn.close()
             
-        # MENSAJES Y AVISOS
         if estado_btn == "ENTREGADO" and tiene_foto:
-            flash("✅ Entregado. Enviando correo y guardando copia...", "success")
+            flash("✅ Confirmado. Enviando correo y guardando copia...", "success")
             enviar_email(recibe, op[0], ruta_foto, op[10])
         elif estado_btn == "ENTREGADO":
-            flash("✅ Entregado correctamente.", "success")
+            flash("✅ Confirmado correctamente.", "success")
         elif estado_btn == "Pendiente":
             flash("⏱️ Queda en tu ruta para intentar más tarde.", "success")
         elif estado_btn == "Reprogramado":
@@ -441,8 +453,12 @@ def gestion(id_op):
         mensajes_html += f'<div class="alert {clase}">{mensaje}</div>'
 
     cobranza_html = ""
-    if op[7]:
-        cobranza_html = f"<div style='background:#fff3cd; padding:15px; border-radius:8px; margin-bottom:20px; border-left: 5px solid #ffc107; color:#856404;'>💰 <b>COBRAR: $ {op[8]}</b><br><small>{op[9]}</small></div>"
+    if op[7] and op[8]:
+        cobranza_html = f"<div style='background:#fff3cd; padding:15px; border-radius:8px; margin-bottom:20px; border-left: 5px solid #ffc107; color:#856404;'>💰 <b>COBRAR: $ {op[8]}</b></div>"
+    
+    intercambio_html = ""
+    if op[9]:
+        intercambio_html = f"<div style='background:#e2e3e5; padding:15px; border-radius:8px; margin-bottom:20px; border-left: 5px solid #6c757d; color:#383d41;'>📦 <b>OBS / INTERCAMBIO:</b><br>{op[9]}</div>"
 
     telefono_limpio = limpiar_telefono_wsp(op[4])
     mensaje_wa = urllib.parse.quote(f"Hola, soy el chofer de JetPaq. Estoy en camino con tu envío (Guía: {op[0]}).")
@@ -455,12 +471,13 @@ def gestion(id_op):
     {HTML_HEAD}
     <body>
         <div class="header">
-            <h2>Gestión de Entrega</h2>
+            <h2>Gestión de Guía</h2>
         </div>
         <div class="container">
             {mensajes_html}
             <div class="card">
                 {cobranza_html}
+                {intercambio_html}
                 <div style="color:#888; font-size:0.8rem; text-transform:uppercase; letter-spacing:1px; margin-bottom:5px;">Destinatario</div>
                 <h2 style="margin:0 0 5px 0; font-size:1.4rem;">{op[1]}</h2>
                 <div style="font-size:1.1rem; margin-bottom:15px;">📍 {op[2]} <br> <small style="color:#666;">({op[3]})</small></div>
@@ -472,7 +489,7 @@ def gestion(id_op):
             
             <form method="POST" enctype="multipart/form-data">
                 <div class="card" style="border-top: 5px solid #43A047;">
-                    <h3 style="margin-top:0; color:#2E7D32;">✅ Confirmar Entrega</h3>
+                    <h3 style="margin-top:0; color:#2E7D32;">{txt_exito.split(' ')[0]} {txt_exito.split(' ')[1]} {txt_exito.split(' ')[2] if len(txt_exito.split(' '))>2 else ''}</h3>
                     <label>Quien Recibe:</label>
                     <input type="text" name="recibe" placeholder="Nombre y Apellido...">
                     <label>Comprobante:</label>
@@ -480,25 +497,37 @@ def gestion(id_op):
                         <span class="camera-icon">📷</span> SUBIR FOTO
                     </label>
                     <input type="file" id="fileInput" name="foto" accept="image/*" capture="environment" style="display:none;" onchange="fileSelected(this)">
-                    <button type="submit" name="estado" value="ENTREGADO" class="btn btn-green" style="margin-top:20px;">CONFIRMAR FINALIZADO</button>
+                    <button type="submit" name="estado" value="ENTREGADO" class="btn btn-green" style="margin-top:20px;">FINALIZAR</button>
                 </div>
                 
                 <div class="card" style="border-top: 5px solid #D32F2F;">
-                    <h3 style="margin-top:0; color:#c62828;">❌ No Entregado</h3>
+                    <h3 style="margin-top:0; color:#c62828;">{txt_falla}</h3>
+                    
+                    <label>¿Qué vas a hacer?</label>
+                    <select name="estado_select" id="estado_select" onchange="toggleReprogramar()">
+                        <option value="Pendiente">Intentar luego en el día (Pendiente)</option>
+                        <option value="Reprogramado">Devolver al depósito (Reprogramar)</option>
+                    </select>
+                    
                     <label>Motivo del problema:</label>
                     <input type="text" name="motivo" placeholder="Ej: No había nadie, mudado, etc.">
                     
-                    <label>Fecha a Reprogramar (Solo si vuelve a depósito):</label>
-                    <input type="date" name="fecha_repro">
-                    
-                    <div style="display:flex; gap:10px; margin-top:15px;">
-                        <button type="submit" name="estado" value="Pendiente" class="btn btn-orange" style="flex:1;">⏱️ INTENTAR LUEGO</button>
-                        <button type="submit" name="estado" value="Reprogramado" class="btn btn-purple" style="flex:1;">🏠 VOLVER A DEPÓSITO</button>
+                    <div id="div_reprogramar" style="display:none;">
+                        <label>Fecha sugerida de visita (Opcional):</label>
+                        <input type="date" name="fecha_repro">
+                        <p style="font-size: 0.8rem; color: #666; margin-top: 5px;">Al devolver al depósito, la guía se quitará de tu ruta.</p>
                     </div>
-                    <p style="font-size: 0.8rem; color: #666; margin-top: 10px; line-height: 1.4;">
-                        <b>Intentar Luego:</b> Sigue en tu ruta para hoy.<br>
-                        <b>Volver a Depósito:</b> Se descarga de tu camioneta y vuelve a la oficina.
-                    </p>
+                    
+                    <button type="button" class="btn btn-outline" style="border:2px solid #D32F2F; color:#D32F2F; margin-top:20px;" onclick="enviarFallo()">GUARDAR ESTADO</button>
+                    <input type="hidden" name="estado" id="hidden_estado" value="">
+                    <button type="submit" id="submit_falla" style="display:none;"></button>
+                    
+                    <script>
+                        function enviarFallo() {
+                            document.getElementById('hidden_estado').value = document.getElementById('estado_select').value;
+                            document.getElementById('submit_falla').click();
+                        }
+                    </script>
                 </div>
             </form>
             <br>
