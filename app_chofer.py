@@ -13,14 +13,12 @@ app.secret_key = "secreto_super_seguro_choferes_ek"
 # --- CONFIGURACIÓN DE SEGURIDAD (LEE DE RENDER O .ENV) ---
 DATABASE_URL = os.environ.get("DB_URL") 
 if not DATABASE_URL:
-    # Si falla, usa este respaldo local por si estás probando en tu PC
     from dotenv import load_dotenv
     load_dotenv()
     DATABASE_URL = os.getenv("DB_URL")
 
 BREVO_API_KEY = os.environ.get("BREVO_API_KEY", "") 
 EMAIL_REMITENTE = "eklogistica19@gmail.com" 
-
 NUMERO_BASE_RAW = "2615555555" 
 
 BASE_DIR = os.path.abspath(os.path.dirname(__file__))
@@ -42,7 +40,8 @@ def limpiar_telefono_wsp(telefono):
 
 NUMERO_BASE_FINAL = limpiar_telefono_wsp(NUMERO_BASE_RAW)
 
-def enviar_email(destinatario, guia, ruta_foto, proveedor):
+# --- MAIL AHORA INCLUYE EL ENLACE DEL MAPA ---
+def enviar_email(destinatario, guia, ruta_foto, proveedor, link_mapa=""):
     if not BREVO_API_KEY: return
     conn = get_db()
     email_prov = None
@@ -71,6 +70,9 @@ def enviar_email(destinatario, guia, ruta_foto, proveedor):
     url = "https://api.brevo.com/v3/smtp/email"
     fecha_hora = datetime.now().strftime('%d/%m/%Y %H:%M')
     
+    # Agregamos el GPS visualmente si existe
+    texto_gps = f"<li><b>Ubicación (GPS):</b> <a href='{link_mapa}'>Ver en Google Maps</a></li>" if link_mapa else ""
+
     html_content = f"""
     <html><body>
     <h3>Hola,</h3>
@@ -80,8 +82,9 @@ def enviar_email(destinatario, guia, ruta_foto, proveedor):
         <li><b>Guía:</b> {guia}</li>
         <li><b>Proveedor:</b> {proveedor}</li>
         <li><b>Recibió:</b> {destinatario}</li>
+        {texto_gps}
     </ul>
-    <p>Atte.<br><b>Equipo JetPaq / EK</b></p>
+    <p>Atte.<br><b>Equipo JetPaq / EK Logística</b></p>
     </body></html>
     """
     
@@ -92,19 +95,14 @@ def enviar_email(destinatario, guia, ruta_foto, proveedor):
         "bcc": [{"email": EMAIL_REMITENTE, "name": "Archivo EK Logistica"}]
     }
 
-    if destinatarios_lista:
-        payload["to"] = destinatarios_lista
-    else:
-        payload["to"] = [{"email": EMAIL_REMITENTE}]
+    if destinatarios_lista: payload["to"] = destinatarios_lista
+    else: payload["to"] = [{"email": EMAIL_REMITENTE}]
 
     if adjuntos: payload["attachment"] = adjuntos
     
     headers = {"accept": "application/json", "api-key": BREVO_API_KEY, "content-type": "application/json"}
-    try: 
-        r = requests.post(url, json=payload, headers=headers)
-        print(f"📧 Mail Status: {r.status_code}")
-    except Exception as e:
-        print(f"❌ Error Mail: {e}")
+    try: requests.post(url, json=payload, headers=headers)
+    except: pass
 
 HTML_HEAD = """
 <head>
@@ -159,6 +157,24 @@ HTML_HEAD = """
                 repDiv.style.display = 'none';
             }
         }
+        // ESTA FUNCION BUSCA EL GPS DEL CELULAR AL ABRIR LA GUÍA
+        function obtenerGPS() {
+            if (navigator.geolocation) {
+                navigator.geolocation.getCurrentPosition(function(position) {
+                    var lat = position.coords.latitude;
+                    var lng = position.coords.longitude;
+                    document.getElementById('lat_entrega').value = lat;
+                    document.getElementById('lng_entrega').value = lng;
+                    document.getElementById('lat_falla').value = lat;
+                    document.getElementById('lng_falla').value = lng;
+                }, function(error) {
+                    console.log("No se pudo obtener GPS", error);
+                }, {
+                    enableHighAccuracy: true, timeout: 10000, maximumAge: 0
+                });
+            }
+        }
+        window.onload = obtenerGPS;
     </script>
 </head>
 """
@@ -234,10 +250,8 @@ def lista_viajes():
         for v in viajes:
             tipo_srv = v[8] if v[8] else ""
             es_retiro = "Retiro" in tipo_srv
-            
             lbl_tipo = "🔄 RETIRO" if es_retiro else "🚚 ENTREGA"
             color_tipo = "tag-purple" if es_retiro else "tag-blue"
-            
             q = f"{v[3]}, {v[4]}"
             mapa_url = f"https://www.google.com/maps/search/?api=1&query={q}"
             
@@ -312,6 +326,15 @@ def historial():
         for m in movimientos:
             hora = m[1].strftime('%H:%M')
             color = "#43A047"
+            
+            # TRUCO VISUAL: Detectar si el historial tiene un mapa de Google guardado y convertirlo en un link clickeable
+            detalle_limpio = m[0]
+            if "https://maps.google.com" in detalle_limpio:
+                partes = detalle_limpio.split(" | GPS:")
+                texto_base = partes[0]
+                link_mapa = partes[1].strip() if len(partes) > 1 else ""
+                detalle_limpio = f"{texto_base} <br><a href='{link_mapa}' target='_blank' style='color:#1976D2; font-size:0.8rem; font-weight:bold;'>📍 Ver ubicación GPS</a>"
+            
             if "No Entregado" in m[0] or "Motivo" in m[0]: color = "#D32F2F"
             elif "Pendiente" in m[0]: color = "#F57C00"
             filas_html += f"""
@@ -320,7 +343,7 @@ def historial():
                     <span style="font-weight:bold; color:#333;">{hora} hs</span>
                     <span style="font-size:0.8rem; color:#888;">{m[2]}</span>
                 </div>
-                <div style="margin-top:5px; color:#555; font-size:0.9rem;">{m[0]}</div>
+                <div style="margin-top:5px; color:#555; font-size:0.9rem;">{detalle_limpio}</div>
             </div>
             """
 
@@ -376,6 +399,12 @@ def gestion(id_op):
     if request.method == 'POST':
         estado_btn = request.form.get('estado')
         
+        # --- CAPTURAMOS EL GPS DEL FORMULARIO OCULTO ---
+        lat = request.form.get('lat', '')
+        lng = request.form.get('lng', '')
+        enlace_gps = f"https://maps.google.com/?q={lat},{lng}" if lat and lng else ""
+        texto_gps_historial = f" | GPS: {enlace_gps}" if enlace_gps else ""
+        
         ruta_foto = None
         tiene_foto = False
         archivo = request.files.get('foto')
@@ -409,21 +438,22 @@ def gestion(id_op):
             estado_db = "ENTREGADO"
             detalle_historial = f"Recibio: {recibe}"
             if tiene_foto: detalle_historial += " [CON FOTO]"
+            detalle_historial += texto_gps_historial # Le inyectamos el mapa al final!
             
         elif estado_btn == "Pendiente":
             estado_db = "EN REPARTO" 
-            detalle_historial = f"Pendiente en calle. Motivo: {motivo}"
+            detalle_historial = f"Pendiente en calle. Motivo: {motivo}{texto_gps_historial}"
             
         elif estado_btn == "Reprogramado":
             estado_db = "EN DEPOSITO" 
             if fecha_repro:
                 try:
                     f_str = datetime.strptime(fecha_repro, "%Y-%m-%d").strftime("%d/%m/%Y")
-                    detalle_historial = f"Reprogramado para el {f_str}. Motivo: {motivo}"
+                    detalle_historial = f"Reprogramado para el {f_str}. Motivo: {motivo}{texto_gps_historial}"
                 except:
-                    detalle_historial = f"Reprogramado. Motivo: {motivo}"
+                    detalle_historial = f"Reprogramado. Motivo: {motivo}{texto_gps_historial}"
             else:
-                detalle_historial = f"Devuelto a depósito. Motivo: {motivo}"
+                detalle_historial = f"Devuelto a depósito. Motivo: {motivo}{texto_gps_historial}"
         
         conn = get_db()
         if conn:
@@ -447,7 +477,8 @@ def gestion(id_op):
             
         if estado_btn == "ENTREGADO" and tiene_foto:
             flash("✅ Confirmado. Enviando correo y guardando copia...", "success")
-            enviar_email(recibe, op[0], ruta_foto, op[10])
+            # Le mandamos el enlace GPS al mail del proveedor también!
+            enviar_email(recibe, op[0], ruta_foto, op[10], link_mapa=enlace_gps)
         elif estado_btn == "ENTREGADO":
             flash("✅ Confirmado correctamente.", "success")
         elif estado_btn == "Pendiente":
@@ -508,6 +539,10 @@ def gestion(id_op):
                         <span class="camera-icon">📷</span> SUBIR FOTO
                     </label>
                     <input type="file" id="fileInput" name="foto" accept="image/*" capture="environment" style="display:none;" onchange="fileSelected(this)">
+                    
+                    <input type="hidden" name="lat" id="lat_entrega">
+                    <input type="hidden" name="lng" id="lng_entrega">
+
                     <button type="submit" name="estado" value="ENTREGADO" class="btn btn-green" style="margin-top:20px;">FINALIZAR</button>
                 </div>
                 
@@ -529,6 +564,9 @@ def gestion(id_op):
                         <p style="font-size: 0.8rem; color: #666; margin-top: 5px;">Al devolver al depósito, la guía se quitará de tu ruta.</p>
                     </div>
                     
+                    <input type="hidden" name="lat" id="lat_falla">
+                    <input type="hidden" name="lng" id="lng_falla">
+
                     <button type="button" class="btn btn-outline" style="border:2px solid #D32F2F; color:#D32F2F; margin-top:20px;" onclick="enviarFallo()">GUARDAR ESTADO</button>
                     <input type="hidden" name="estado" id="hidden_estado" value="">
                     <button type="submit" id="submit_falla" style="display:none;"></button>
