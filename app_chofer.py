@@ -40,8 +40,8 @@ def limpiar_telefono_wsp(telefono):
 
 NUMERO_BASE_FINAL = limpiar_telefono_wsp(NUMERO_BASE_RAW)
 
-# --- MAIL AHORA INCLUYE EL ENLACE DEL MAPA ---
-def enviar_email(destinatario, guia, ruta_foto, proveedor, link_mapa=""):
+# --- MAIL AHORA SOPORTA MÚLTIPLES FOTOS ---
+def enviar_email(destinatario, guia, rutas_fotos, proveedor, link_mapa=""):
     if not BREVO_API_KEY: return
     conn = get_db()
     email_prov = None
@@ -60,23 +60,24 @@ def enviar_email(destinatario, guia, ruta_foto, proveedor, link_mapa=""):
         print("⚠️ Proveedor sin mail. Enviando solo copia interna.")
     
     adjuntos = []
-    if ruta_foto and os.path.exists(ruta_foto):
-        try:
-            with open(ruta_foto, "rb") as f:
-                content = base64.b64encode(f.read()).decode('utf-8')
-                adjuntos.append({"content": content, "name": f"remito_{guia}.jpg"})
-        except: pass
+    # Procesamos todas las fotos de la lista
+    for ruta in rutas_fotos:
+        if ruta and os.path.exists(ruta):
+            try:
+                with open(ruta, "rb") as f:
+                    content = base64.b64encode(f.read()).decode('utf-8')
+                    adjuntos.append({"content": content, "name": os.path.basename(ruta)})
+            except: pass
 
     url = "https://api.brevo.com/v3/smtp/email"
     fecha_hora = datetime.now().strftime('%d/%m/%Y %H:%M')
     
-    # Agregamos el GPS visualmente si existe
     texto_gps = f"<li><b>Ubicación (GPS):</b> <a href='{link_mapa}'>Ver en Google Maps</a></li>" if link_mapa else ""
 
     html_content = f"""
     <html><body>
     <h3>Hola,</h3>
-    <p>Se informa la entrega exitosa. <b>Adjuntamos la foto del remito/guía conformado.</b></p>
+    <p>Se informa la entrega exitosa. <b>Adjuntamos las fotos del remito/guía conformado o comprobantes.</b></p>
     <ul>
         <li><b>Fecha:</b> {fecha_hora}</li>
         <li><b>Guía:</b> {guia}</li>
@@ -141,11 +142,12 @@ HTML_HEAD = """
     <script>
         function fileSelected(input) {
             var btn = document.getElementById('cameraLabel');
-            if (input.files && input.files[0]) {
+            if (input.files && input.files.length > 0) {
                 btn.style.backgroundColor = '#43A047';
                 btn.style.color = 'white';
                 btn.style.borderColor = '#43A047';
-                btn.innerHTML = '✅ Foto Lista';
+                var text = input.files.length === 1 ? '✅ 1 Foto Lista' : '✅ ' + input.files.length + ' Fotos Listas';
+                btn.innerHTML = '<span class="camera-icon">📷</span> ' + text;
             }
         }
         function toggleReprogramar() {
@@ -157,7 +159,6 @@ HTML_HEAD = """
                 repDiv.style.display = 'none';
             }
         }
-        // ESTA FUNCION BUSCA EL GPS DEL CELULAR AL ABRIR LA GUÍA
         function obtenerGPS() {
             if (navigator.geolocation) {
                 navigator.geolocation.getCurrentPosition(function(position) {
@@ -327,7 +328,6 @@ def historial():
             hora = m[1].strftime('%H:%M')
             color = "#43A047"
             
-            # TRUCO VISUAL: Detectar si el historial tiene un mapa de Google guardado y convertirlo en un link clickeable
             detalle_limpio = m[0]
             if "https://maps.google.com" in detalle_limpio:
                 partes = detalle_limpio.split(" | GPS:")
@@ -399,20 +399,22 @@ def gestion(id_op):
     if request.method == 'POST':
         estado_btn = request.form.get('estado')
         
-        # --- CAPTURAMOS EL GPS DEL FORMULARIO OCULTO ---
         lat = request.form.get('lat', '')
         lng = request.form.get('lng', '')
         enlace_gps = f"https://maps.google.com/?q={lat},{lng}" if lat and lng else ""
         texto_gps_historial = f" | GPS: {enlace_gps}" if enlace_gps else ""
         
-        ruta_foto = None
-        tiene_foto = False
-        archivo = request.files.get('foto')
-        if archivo and archivo.filename != '':
-            filename = f"foto_{id_op}_{int(datetime.now().timestamp())}.jpg"
-            ruta_foto = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-            archivo.save(ruta_foto)
-            tiene_foto = True
+        # --- NUEVA LÓGICA PARA RECOGER MUCHAS FOTOS ---
+        rutas_fotos = []
+        archivos = request.files.getlist('foto')
+        for i, archivo in enumerate(archivos):
+            if archivo and archivo.filename != '':
+                filename = f"foto_{id_op}_{i}_{int(datetime.now().timestamp())}.jpg"
+                ruta_foto = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+                archivo.save(ruta_foto)
+                rutas_fotos.append(ruta_foto)
+        
+        tiene_foto = len(rutas_fotos) > 0
             
         recibe = request.form.get('recibe', '').strip()
         motivo = request.form.get('motivo', '').strip()
@@ -437,8 +439,8 @@ def gestion(id_op):
         if estado_btn == "ENTREGADO":
             estado_db = "ENTREGADO"
             detalle_historial = f"Recibio: {recibe}"
-            if tiene_foto: detalle_historial += " [CON FOTO]"
-            detalle_historial += texto_gps_historial # Le inyectamos el mapa al final!
+            if tiene_foto: detalle_historial += f" [{len(rutas_fotos)} FOTO/S]"
+            detalle_historial += texto_gps_historial 
             
         elif estado_btn == "Pendiente":
             estado_db = "EN REPARTO" 
@@ -476,9 +478,8 @@ def gestion(id_op):
             finally: conn.close()
             
         if estado_btn == "ENTREGADO" and tiene_foto:
-            flash("✅ Confirmado. Enviando correo y guardando copia...", "success")
-            # Le mandamos el enlace GPS al mail del proveedor también!
-            enviar_email(recibe, op[0], ruta_foto, op[10], link_mapa=enlace_gps)
+            flash("✅ Confirmado. Enviando correo y guardando copias...", "success")
+            enviar_email(recibe, op[0], rutas_fotos, op[10], link_mapa=enlace_gps)
         elif estado_btn == "ENTREGADO":
             flash("✅ Confirmado correctamente.", "success")
         elif estado_btn == "Pendiente":
@@ -534,11 +535,11 @@ def gestion(id_op):
                     <h3 style="margin-top:0; color:#2E7D32;">{txt_exito.split(' ')[0]} {txt_exito.split(' ')[1]} {txt_exito.split(' ')[2] if len(txt_exito.split(' '))>2 else ''}</h3>
                     <label>Quien Recibe:</label>
                     <input type="text" name="recibe" placeholder="Nombre y Apellido...">
-                    <label>Comprobante:</label>
+                    <label>Comprobante/s (Múltiples):</label>
                     <label for="fileInput" id="cameraLabel" class="camera-btn">
-                        <span class="camera-icon">📷</span> SUBIR FOTO
+                        <span class="camera-icon">📷</span> SELECCIONAR FOTOS
                     </label>
-                    <input type="file" id="fileInput" name="foto" accept="image/*" capture="environment" style="display:none;" onchange="fileSelected(this)">
+                    <input type="file" id="fileInput" name="foto" accept="image/*" multiple style="display:none;" onchange="fileSelected(this)">
                     
                     <input type="hidden" name="lat" id="lat_entrega">
                     <input type="hidden" name="lng" id="lng_entrega">
@@ -591,6 +592,7 @@ def gestion(id_op):
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 8000))
     app.run(host='0.0.0.0', port=port)
+
 
 
 
