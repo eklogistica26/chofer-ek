@@ -40,7 +40,6 @@ def limpiar_telefono_wsp(telefono):
 
 NUMERO_BASE_FINAL = limpiar_telefono_wsp(NUMERO_BASE_RAW)
 
-# --- MAIL AHORA SOPORTA MÚLTIPLES FOTOS ---
 def enviar_email(destinatario, guia, rutas_fotos, proveedor, link_mapa=""):
     if not BREVO_API_KEY: return
     conn = get_db()
@@ -60,7 +59,6 @@ def enviar_email(destinatario, guia, rutas_fotos, proveedor, link_mapa=""):
         print("⚠️ Proveedor sin mail. Enviando solo copia interna.")
     
     adjuntos = []
-    # Procesamos todas las fotos de la lista
     for ruta in rutas_fotos:
         if ruta and os.path.exists(ruta):
             try:
@@ -164,10 +162,10 @@ HTML_HEAD = """
                 navigator.geolocation.getCurrentPosition(function(position) {
                     var lat = position.coords.latitude;
                     var lng = position.coords.longitude;
-                    document.getElementById('lat_entrega').value = lat;
-                    document.getElementById('lng_entrega').value = lng;
-                    document.getElementById('lat_falla').value = lat;
-                    document.getElementById('lng_falla').value = lng;
+                    var latInputs = document.querySelectorAll('input[name="lat"]');
+                    var lngInputs = document.querySelectorAll('input[name="lng"]');
+                    latInputs.forEach(input => input.value = lat);
+                    lngInputs.forEach(input => input.value = lng);
                 }, function(error) {
                     console.log("No se pudo obtener GPS", error);
                 }, {
@@ -251,8 +249,15 @@ def lista_viajes():
         for v in viajes:
             tipo_srv = v[8] if v[8] else ""
             es_retiro = "Retiro" in tipo_srv
+            es_guardia = "Guardia" in tipo_srv
+            
             lbl_tipo = "🔄 RETIRO" if es_retiro else "🚚 ENTREGA"
             color_tipo = "tag-purple" if es_retiro else "tag-blue"
+            
+            if es_guardia:
+                lbl_tipo = "🚨 GUARDIA"
+                color_tipo = "tag-orange"
+                
             q = f"{v[3]}, {v[4]}"
             mapa_url = f"https://www.google.com/maps/search/?api=1&query={q}"
             
@@ -286,6 +291,12 @@ def lista_viajes():
         </div>
         <div class="container">
             {mensajes_html}
+            
+            <a href="/guardia" class="btn btn-orange" style="margin-bottom: 20px; font-size: 1.1rem; box-shadow: 0 4px 6px rgba(245, 124, 0, 0.3);">
+                ➕ CARGAR ENVÍO DE GUARDIA
+            </a>
+            <hr style="border: 0; height: 1px; background-image: linear-gradient(to right, rgba(0, 0, 0, 0), rgba(0, 0, 0, 0.15), rgba(0, 0, 0, 0)); margin-bottom: 20px;">
+            
             {cards_html}
             <br>
             <a href="/viajes" class="btn btn-green" style="margin-bottom: 60px;">🔄 ACTUALIZAR LISTA</a>
@@ -300,6 +311,143 @@ def lista_viajes():
             <a href="https://wa.me/{NUMERO_BASE_FINAL}" class="nav-item" style="color:#D32F2F;">
                 <span class="nav-icon">🆘</span>Base
             </a>
+        </div>
+    </body>
+    </html>
+    """
+    return render_template_string(html)
+
+# --- NUEVO MÓDULO: MODO GUARDIA (FIN DE SEMANA) ---
+@app.route('/guardia', methods=['GET', 'POST'])
+def guardia():
+    chofer = session.get('chofer')
+    if not chofer: return redirect(url_for('index'))
+
+    conn = get_db()
+    proveedores = ["JetPaq", "DHL", "Andreani", "MercadoLibre"] 
+    if conn:
+        try:
+            res = conn.execute(text("SELECT nombre FROM clientes_principales ORDER BY nombre")).fetchall()
+            if res: proveedores = [r[0] for r in res]
+        except: pass
+        
+    if request.method == 'POST':
+        guia = request.form.get('guia', '').strip()
+        prov = request.form.get('proveedor', 'Otro')
+        dest = request.form.get('destinatario', '').strip()
+        dom = request.form.get('domicilio', '').strip()
+        loc = request.form.get('localidad', '').strip()
+        sucursal = request.form.get('sucursal', 'Mendoza')
+        
+        try: bultos = int(request.form.get('bultos', 1))
+        except: bultos = 1
+            
+        try: peso = float(request.form.get('peso', 0.0))
+        except: peso = 0.0
+            
+        es_frio = request.form.get('es_frio') == 'on'
+
+        if not guia or not dest or not dom:
+            flash("❌ Faltan datos obligatorios.", "error")
+            return redirect(url_for('guardia'))
+
+        bultos_frio = bultos if es_frio else 0
+        tipo_carga = "REFRIGERADO (GUARDIA)" if es_frio else "COMUN (GUARDIA)"
+
+        if conn:
+            try:
+                # Insertamos la guía en $0. La plataforma PC se encarga de facturarla el lunes.
+                sql_insert = text("""
+                    INSERT INTO operaciones
+                    (fecha_ingreso, fecha_salida, sucursal, guia_remito, proveedor, destinatario, domicilio, localidad, bultos, bultos_frio, peso, tipo_carga, estado, chofer_asignado, tipo_servicio, monto_servicio, facturado)
+                    VALUES
+                    (:f_in, :f_sal, :suc, :guia, :prov, :dest, :dom, :loc, :bultos, :bfrio, :peso, :tcarga, 'EN REPARTO', :chof, 'Entrega (Guardia)', 0.0, FALSE)
+                    RETURNING id
+                """)
+                now = datetime.now()
+                params = {
+                    "f_in": now.date(), "f_sal": now, "suc": sucursal, "guia": guia, "prov": prov, 
+                    "dest": dest, "dom": dom, "loc": loc, "bultos": bultos, "bfrio": bultos_frio, 
+                    "peso": peso, "tcarga": tipo_carga, "chof": chofer
+                }
+                res_id = conn.execute(sql_insert, params).fetchone()
+                new_id = res_id[0]
+
+                sql_hist = text("INSERT INTO historial_movimientos (operacion_id, usuario, accion, detalle, fecha_hora) VALUES (:o, :u, 'INGRESO GUARDIA', 'Cargado por chofer en Fin de Semana/Feriado', :f)")
+                conn.execute(sql_hist, {"o": new_id, "u": chofer, "f": now})
+                conn.commit()
+
+                flash(f"✅ ¡Guardia cargada exitosamente! Ya está en tu ruta.", "success")
+                return redirect(url_for('lista_viajes'))
+            except Exception as e:
+                print("Error al guardar guardia:", e)
+                flash("❌ Error interno al guardar la guardia.", "error")
+            finally:
+                conn.close()
+
+    mensajes_html = ""
+    mensajes = session.pop('_flashes', [])
+    for categoria, mensaje in mensajes:
+        clase = "alert-success" if categoria == "success" else "alert-error"
+        mensajes_html += f'<div class="alert {clase}">{mensaje}</div>'
+
+    html = f"""
+    <!DOCTYPE html>
+    <html>
+    {HTML_HEAD}
+    <body>
+        <div class="header" style="background:#F57C00;">
+            <h2>🚨 Cargar Guardia (Urgencia)</h2>
+        </div>
+        <div class="container">
+            {mensajes_html}
+            <div class="card" style="border-top: 5px solid #F57C00;">
+                <p style="color:#666; font-size:0.9rem; margin-top:0;">Completá estos datos rápidos para añadir el envío a tu ruta actual.</p>
+                <form method="POST">
+                    <label>Sucursal:</label>
+                    <select name="sucursal" required>
+                        <option value="Mendoza">Mendoza</option>
+                        <option value="San Juan">San Juan</option>
+                    </select>
+
+                    <label>Guía / Remito:</label>
+                    <input type="text" name="guia" placeholder="N° de remito..." required>
+                    
+                    <label>Proveedor:</label>
+                    <select name="proveedor" required>
+                        {"".join([f'<option value="{p}">{p}</option>' for p in proveedores])}
+                    </select>
+                    
+                    <label>Destinatario:</label>
+                    <input type="text" name="destinatario" placeholder="Nombre de quien recibe..." required>
+                    
+                    <label>Domicilio exacto:</label>
+                    <input type="text" name="domicilio" placeholder="Calle, número, piso..." required>
+                    
+                    <label>Localidad / Zona:</label>
+                    <input type="text" name="localidad" placeholder="Ej: Godoy Cruz, Capital..." required>
+                    
+                    <div style="display:flex; gap:10px;">
+                        <div style="flex:1;">
+                            <label>Bultos:</label>
+                            <input type="number" name="bultos" value="1" min="1" required>
+                        </div>
+                        <div style="flex:1;">
+                            <label>Peso (Kg):</label>
+                            <input type="number" step="0.1" name="peso" value="0.0">
+                        </div>
+                    </div>
+                    
+                    <div style="margin-top: 20px; background: #e3f2fd; padding: 15px; border-radius: 8px; display: flex; align-items: center; gap: 10px;">
+                        <input type="checkbox" name="es_frio" id="es_frio" style="width: 25px; height: 25px; margin:0;">
+                        <label for="es_frio" style="margin:0; font-size:1.1rem; color:#0d47a1; cursor:pointer;">❄️ Requiere Frío / Contingencia</label>
+                    </div>
+
+                    <button type="submit" class="btn btn-orange" style="margin-top:25px; font-size:1.2rem;">🚀 GUARDAR Y REPARTIR</button>
+                </form>
+            </div>
+            <a href="/viajes" class="btn btn-outline" style="border:1px solid #ccc; color:#666;">← Cancelar</a>
+            <br><br>
         </div>
     </body>
     </html>
@@ -404,7 +552,6 @@ def gestion(id_op):
         enlace_gps = f"https://maps.google.com/?q={lat},{lng}" if lat and lng else ""
         texto_gps_historial = f" | GPS: {enlace_gps}" if enlace_gps else ""
         
-        # --- NUEVA LÓGICA PARA RECOGER MUCHAS FOTOS ---
         rutas_fotos = []
         archivos = request.files.getlist('foto')
         for i, archivo in enumerate(archivos):
@@ -592,6 +739,7 @@ def gestion(id_op):
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 8000))
     app.run(host='0.0.0.0', port=port)
+
 
 
 
