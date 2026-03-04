@@ -32,6 +32,17 @@ def get_db():
         print("Error de DB:", e)
         return None
 
+# --- AUTO-MIGRACIÓN: Crea la columna DNI si no existe ---
+def check_and_add_dni_column():
+    conn = get_db()
+    if conn:
+        try:
+            conn.execute(text("ALTER TABLE choferes ADD COLUMN IF NOT EXISTS dni VARCHAR(50);"))
+            conn.commit()
+        except: pass
+        finally: conn.close()
+check_and_add_dni_column()
+
 def limpiar_telefono_wsp(telefono):
     if not telefono: return ""
     nums = "".join(filter(str.isdigit, str(telefono)))
@@ -40,7 +51,6 @@ def limpiar_telefono_wsp(telefono):
 
 NUMERO_BASE_FINAL = limpiar_telefono_wsp(NUMERO_BASE_RAW)
 
-# --- FUNCIÓN REPARADORA DE ZONA HORARIA (ARGENTINA UTC-3) ---
 def get_now():
     return datetime.utcnow() - timedelta(hours=3)
 
@@ -72,7 +82,6 @@ def enviar_email(destinatario, guia, rutas_fotos, proveedor, link_mapa=""):
             except: pass
 
     url = "https://api.brevo.com/v3/smtp/email"
-    # USA LA HORA ARGENTINA
     fecha_hora = get_now().strftime('%d/%m/%Y %H:%M')
     
     texto_gps = f"<li><b>Ubicación (GPS):</b> <a href='{link_mapa}'>Ver en Google Maps</a></li>" if link_mapa else ""
@@ -237,18 +246,55 @@ HTML_HEAD = """
 
 @app.route('/', methods=['GET', 'POST'])
 def index():
+    mensajes_html = ""
+    mensajes = session.pop('_flashes', [])
+    for categoria, mensaje in mensajes:
+        clase = "alert-success" if categoria == "success" else "alert-error"
+        mensajes_html += f'<div class="alert {clase}" style="margin-top:20px;">{mensaje}</div>'
+
     if request.method == 'POST':
-        session['chofer'] = request.form.get('chofer')
-        return redirect(url_for('lista_viajes'))
+        chofer_input = request.form.get('chofer')
+        dni_input = request.form.get('dni', '').strip()
+        sucursal_input = request.form.get('sucursal')
+        
+        conn = get_db()
+        acceso_concedido = False
+        
+        if conn:
+            try:
+                # Verificamos si la base de datos tiene un DNI guardado para este chofer
+                res = conn.execute(text("SELECT dni FROM choferes WHERE nombre = :n AND sucursal = :s"), {"n": chofer_input, "s": sucursal_input}).fetchone()
+                db_dni = str(res[0]).strip() if res and res[0] else ""
+                
+                # Si el chofer NO tiene DNI en la base, lo dejamos entrar igual como plan de emergencia.
+                # Si tiene un DNI, comparamos que sea igual al que tipeó.
+                if db_dni == "" or db_dni == dni_input:
+                    acceso_concedido = True
+            except Exception as e:
+                print("Error de autenticacion:", e)
+                acceso_concedido = True # Fallback por si la base de datos falla
+            finally:
+                conn.close()
+
+        if acceso_concedido:
+            session['chofer'] = chofer_input
+            return redirect(url_for('lista_viajes'))
+        else:
+            flash("❌ DNI incorrecto o no pertenece a esa sucursal.", "error")
+            return redirect(url_for('index'))
     
     conn = get_db()
-    choferes = []
+    lista_choferes = []
     if conn:
         try:
-            res = conn.execute(text("SELECT nombre FROM choferes ORDER BY nombre")).fetchall()
-            choferes = [r[0] for r in res]
+            # Traemos el nombre y la sucursal de cada chofer para filtrarlos en Javascript
+            res = conn.execute(text("SELECT nombre, sucursal FROM choferes ORDER BY nombre")).fetchall()
+            lista_choferes = [{"nombre": r[0], "suc": r[1] or "Mendoza"} for r in res]
         except: pass
         finally: conn.close()
+        
+    # Convertimos la lista de Python a JS
+    js_choferes = str(lista_choferes)
         
     svg_truck = """<svg class="truck-icon" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M20,8h-3V4H3C2.45,4,2,4.45,2,5v11h2c0,1.66,1.34,3,3,3s3-1.34,3-3h6c0,1.66,1.34,3,3,3s3-1.34,3-3h2v-5L20,8z M6,13.5 c-0.83,0-1.5-0.67-1.5-1.5s0.67-1.5,1.5-1.5s1.5,0.67,1.5,1.5S6.83,13.5,6,13.5z M19,17c-0.55,0-1-0.45-1-1s0.45-1,1-1s1,0.45,1,1 S19.55,17,19,17z M18,11V8.5h1.75L21,11H18z"/></svg>"""
         
@@ -262,17 +308,49 @@ def index():
                 {svg_truck}
                 <h1 style="color: #1565C0; margin-bottom: 5px;">JetPaq Logística</h1>
                 <p style="color: #777; margin-top: 0;">Portal de Choferes</p>
-                <br>
-                <form method="POST" style="background: #f9f9f9; padding: 30px; border-radius: 15px; border: 1px solid #eee;">
-                    <label style="text-align: left;">Conductor:</label>
-                    <select name="chofer" required style="margin-bottom: 20px; padding: 15px;">
-                        <option value="">Selecciona tu nombre...</option>
-                        {"".join([f'<option value="{c}">{c}</option>' for c in choferes])}
+                {mensajes_html}
+                <form method="POST" style="background: #f9f9f9; padding: 30px; border-radius: 15px; border: 1px solid #eee; margin-top:20px; text-align: left;">
+                    
+                    <label>Sucursal:</label>
+                    <select name="sucursal" id="suc_select" required onchange="filtrarChoferes()">
+                        <option value="Mendoza">Mendoza</option>
+                        <option value="San Juan">San Juan</option>
                     </select>
-                    <button type="submit" class="btn btn-blue">INGRESAR</button>
+
+                    <label>Conductor:</label>
+                    <select name="chofer" id="chofer_select" required>
+                        <option value="">Selecciona tu nombre...</option>
+                    </select>
+                    
+                    <label>Contraseña (DNI):</label>
+                    <input type="password" name="dni" required placeholder="Ingresá tu DNI...">
+
+                    <button type="submit" class="btn btn-blue" style="margin-top: 25px;">INGRESAR</button>
                 </form>
             </div>
         </div>
+        
+        <script>
+            var todosLosChoferes = {js_choferes};
+            
+            function filtrarChoferes() {{
+                var suc = document.getElementById('suc_select').value;
+                var selectChofer = document.getElementById('chofer_select');
+                
+                selectChofer.innerHTML = '<option value="">Selecciona tu nombre...</option>';
+                
+                todosLosChoferes.forEach(function(c) {{
+                    if(c.suc === suc) {{
+                        var opt = document.createElement('option');
+                        opt.value = c.nombre;
+                        opt.innerHTML = c.nombre;
+                        selectChofer.appendChild(opt);
+                    }}
+                }});
+            }}
+            // Ejecutar al inicio para cargar los de Mendoza por defecto
+            filtrarChoferes();
+        </script>
     </body>
     </html>
     """
@@ -422,7 +500,6 @@ def guardia():
                     (:f_in, :f_sal, :suc, :guia, :prov, :dest, :dom, :loc, :bultos, :bfrio, :peso, :tcarga, 'EN REPARTO', :chof, 'Entrega (Guardia)', 0.0, FALSE)
                     RETURNING id
                 """)
-                # HORA CORREGIDA ACÁ TAMBIÉN
                 now = get_now()
                 params = {
                     "f_in": now.date(), "f_sal": now, "suc": sucursal, "guia": guia, "prov": prov, 
@@ -522,7 +599,6 @@ def historial():
     movimientos = []
     if conn:
         try:
-            # HORA CORREGIDA AL PEDIR EL HISTORIAL DE HOY
             sql = text("SELECT detalle, fecha_hora, accion FROM historial_movimientos WHERE usuario = :u AND (fecha_hora - interval '3 hours')::date = (CURRENT_TIMESTAMP - interval '3 hours')::date ORDER BY fecha_hora DESC")
             movimientos = conn.execute(sql, {"u": chofer}).fetchall()
         except: pass
@@ -533,7 +609,6 @@ def historial():
         filas_html = "<div style='text-align:center; padding:20px; color:#888;'>No hay movimientos hoy.</div>"
     else:
         for m in movimientos:
-            # RESTAR LAS 3 HORAS VISUALMENTE EN EL HISTORIAL
             hora = (m[1] - timedelta(hours=3)).strftime('%H:%M')
             color = "#43A047"
             
@@ -618,7 +693,6 @@ def gestion(id_op):
         archivos = request.files.getlist('foto')
         for i, archivo in enumerate(archivos):
             if archivo and archivo.filename != '':
-                # HORA CORREGIDA PARA NOMBRES DE ARCHIVO
                 filename = f"foto_{id_op}_{i}_{int(get_now().timestamp())}.jpg"
                 ruta_foto = os.path.join(app.config['UPLOAD_FOLDER'], filename)
                 archivo.save(ruta_foto)
@@ -634,8 +708,10 @@ def gestion(id_op):
             if not recibe: 
                 flash("❌ ERROR: Escribe quién recibió.", "error")
                 return redirect(url_for('gestion', id_op=id_op))
-            if "jetpaq" not in op[10].lower() and not tiene_foto:
-                flash("📸 ERROR: Faltó la foto (Obligatoria).", "error")
+                
+            # 🔥 CORRECCIÓN FOTO NO OBLIGATORIA PARA DHL Y JETPAQ 🔥
+            if "jetpaq" not in prov_txt.lower() and "dhl" not in prov_txt.lower() and not tiene_foto:
+                flash("📸 ERROR: Faltó la foto (Obligatoria para este cliente).", "error")
                 return redirect(url_for('gestion', id_op=id_op))
                 
         if estado_btn in ["Pendiente", "Reprogramado"]:
@@ -670,7 +746,6 @@ def gestion(id_op):
         conn = get_db()
         if conn:
             try:
-                # HORA CORREGIDA PARA INSERTAR EN DB
                 now_db = get_now()
                 if estado_btn == "Reprogramado":
                     if fecha_repro:
@@ -813,6 +888,7 @@ def gestion(id_op):
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 8000))
     app.run(host='0.0.0.0', port=port)
+
 
 
 
