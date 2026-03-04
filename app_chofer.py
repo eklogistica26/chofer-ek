@@ -1,6 +1,6 @@
 from flask import Flask, request, render_template_string, redirect, url_for, session, flash
 from sqlalchemy import create_engine, text
-from datetime import datetime
+from datetime import datetime, timedelta
 import os
 import base64
 import requests
@@ -40,6 +40,10 @@ def limpiar_telefono_wsp(telefono):
 
 NUMERO_BASE_FINAL = limpiar_telefono_wsp(NUMERO_BASE_RAW)
 
+# --- FUNCIÓN REPARADORA DE ZONA HORARIA (ARGENTINA UTC-3) ---
+def get_now():
+    return datetime.utcnow() - timedelta(hours=3)
+
 def enviar_email(destinatario, guia, rutas_fotos, proveedor, link_mapa=""):
     if not BREVO_API_KEY: return
     conn = get_db()
@@ -68,7 +72,8 @@ def enviar_email(destinatario, guia, rutas_fotos, proveedor, link_mapa=""):
             except: pass
 
     url = "https://api.brevo.com/v3/smtp/email"
-    fecha_hora = datetime.now().strftime('%d/%m/%Y %H:%M')
+    # USA LA HORA ARGENTINA
+    fecha_hora = get_now().strftime('%d/%m/%Y %H:%M')
     
     texto_gps = f"<li><b>Ubicación (GPS):</b> <a href='{link_mapa}'>Ver en Google Maps</a></li>" if link_mapa else ""
 
@@ -115,7 +120,6 @@ HTML_HEAD = """
         .container { padding: 15px; max-width: 600px; margin: 0 auto; }
         .card { background: white; padding: 20px; margin-bottom: 15px; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
         
-        /* ESTILOS DE LOS PANELES DESPLEGABLES (ACORDEONES) */
         details.accordion-card { background: white; margin-bottom: 15px; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); overflow: hidden; }
         details.accordion-card summary { padding: 20px; font-size: 1.1rem; font-weight: bold; cursor: pointer; list-style: none; outline: none; transition: background-color 0.3s; }
         details.accordion-card summary::-webkit-details-marker { display: none; }
@@ -418,7 +422,8 @@ def guardia():
                     (:f_in, :f_sal, :suc, :guia, :prov, :dest, :dom, :loc, :bultos, :bfrio, :peso, :tcarga, 'EN REPARTO', :chof, 'Entrega (Guardia)', 0.0, FALSE)
                     RETURNING id
                 """)
-                now = datetime.now()
+                # HORA CORREGIDA ACÁ TAMBIÉN
+                now = get_now()
                 params = {
                     "f_in": now.date(), "f_sal": now, "suc": sucursal, "guia": guia, "prov": prov, 
                     "dest": dest, "dom": dom, "loc": loc, "bultos": bultos, "bfrio": bultos_frio, 
@@ -517,7 +522,8 @@ def historial():
     movimientos = []
     if conn:
         try:
-            sql = text("SELECT detalle, fecha_hora, accion FROM historial_movimientos WHERE usuario = :u AND fecha_hora::date = CURRENT_DATE ORDER BY fecha_hora DESC")
+            # HORA CORREGIDA AL PEDIR EL HISTORIAL DE HOY
+            sql = text("SELECT detalle, fecha_hora, accion FROM historial_movimientos WHERE usuario = :u AND (fecha_hora - interval '3 hours')::date = (CURRENT_TIMESTAMP - interval '3 hours')::date ORDER BY fecha_hora DESC")
             movimientos = conn.execute(sql, {"u": chofer}).fetchall()
         except: pass
         finally: conn.close()
@@ -527,7 +533,8 @@ def historial():
         filas_html = "<div style='text-align:center; padding:20px; color:#888;'>No hay movimientos hoy.</div>"
     else:
         for m in movimientos:
-            hora = m[1].strftime('%H:%M')
+            # RESTAR LAS 3 HORAS VISUALMENTE EN EL HISTORIAL
+            hora = (m[1] - timedelta(hours=3)).strftime('%H:%M')
             color = "#43A047"
             
             detalle_limpio = m[0]
@@ -611,7 +618,8 @@ def gestion(id_op):
         archivos = request.files.getlist('foto')
         for i, archivo in enumerate(archivos):
             if archivo and archivo.filename != '':
-                filename = f"foto_{id_op}_{i}_{int(datetime.now().timestamp())}.jpg"
+                # HORA CORREGIDA PARA NOMBRES DE ARCHIVO
+                filename = f"foto_{id_op}_{i}_{int(get_now().timestamp())}.jpg"
                 ruta_foto = os.path.join(app.config['UPLOAD_FOLDER'], filename)
                 archivo.save(ruta_foto)
                 rutas_fotos.append(ruta_foto)
@@ -662,6 +670,8 @@ def gestion(id_op):
         conn = get_db()
         if conn:
             try:
+                # HORA CORREGIDA PARA INSERTAR EN DB
+                now_db = get_now()
                 if estado_btn == "Reprogramado":
                     if fecha_repro:
                         try:
@@ -672,9 +682,9 @@ def gestion(id_op):
                     else:
                         conn.execute(text("UPDATE operaciones SET estado=:e, chofer_asignado=NULL WHERE id=:i"), {"e": estado_db, "i": id_op})
                 else:
-                    conn.execute(text("UPDATE operaciones SET estado=:e, fecha_entrega=:f WHERE id=:i"), {"e": estado_db, "f": datetime.now(), "i": id_op})
+                    conn.execute(text("UPDATE operaciones SET estado=:e, fecha_entrega=:f WHERE id=:i"), {"e": estado_db, "f": now_db, "i": id_op})
                 
-                conn.execute(text("INSERT INTO historial_movimientos (operacion_id, usuario, accion, detalle, fecha_hora) VALUES (:o, :u, 'APP', :d, :f)"), {"o": id_op, "u": chofer, "d": detalle_historial, "f": datetime.now()})
+                conn.execute(text("INSERT INTO historial_movimientos (operacion_id, usuario, accion, detalle, fecha_hora) VALUES (:o, :u, 'APP', :d, :f)"), {"o": id_op, "u": chofer, "d": detalle_historial, "f": now_db})
                 conn.commit()
             except Exception as e: print("Error actualizando DB:", e)
             finally: conn.close()
@@ -803,6 +813,7 @@ def gestion(id_op):
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 8000))
     app.run(host='0.0.0.0', port=port)
+
 
 
 
