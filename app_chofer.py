@@ -114,6 +114,18 @@ HTML_HEAD = """
         .header h2 { margin: 0; font-size: 1.1rem; flex-grow: 1; text-align: center; font-weight: 600; }
         .container { padding: 15px; max-width: 600px; margin: 0 auto; }
         .card { background: white; padding: 20px; margin-bottom: 15px; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+        
+        /* ESTILOS DE LOS PANELES DESPLEGABLES (ACORDEONES) */
+        details.accordion-card { background: white; margin-bottom: 15px; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); overflow: hidden; }
+        details.accordion-card summary { padding: 20px; font-size: 1.1rem; font-weight: bold; cursor: pointer; list-style: none; outline: none; transition: background-color 0.3s; }
+        details.accordion-card summary::-webkit-details-marker { display: none; }
+        details.accordion-card summary::after { content: '▼'; float: right; color: inherit; font-size: 0.9rem; margin-top: 2px; }
+        details.accordion-card[open] summary::after { content: '▲'; }
+        
+        .success-accordion summary { background-color: #e8f5e9; color: #2E7D32; border-left: 5px solid #43A047; }
+        .error-accordion summary { background-color: #ffebee; color: #c62828; border-left: 5px solid #D32F2F; }
+        .accordion-content { padding: 20px; border-top: 1px solid #eee; }
+
         .btn { display: block; width: 100%; padding: 14px; border: none; border-radius: 8px; font-size: 16px; font-weight: 600; cursor: pointer; text-align: center; text-decoration: none; box-sizing: border-box; margin-top: 10px; transition: all 0.2s; }
         .btn:active { transform: scale(0.98); opacity: 0.9; }
         .btn-blue { background: #1976D2; color: white; }
@@ -128,7 +140,7 @@ HTML_HEAD = """
         label { font-weight: 600; color: #444; margin-top: 15px; display: block; font-size: 0.9rem; }
         .tag { padding: 4px 8px; border-radius: 4px; font-size: 0.75rem; color: white; float: right; font-weight: bold; text-transform: uppercase; letter-spacing: 0.5px; }
         .tag-blue { background: #1976D2; } .tag-purple { background: #7B1FA2; } .tag-orange { background: #F57C00; }
-        .camera-btn { background-color: #E3F2FD; color: #1565C0; border: 2px solid #1976D2; border-radius: 8px; padding: 12px; text-align: center; cursor: pointer; margin-top: 5px; display: flex; align-items: center; justify-content: center; gap: 10px; font-weight: bold; }
+        .camera-btn { background-color: #E3F2FD; color: #1565C0; border: 2px solid #1976D2; border-radius: 8px; padding: 12px; text-align: center; cursor: pointer; margin-top: 5px; display: block; font-weight: bold; width: 100%; box-sizing: border-box; }
         .alert { padding: 12px; margin-bottom: 15px; border-radius: 8px; font-weight: 500; text-align: center; font-size: 0.9rem; }
         .alert-success { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
         .alert-error { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
@@ -138,16 +150,16 @@ HTML_HEAD = """
         .truck-icon { width: 80px; height: 80px; margin-bottom: 10px; fill: #1976D2; }
     </style>
     <script>
-        function fileSelected(input) {
-            var btn = document.getElementById('cameraLabel');
-            if (input.files && input.files.length > 0) {
-                btn.style.backgroundColor = '#43A047';
-                btn.style.color = 'white';
-                btn.style.borderColor = '#43A047';
-                var text = input.files.length === 1 ? '✅ 1 Foto Lista' : '✅ ' + input.files.length + ' Fotos Listas';
-                btn.innerHTML = '<span class="camera-icon">📷</span> ' + text;
+        function handleAccordion(clickedId) {
+            var exito = document.getElementById('acc_exito');
+            var falla = document.getElementById('acc_falla');
+            if (clickedId === 'exito' && exito.open) {
+                falla.open = false;
+            } else if (clickedId === 'falla' && falla.open) {
+                exito.open = false;
             }
         }
+        
         function toggleReprogramar() {
             var val = document.getElementById('estado_select').value;
             var repDiv = document.getElementById('div_reprogramar');
@@ -157,6 +169,7 @@ HTML_HEAD = """
                 repDiv.style.display = 'none';
             }
         }
+        
         function obtenerGPS() {
             if (navigator.geolocation) {
                 navigator.geolocation.getCurrentPosition(function(position) {
@@ -174,6 +187,46 @@ HTML_HEAD = """
             }
         }
         window.onload = obtenerGPS;
+
+        let fotoCount = 0;
+        function agregarFoto() {
+            fotoCount++;
+            var input = document.createElement('input');
+            input.type = 'file';
+            input.name = 'foto'; 
+            input.accept = 'image/*';
+            input.setAttribute('capture', 'environment'); 
+            input.style.display = 'none';
+            
+            input.onchange = function() {
+                if (this.files && this.files[0]) {
+                    var lista = document.getElementById('fotosList');
+                    var item = document.createElement('div');
+                    item.style.backgroundColor = '#d4edda';
+                    item.style.color = '#155724';
+                    item.style.padding = '10px';
+                    item.style.borderRadius = '5px';
+                    item.style.marginTop = '8px';
+                    item.style.fontSize = '0.95rem';
+                    item.style.fontWeight = 'bold';
+                    item.innerHTML = '✅ Foto ' + fotoCount + ' capturada y lista.';
+                    lista.appendChild(item);
+                    
+                    var btnTxt = document.getElementById('btnFotoTexto');
+                    btnTxt.innerText = '➕ AÑADIR OTRA FOTO';
+                    var btn = document.getElementById('cameraBtn');
+                    btn.style.borderColor = '#43A047';
+                    btn.style.color = '#43A047';
+                    btn.style.backgroundColor = '#e8f5e9';
+                } else {
+                    this.remove();
+                    fotoCount--;
+                }
+            };
+            
+            document.getElementById('fotosContainer').appendChild(input);
+            input.click(); 
+        }
     </script>
 </head>
 """
@@ -258,6 +311,8 @@ def lista_viajes():
                 lbl_tipo = "🚨 GUARDIA"
                 color_tipo = "tag-orange"
                 
+            proveedor_txt = v[7] if v[7] else "Otro"
+                
             q = f"{v[3]}, {v[4]}"
             mapa_url = f"https://www.google.com/maps/search/?api=1&query={q}"
             
@@ -268,7 +323,8 @@ def lista_viajes():
                     <h3 style="margin: 0; font-size: 1.1rem; color:#333;">{v[2]}</h3>
                 </div>
                 <div style="color: #555; font-size: 0.95rem; margin-bottom: 12px;">
-                    📍 {v[3]} <small>({v[4]})</small>
+                    📍 {v[3]} <small>({v[4]})</small><br>
+                    🏢 Proveedor: <b>{proveedor_txt}</b>
                 </div>
                 <div style="background: #f0f7ff; padding: 10px; border-radius: 6px; font-size: 0.85rem; color: #444; margin-bottom: 15px; border-left: 4px solid #1976D2;">
                     📦 Guía: <b>{v[1]}</b>  |  Bultos: {v[5]}
@@ -317,7 +373,6 @@ def lista_viajes():
     """
     return render_template_string(html)
 
-# --- NUEVO MÓDULO: MODO GUARDIA (FIN DE SEMANA) ---
 @app.route('/guardia', methods=['GET', 'POST'])
 def guardia():
     chofer = session.get('chofer')
@@ -356,7 +411,6 @@ def guardia():
 
         if conn:
             try:
-                # Insertamos la guía en $0. La plataforma PC se encarga de facturarla el lunes.
                 sql_insert = text("""
                     INSERT INTO operaciones
                     (fecha_ingreso, fecha_salida, sucursal, guia_remito, proveedor, destinatario, domicilio, localidad, bultos, bultos_frio, peso, tipo_carga, estado, chofer_asignado, tipo_servicio, monto_servicio, facturado)
@@ -542,7 +596,8 @@ def gestion(id_op):
     es_retiro = "Retiro" in tipo_srv
     
     txt_exito = "✅ CONFIRMAR RETIRO" if es_retiro else "✅ CONFIRMAR ENTREGA"
-    txt_falla = "❌ No Retirado" if es_retiro else "❌ No Entregado"
+    txt_falla = "❌ NO RETIRADO" if es_retiro else "❌ NO ENTREGADO"
+    prov_txt = op[10] if op[10] else "Desconocido"
 
     if request.method == 'POST':
         estado_btn = request.form.get('estado')
@@ -668,8 +723,10 @@ def gestion(id_op):
             <div class="card">
                 {cobranza_html}
                 {intercambio_html}
-                <div style="color:#888; font-size:0.8rem; text-transform:uppercase; letter-spacing:1px; margin-bottom:5px;">Destinatario</div>
-                <h2 style="margin:0 0 5px 0; font-size:1.4rem;">{op[1]}</h2>
+                <div style="color:#888; font-size:0.85rem; text-transform:uppercase; letter-spacing:1px; margin-bottom:5px; border-bottom:1px solid #eee; padding-bottom:5px;">
+                    🏢 PROVEEDOR: <strong style="color:#1565C0;">{prov_txt}</strong>
+                </div>
+                <h2 style="margin:10px 0 5px 0; font-size:1.4rem;">{op[1]}</h2>
                 <div style="font-size:1.1rem; margin-bottom:15px;">📍 {op[2]} <br> <small style="color:#666;">({op[3]})</small></div>
                 <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px;">
                     <a href="tel:{op[4]}" class="btn btn-grey" style="margin:0; font-size:0.9rem;">📞 Llamar</a>
@@ -678,55 +735,62 @@ def gestion(id_op):
             </div>
             
             <form method="POST" enctype="multipart/form-data">
-                <div class="card" style="border-top: 5px solid #43A047;">
-                    <h3 style="margin-top:0; color:#2E7D32;">{txt_exito.split(' ')[0]} {txt_exito.split(' ')[1]} {txt_exito.split(' ')[2] if len(txt_exito.split(' '))>2 else ''}</h3>
-                    <label>Quien Recibe:</label>
-                    <input type="text" name="recibe" placeholder="Nombre y Apellido...">
-                    <label>Comprobante/s (Múltiples):</label>
-                    <label for="fileInput" id="cameraLabel" class="camera-btn">
-                        <span class="camera-icon">📷</span> SELECCIONAR FOTOS
-                    </label>
-                    <input type="file" id="fileInput" name="foto" accept="image/*" multiple style="display:none;" onchange="fileSelected(this)">
-                    
-                    <input type="hidden" name="lat" id="lat_entrega">
-                    <input type="hidden" name="lng" id="lng_entrega">
-
-                    <button type="submit" name="estado" value="ENTREGADO" class="btn btn-green" style="margin-top:20px;">FINALIZAR</button>
-                </div>
                 
-                <div class="card" style="border-top: 5px solid #D32F2F;">
-                    <h3 style="margin-top:0; color:#c62828;">{txt_falla}</h3>
-                    
-                    <label>¿Qué vas a hacer?</label>
-                    <select name="estado_select" id="estado_select" onchange="toggleReprogramar()">
-                        <option value="Pendiente">Intentar luego en el día (Pendiente)</option>
-                        <option value="Reprogramado">Devolver al depósito (Reprogramar)</option>
-                    </select>
-                    
-                    <label>Motivo del problema:</label>
-                    <input type="text" name="motivo" placeholder="Ej: No había nadie, mudado, etc.">
-                    
-                    <div id="div_reprogramar" style="display:none;">
-                        <label>Fecha sugerida de visita (Opcional):</label>
-                        <input type="date" name="fecha_repro">
-                        <p style="font-size: 0.8rem; color: #666; margin-top: 5px;">Al devolver al depósito, la guía se quitará de tu ruta.</p>
-                    </div>
-                    
-                    <input type="hidden" name="lat" id="lat_falla">
-                    <input type="hidden" name="lng" id="lng_falla">
+                <details id="acc_exito" class="accordion-card success-accordion" ontoggle="handleAccordion('exito')">
+                    <summary>{txt_exito}</summary>
+                    <div class="accordion-content">
+                        <label>Quien Recibe:</label>
+                        <input type="text" name="recibe" placeholder="Nombre y Apellido...">
+                        
+                        <label style="margin-top: 15px;">Comprobante/s:</label>
+                        <div id="fotosList" style="margin-bottom: 10px;"></div>
+                        <div id="fotosContainer"></div>
+                        <button type="button" id="cameraBtn" class="camera-btn" onclick="agregarFoto()">
+                            <span class="camera-icon">📷</span> <span id="btnFotoTexto">TOMAR FOTO</span>
+                        </button>
+                        
+                        <input type="hidden" name="lat" id="lat_entrega">
+                        <input type="hidden" name="lng" id="lng_entrega">
 
-                    <button type="button" class="btn btn-outline" style="border:2px solid #D32F2F; color:#D32F2F; margin-top:20px;" onclick="enviarFallo()">GUARDAR ESTADO</button>
-                    <input type="hidden" name="estado" id="hidden_estado" value="">
-                    <button type="submit" id="submit_falla" style="display:none;"></button>
-                    
-                    <script>
-                        function enviarFallo() {{
-                            document.getElementById('hidden_estado').value = document.getElementById('estado_select').value;
-                            document.getElementById('submit_falla').click();
-                        }}
-                    </script>
-                </div>
+                        <button type="submit" name="estado" value="ENTREGADO" class="btn btn-green" style="margin-top:20px;">FINALIZAR</button>
+                    </div>
+                </details>
+                
+                <details id="acc_falla" class="accordion-card error-accordion" ontoggle="handleAccordion('falla')">
+                    <summary>{txt_falla}</summary>
+                    <div class="accordion-content">
+                        <label>¿Qué vas a hacer?</label>
+                        <select name="estado_select" id="estado_select" onchange="toggleReprogramar()">
+                            <option value="Pendiente">Intentar luego en el día (Pendiente)</option>
+                            <option value="Reprogramado">Devolver al depósito (Reprogramar)</option>
+                        </select>
+                        
+                        <label>Motivo del problema:</label>
+                        <input type="text" name="motivo" placeholder="Ej: No había nadie, mudado, etc.">
+                        
+                        <div id="div_reprogramar" style="display:none;">
+                            <label>Fecha sugerida de visita (Opcional):</label>
+                            <input type="date" name="fecha_repro">
+                            <p style="font-size: 0.8rem; color: #666; margin-top: 5px;">Al devolver al depósito, la guía se quitará de tu ruta.</p>
+                        </div>
+                        
+                        <input type="hidden" name="lat" id="lat_falla">
+                        <input type="hidden" name="lng" id="lng_falla">
+
+                        <button type="button" class="btn btn-outline" style="border:2px solid #D32F2F; color:#D32F2F; margin-top:20px;" onclick="enviarFallo()">GUARDAR ESTADO</button>
+                        <input type="hidden" name="estado" id="hidden_estado" value="">
+                        <button type="submit" id="submit_falla" style="display:none;"></button>
+                    </div>
+                </details>
+
             </form>
+            
+            <script>
+                function enviarFallo() {{
+                    document.getElementById('hidden_estado').value = document.getElementById('estado_select').value;
+                    document.getElementById('submit_falla').click();
+                }}
+            </script>
             <br>
             <a href="/viajes" class="btn btn-outline" style="border:1px solid #ccc; color:#666;">← Volver a la lista</a>
             <br><br>
