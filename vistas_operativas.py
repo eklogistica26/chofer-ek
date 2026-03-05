@@ -57,14 +57,14 @@ class TabIngreso(QWidget):
     def setup_ui(self):
         l = QHBoxLayout(self)
         
-        # 🔥 ESCUDO ANTI-APLASTAMIENTO (SCROLL AREA) 🔥
+        # 🔥 ZONA DE SCROLL (Formulario) 🔥
         self.scroll_izq = QScrollArea()
         self.scroll_izq.setWidgetResizable(True)
         self.scroll_izq.setStyleSheet("QScrollArea { border: none; background-color: transparent; }")
         
         self.widget_izq = QWidget()
         col_izq = QVBoxLayout(self.widget_izq)
-        col_izq.setContentsMargins(0, 0, 15, 0)
+        col_izq.setContentsMargins(0, 0, 10, 0)
         
         p_datos = QGroupBox("Datos Principales")
         p_datos.setStyleSheet(ESTILO_GRUPO)
@@ -153,19 +153,35 @@ class TabIngreso(QWidget):
         self.wid_cr.hide() 
         self.chk_cr.toggled.connect(self.wid_cr.setVisible)
         
-        btn_add = QPushButton("GUARDAR EN DEPOSITO"); btn_add.setMinimumHeight(45); btn_add.clicked.connect(self.guardar_ingreso)
-        self.btn_dhl = QPushButton("📥 IMPORTAR TXT DHL"); self.btn_dhl.setMinimumHeight(45); self.btn_dhl.clicked.connect(self.importar_txt_dhl)
-        if self.main.sucursal_actual != "San Juan": self.btn_dhl.hide()
-        
+        # Agregamos los cuadros al scroll
         col_izq.addWidget(p_datos)
         col_izq.addWidget(gb_tipo)
         col_izq.addWidget(self.group_cr)
-        col_izq.addWidget(btn_add)
-        col_izq.addWidget(self.btn_dhl)
-        col_izq.addStretch() 
+        col_izq.addStretch() # Empuja todo hacia arriba
         
         self.scroll_izq.setWidget(self.widget_izq)
         
+        # 🔥 ZONA FIJA INFERIOR (Botones de Acción) 🔥
+        btn_add = QPushButton("GUARDAR EN DEPOSITO")
+        btn_add.setMinimumHeight(55) # Más alto y cómodo
+        btn_add.setStyleSheet("font-size: 16px; font-weight: bold;")
+        btn_add.clicked.connect(self.guardar_ingreso)
+        
+        self.btn_dhl = QPushButton("📥 IMPORTAR TXT DHL")
+        self.btn_dhl.setMinimumHeight(45)
+        self.btn_dhl.clicked.connect(self.importar_txt_dhl)
+        if self.main.sucursal_actual != "San Juan": self.btn_dhl.hide()
+        
+        # Contenedor Maestro Izquierdo
+        panel_izquierdo = QWidget()
+        layout_izquierdo = QVBoxLayout(panel_izquierdo)
+        layout_izquierdo.setContentsMargins(0, 0, 5, 0)
+        
+        layout_izquierdo.addWidget(self.scroll_izq) # El formulario que sube y baja
+        layout_izquierdo.addWidget(btn_add)         # El botón que queda anclado abajo
+        layout_izquierdo.addWidget(self.btn_dhl)    # Botón DHL anclado
+        
+        # --- COLUMNA DERECHA (TABLA) ---
         col_der = QVBoxLayout(); h_header_ingreso = QHBoxLayout(); h_header_ingreso.addWidget(QLabel("<b>EN DEPOSITO (Pendientes de Salida):</b>"))
         
         btn_ref_ingreso = QPushButton("🔄 Actualizar")
@@ -188,7 +204,8 @@ class TabIngreso(QWidget):
         self.tabla_ingresos.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows); self.tabla_ingresos.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         lay_botones_tabla = QHBoxLayout(); btn_del = QPushButton("🗑️ ELIMINAR"); btn_del.clicked.connect(lambda: self.main.eliminar_fila(self.tabla_ingresos, Operacion)); btn_edit_ingreso = QPushButton("✏️ EDITAR"); btn_edit_ingreso.clicked.connect(lambda: self.main.abrir_edicion(self.tabla_ingresos)); lay_botones_tabla.addWidget(btn_edit_ingreso); lay_botones_tabla.addWidget(btn_del); col_der.addLayout(h_header_ingreso); col_der.addWidget(self.tabla_ingresos); col_der.addLayout(lay_botones_tabla)
         
-        l.addWidget(self.scroll_izq, 35) # Aca agregamos el scroll en vez del layout directo
+        # Agregamos los dos paneles al Layout Principal
+        l.addWidget(panel_izquierdo, 35) 
         l.addLayout(col_der, 65)
         
         self.actualizar_interfaz_peso()
@@ -545,52 +562,28 @@ class TabFacturacion(QWidget):
         self.tabla_cierre = QTableWidget()
         self.tabla_cierre.setColumnCount(10) 
         
-        # 🔥 TÍTULOS BIEN CORTOS PARA QUE JAMÁS SE CORTEN 🔥
         self.tabla_cierre.setHorizontalHeaderLabels(["Fecha", "Sucursal", "Guía / Remito", "Zona", "Bultos", "Estado", "Base ($)", "Extras ($)", "Total ($)", "Ajuste"])
         
-        # 🔥 CONFIGURACIÓN MILIMÉTRICA DE ANCHOS EXTRAGRANDES 🔥
         header = self.tabla_cierre.horizontalHeader()
-        
-        # 0. Fecha (Auto)
         header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents) 
-        
-        # 1. Sucursal (AGRANDADO A LA PALABRA)
         header.setSectionResizeMode(1, QHeaderView.ResizeMode.Fixed) 
         self.tabla_cierre.setColumnWidth(1, 160) 
-        
-        # 2. Guía / Remito (AUTOMATICO - STRETCH)
         header.setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch) 
-        
-        # 3. Zona (AUTOMATICO - NOMBRES LARGOS)
         header.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents) 
-        
-        # 4. Bultos (AJUSTADO A LA PALABRA)
         header.setSectionResizeMode(4, QHeaderView.ResizeMode.Fixed) 
         self.tabla_cierre.setColumnWidth(4, 110) 
-        
-        # 5. Estado (ESTA BIEN AUTO)
         header.setSectionResizeMode(5, QHeaderView.ResizeMode.ResizeToContents) 
-        
-        # 6. Base ($) (ESTA BIEN AUTO)
         header.setSectionResizeMode(6, QHeaderView.ResizeMode.ResizeToContents) 
-        
-        # 7. Extras ($) (AGRANDADO AL TITULO)
         header.setSectionResizeMode(7, QHeaderView.ResizeMode.Fixed) 
         self.tabla_cierre.setColumnWidth(7, 140) 
-        
-        # 8. Total ($) (AGRANDADO AL TITULO)
         header.setSectionResizeMode(8, QHeaderView.ResizeMode.Fixed) 
         self.tabla_cierre.setColumnWidth(8, 140) 
-        
-        # 9. Ajuste (BOTON FIJO)
         header.setSectionResizeMode(9, QHeaderView.ResizeMode.Fixed) 
         self.tabla_cierre.setColumnWidth(9, 100)
         
-        # 🔥 ACHICAR EL ID LATERAL AL MÁXIMO Y MANTENER FILA ALTA 🔥
-        self.tabla_cierre.verticalHeader().setFixedWidth(35)
+        self.tabla_cierre.verticalHeader().setFixedWidth(30)
         self.tabla_cierre.verticalHeader().setDefaultSectionSize(45)
         
-        # 🔥 ESCUDO TITANIO ANTI-NEGRO Y PINTOR 🔥
         self.tabla_cierre.setAlternatingRowColors(False)
         self.tabla_cierre.setStyleSheet(ESTILO_TABLAS_BLANCAS)
         self.pintor_cierre = PintorCeldasDelegate(self.tabla_cierre)
