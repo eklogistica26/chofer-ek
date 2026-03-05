@@ -153,7 +153,6 @@ class PlataformaLogistica(QMainWindow):
         
         btn_tracking = QPushButton("🔍 TRACKING"); btn_tracking.clicked.connect(self.abrir_tracking)
         
-        # 🔥 NUEVO: BOTÓN DE AYUDA INTELIGENTE 🔥
         btn_ayuda = QPushButton("❓ AYUDA")
         btn_ayuda.setStyleSheet("background-color: #ff9800 !important; color: white !important; font-weight: bold !important;")
         btn_ayuda.clicked.connect(self.mostrar_ayuda_inteligente)
@@ -211,39 +210,24 @@ class PlataformaLogistica(QMainWindow):
         
         self.setup_monitor(); self.setup_ruta(); self.setStatusBar(QStatusBar())
 
-    # 🔥 NUEVO CEREBRO DE AYUDA 🔥
     def mostrar_ayuda_inteligente(self):
         idx = self.tabs.currentIndex()
         tab_name = self.tabs.tabText(idx)
         
         diccionario_ayuda = {
             "📊 MONITOR GLOBAL": "<b>MÓDULO: Monitor Global</b><br><br>- Es tu torre de control. Muestra en tiempo real lo que ocurre hoy.<br>- <b>Verde:</b> Entregado con éxito.<br>- <b>Amarillo:</b> Está en la camioneta del chofer.<br>- <b>Celeste:</b> En el depósito (Pendiente de asignar).<br>- <b>Morado:</b> Reprogramado (Volvió al depósito).<br><br><i>Nota: Podes filtrar haciendo clic en los botones de colores debajo de la tabla.</i>",
-            
             "1. INGRESO": "<b>MÓDULO: Ingreso de Guías</b><br><br>- Sirve para darle entrada a la mercadería que llega al depósito.<br>- <b>Cobro / Intercambio:</b> Tildalo si el chofer tiene que cobrar dinero o traer un remito firmado.<br>- <b>Contingencia de Frío:</b> Tildalo para que el sistema le sume el recargo automático a la facturación de este cliente.<br>- El botón 📥 DHL permite cargar el archivo TXT masivo.",
-            
             "2. Hoja de Ruta": "<b>MÓDULO: Armado de Hoja de Ruta</b><br><br>- Sirve para despachar la mercadería a la calle.<br>- Seleccioná las guías (tildando la casilla), elegí un Chofer arriba y hacé clic en <b>ASIGNAR GUÍAS</b>.<br>- Al hacer esto, las guías pasan a estado 'En Reparto' y mágicamente aparecen en la App del celular de ese chofer.<br>- También podés asignar a un TERCERIZADO si no es de tu flota.",
-            
             "3. Rendición": "<b>MÓDULO: Rendición de Choferes</b><br><br>- <b>Gestión:</b> Acá podés confirmar entregas o reprogramar paquetes manualmente si al chofer se le rompió el celular.<br>- <b>Resumen Diario:</b> Entrá acá a la tarde, elegí al chofer, y el sistema te saca un PDF exacto con todo lo que entregó y todo lo que devolvió, ideal para rendir el dinero y la mercadería.",
-            
             "4. Reportes": "<b>MÓDULO: Reportes Históricos</b><br><br>- Sirve para buscar cualquier cosa en el pasado.<br>- Podés filtrar por fechas, por cliente (Ej: Buscar todo lo de DHL del mes pasado) o por estado.<br>- Podés exportar toda la tabla a un Excel o generar un PDF formal.",
-            
             "5. Facturación": "<b>MÓDULO: Facturación a Clientes</b><br><br>- El corazón administrativo. Elegí el mes, año y cliente, y hacé clic en Calcular.<br>- <b>⚠️ Fila Amarilla:</b> Significa que ese paquete salió a la calle más de 1 vez. Hacé doble clic en 'Editar' para cobrarle la Demora.<br>- El PDF de Rendición saca el cálculo final sumando Base + Extras + IVA.",
-            
             "💬 CRM / Contacto": "<b>MÓDULO: Atención al Cliente</b><br><br>- Acá aparecen los paquetes entregados recientemente que tienen celular cargado.<br>- Hacé clic en 💬 WhatsApp para mandarle un mensaje predeterminado al cliente pidiendo su opinión sobre el servicio logístico.",
-            
             "📈 Estadísticas": "<b>MÓDULO: Panel Gerencial</b><br><br>- Es el resumen ejecutivo de la sucursal.<br>- Muestra cuántos paquetes se movieron hoy, qué clientes te dan más trabajo en el mes y qué choferes son los que más entregas realizan.",
-            
             "⚙️ Configuración": "<b>MÓDULO: Configuración del Sistema</b><br><br>- <b>Tarifas:</b> Acá definís los precios de cada zona. Si cambiás un precio acá, afecta a todas las guías nuevas.<br>- <b>Choferes:</b> Agregá a tu personal. Recordá que el DNI es la contraseña que usan para la App Web.<br>- <b>Usuarios:</b> Creá los accesos a esta plataforma de PC limitando quién ve la facturación y quién no."
         }
-        
         texto = diccionario_ayuda.get(tab_name, "Selecciona una pestaña específica para ver su manual de uso.")
-        
-        box = QMessageBox(self)
-        box.setWindowTitle(f"Manual de Ayuda: {tab_name.replace('📊', '').replace('⚙️', '').strip()}")
-        box.setTextFormat(Qt.TextFormat.RichText)
-        box.setText(texto)
-        box.setStyleSheet("font-size: 14px;")
-        box.exec()
+        box = QMessageBox(self); box.setWindowTitle(f"Manual de Ayuda: {tab_name.replace('📊', '').replace('⚙️', '').strip()}")
+        box.setTextFormat(Qt.TextFormat.RichText); box.setText(texto); box.setStyleSheet("font-size: 14px;"); box.exec()
 
     def abrir_tracking(self): d = TrackingDialog(self.session); d.exec()
     
@@ -413,7 +397,7 @@ class PlataformaLogistica(QMainWindow):
     def cargar_novedades(self):
         try:
             self.lista_novedades.clear()
-            sql = text("SELECT h.fecha_hora, h.detalle, o.guia_remito, h.usuario FROM historial_movimientos h JOIN operaciones o ON h.operacion_id = o.id WHERE o.sucursal = :s ORDER BY h.fecha_hora DESC LIMIT 100")
+            sql = text("SELECT h.fecha_hora, h.detalle, o.guia_remito, h.usuario FROM historial_movimientos h JOIN operations o ON h.operacion_id = o.id WHERE o.sucursal = :s ORDER BY h.fecha_hora DESC LIMIT 100")
             logs = self.session.execute(sql, {"s": self.sucursal_actual}).fetchall()
             for log in logs:
                 hora = log[0].strftime("%d/%m %H:%M") if log[0] else ""
@@ -542,19 +526,32 @@ class PlataformaLogistica(QMainWindow):
             self.tabla_monitor.setUpdatesEnabled(True)
             self.tabla_monitor.blockSignals(False)
 
+    # 🔥 NUEVO DISEÑO EN 2 FILAS PARA LA HOJA DE RUTA 🔥
     def setup_ruta(self):
-        l = QVBoxLayout(self.tab_ruta); top = QHBoxLayout()
-        self.combo_masivo_chofer = QComboBox(); self.combo_masivo_chofer.setMinimumWidth(200)
+        l = QVBoxLayout(self.tab_ruta)
+        
+        top_row1 = QHBoxLayout()
+        top_row2 = QHBoxLayout()
+        
+        self.combo_masivo_chofer = QComboBox(); self.combo_masivo_chofer.setMinimumWidth(150)
         self.txt_filtro_ruta = QLineEdit(); self.txt_filtro_ruta.setPlaceholderText("🔎 Filtrar por Guía, Cliente, Destino..."); self.txt_filtro_ruta.textChanged.connect(self.filtrar_tabla_ruta)
+        
         btn_aplicar_masivo = QPushButton("ASIGNAR GUÍAS"); btn_aplicar_masivo.clicked.connect(self.asignar_chofer_masivo)
-        btn_mark = QPushButton("Seleccionar Todo"); btn_mark.clicked.connect(lambda: self.toggle_seleccion_todo(self.tabla_ruta))
-        btn_reprog = QPushButton("📅 CAMBIAR FECHA")
-        btn_reprog.clicked.connect(self.cambiar_fecha_ruta)
+        btn_mark = QPushButton("☑️ Seleccionar Todo"); btn_mark.clicked.connect(lambda: self.toggle_seleccion_todo(self.tabla_ruta))
+        btn_tercerizado = QPushButton("🚚 TERCERIZADOS"); btn_tercerizado.clicked.connect(self.generar_pdf_terc)
+        
+        btn_reprog = QPushButton("📅 CAMBIAR FECHA"); btn_reprog.clicked.connect(self.cambiar_fecha_ruta)
         btn_historial = QPushButton("📜 HISTORIAL"); btn_historial.clicked.connect(self.abrir_historial_hojas)
         btn_editar = QPushButton("✏️ EDITAR"); btn_editar.clicked.connect(lambda: self.abrir_edicion(self.tabla_ruta))
         btn_ref = QPushButton("🔄 Actualizar"); btn_ref.clicked.connect(self.cargar_ruta)
-        btn_tercerizado = QPushButton("🚚 TERCERIZADOS"); btn_tercerizado.clicked.connect(self.generar_pdf_terc)
-        top.addWidget(QLabel("Seleccionar Chofer:")); top.addWidget(self.combo_masivo_chofer); top.addWidget(btn_aplicar_masivo); top.addWidget(btn_mark); top.addWidget(QLabel("|")); top.addWidget(self.txt_filtro_ruta); top.addWidget(btn_reprog); top.addWidget(btn_historial); top.addWidget(btn_tercerizado); top.addWidget(btn_editar); top.addWidget(btn_ref)
+        
+        # Fila 1: Asignaciones
+        top_row1.addWidget(QLabel("Seleccionar Chofer:")); top_row1.addWidget(self.combo_masivo_chofer)
+        top_row1.addWidget(btn_aplicar_masivo); top_row1.addWidget(btn_mark); top_row1.addWidget(btn_tercerizado)
+        top_row1.addStretch()
+        
+        # Fila 2: Búsqueda y Edición
+        top_row2.addWidget(self.txt_filtro_ruta); top_row2.addWidget(btn_reprog); top_row2.addWidget(btn_editar); top_row2.addWidget(btn_historial); top_row2.addWidget(btn_ref)
         
         self.tabla_ruta = QTableWidget(); self.tabla_ruta.setColumnCount(10); 
         self.tabla_ruta.setHorizontalHeaderLabels(["ID", "Sel.", "Guía", "Proveedor", "Destinatario", "Domicilio", "Localidad", "Bultos", "Cobro / Obs", "Estado"]); self.tabla_ruta.hideColumn(0); 
@@ -563,7 +560,11 @@ class PlataformaLogistica(QMainWindow):
         self.tabla_ruta.setColumnWidth(1, 60); self.tabla_ruta.setColumnWidth(2, 160); self.tabla_ruta.setColumnWidth(3, 160); self.tabla_ruta.setColumnWidth(6, 160); self.tabla_ruta.setColumnWidth(7, 100); self.tabla_ruta.setColumnWidth(8, 180); self.tabla_ruta.setColumnWidth(9, 160)
         header_ruta.setSectionResizeMode(4, QHeaderView.ResizeMode.Stretch); header_ruta.setSectionResizeMode(5, QHeaderView.ResizeMode.Stretch)
         self.tabla_ruta.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows); self.tabla_ruta.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
-        l.addLayout(top); l.addWidget(self.tabla_ruta)
+        
+        # Agregamos las filas al layout principal
+        l.addLayout(top_row1)
+        l.addLayout(top_row2)
+        l.addWidget(self.tabla_ruta)
     
     def filtrar_tabla_ruta(self, texto):
         texto = texto.lower()
