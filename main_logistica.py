@@ -60,7 +60,10 @@ class LoginWindow(QDialog):
 
     def verificar_login(self):
         u = self.in_user.text().strip().lower(); p = self.in_pass.text().strip()
-        self.setWindowTitle("Validando credenciales..."); QApplication.processEvents() 
+        
+        # Deshabilitar boton para que no haga doble clic
+        self.sender().setEnabled(False)
+        self.setWindowTitle("Validando credenciales... Espere un momento"); QApplication.processEvents() 
         try:
             engine, self.session = get_session() # Esto ahora es instantáneo
             user_db = self.session.query(Usuario).filter(Usuario.username == u, Usuario.password == p).first()
@@ -69,9 +72,11 @@ class LoginWindow(QDialog):
             else: 
                 QMessageBox.warning(self, "Error", "Usuario o contraseña incorrectos.")
                 self.setWindowTitle("Acceso Cloud - E.K. Logística")
+                self.sender().setEnabled(True)
         except Exception as e: 
             QMessageBox.critical(self, "Error", f"Error de conexión: {e}")
             self.setWindowTitle("Acceso Cloud - E.K. Logística")
+            self.sender().setEnabled(True)
 
 class PlataformaLogistica(QMainWindow):
     def __init__(self, usuario_db):
@@ -161,15 +166,18 @@ class PlataformaLogistica(QMainWindow):
         self.tab_monitor = QWidget(); self.tab_ruta = QWidget(); self.tab_reportes = QWidget(); self.tab_crm = QWidget(); self.tab_stats = QWidget(); 
         self.tab_ingreso = TabIngreso(self); self.tab_rendicion = TabRendicion(self); self.tab_cierre = TabFacturacion(self); self.tab_config = TabConfiguracion(self) 
         
-        # 🔥 APLICACIÓN DE LOS 8 CANDADOS 🔥
-        if self.usuario.ver_monitor: self.tabs.addTab(self.tab_monitor, "📊 MONITOR GLOBAL")
-        if self.usuario.ver_ingreso: self.tabs.addTab(self.tab_ingreso, "1. INGRESO")
-        if self.usuario.ver_ruta: self.tabs.addTab(self.tab_ruta, "2. Hoja de Ruta")
+        # 🔥 APLICACIÓN DE LOS 9 CANDADOS 🔥
+        if getattr(self.usuario, 'ver_monitor', True): self.tabs.addTab(self.tab_monitor, "📊 MONITOR GLOBAL")
+        if getattr(self.usuario, 'ver_ingreso', True): self.tabs.addTab(self.tab_ingreso, "1. INGRESO")
+        if getattr(self.usuario, 'ver_ruta', True): self.tabs.addTab(self.tab_ruta, "2. Hoja de Ruta")
+        
         if self.usuario.ver_rendicion: self.tabs.addTab(self.tab_rendicion, "3. Rendición")
         if self.usuario.ver_reportes: self.tabs.addTab(self.tab_reportes, "4. Reportes"); self.setup_reportes()
+        
         if self.usuario.ver_facturacion: 
             self.tabs.addTab(self.tab_cierre, "5. Facturación")
             if hasattr(self.tab_cierre, 'tabla_cierre'): self.tab_cierre.tabla_cierre.setItemDelegate(PintorCeldasDelegate(self.tab_cierre.tabla_cierre))
+                
         if self.usuario.ver_crm: self.tabs.addTab(self.tab_crm, "💬 CRM / Contacto"); self.setup_crm()
         if self.usuario.ver_estadisticas: self.tabs.addTab(self.tab_stats, "📈 Estadísticas"); self.setup_estadisticas()
         if self.usuario.ver_configuracion: self.tabs.addTab(self.tab_config, "⚙️ Configuración")
@@ -184,55 +192,50 @@ class PlataformaLogistica(QMainWindow):
             "📊 MONITOR GLOBAL": """<b>MÓDULO: Monitor Global (Torre de Control)</b><br><br>
             <b>Pestaña 1: Listado de Guías:</b><br>
             - Muestra el movimiento del día en tiempo real. Se actualiza solo cada 15 segundos.<br>
-            - <b>Botones de Colores:</b> Hacé clic en ellos para filtrar la tabla rápidamente (Ej: Ver solo los Entregados o los Reprogramados).<br>
+            - <b>Botones de Colores:</b> Hacé clic en ellos para filtrar la tabla rápidamente.<br>
             - <b>📍 Ver Mapa:</b> Si el chofer usó la App, aparecerá un enlace rojo. Hacé clic para ver en Google Maps el lugar exacto de la entrega.<br><br>
             <b>Pestaña 2: Novedades y Auditoría:</b><br>
-            - Es el 'Cerebro de Seguridad'. Te muestra un historial exacto de <b>quién</b> tocó <b>qué</b> guía y a qué <b>hora</b>. Ideal para detectar errores o quién reprogramó un envío.""",
+            - Es el 'Cerebro de Seguridad'. Te muestra un historial exacto de <b>quién</b> tocó <b>qué</b> guía y a qué <b>hora</b>.""",
             "1. INGRESO": """<b>MÓDULO: Ingreso al Depósito</b><br><br>
             <b>- Tipo (Reparto / Retiro):</b> Si elegís Retiro, el sistema creará un número de guía automáticamente.<br>
             <b>- Destinos Fijos:</b> Para no escribir todo a mano, podés guardar direcciones frecuentes y llamarlas usando el 'Código Rápido'.<br>
             <b>- Bultos y Frío:</b> Si tildás 'Combinado', te permite separar cuántos bultos van a heladera y cuántos no.<br>
             <b>- Aplicar Contingencia:</b> Si lo tildás, le suma un recargo extra al cliente al momento de facturar.<br>
-            <b>- Contra Reembolso:</b> Escribí acá si el chofer debe cobrar dinero o si debe traer un remito firmado de vuelta (Intercambio).<br>
+            <b>- Contra Reembolso:</b> Escribí acá si el chofer debe cobrar dinero o traer un remito firmado.<br>
             <b>- Botón DHL:</b> Permite subir el archivo TXT para cargar 50 guías de un solo golpe.""",
             "2. Hoja de Ruta": """<b>MÓDULO: Asignación y Despacho</b><br><br>
-            <b>- Asignar Guías:</b> Tildá los envíos en la columna 'Sel.', elegí un chofer arriba y apretá ASIGNAR. Automáticamente les aparecerá en el celular.<br>
-            <b>- Tercerizados:</b> Si no lo lleva un chofer tuyo, seleccionalo y apretá este botón para emitir un Remito Formal a un transporte externo.<br>
+            <b>- Asignar Guías:</b> Tildá los envíos en la columna 'Sel.', elegí un chofer arriba y apretá ASIGNAR.<br>
+            <b>- Tercerizados:</b> Si no lo lleva un chofer tuyo, seleccionalo y apretá este botón para emitir un Remito Formal.<br>
             <b>- Cambiar Fecha:</b> Si un paquete no sale hoy, seleccionalo y pasalo para mañana.<br>
-            <b>- Cobro / Obs:</b> Prestá atención a esta columna, si está en ROJO significa que el chofer tiene que cobrar dinero en esa parada.""",
+            <b>- Cobro / Obs:</b> Prestá atención a esta columna, si está en ROJO significa que el chofer tiene que cobrar dinero.""",
             "3. Rendición": """<b>MÓDULO: Rendición de Caja y Mercadería</b><br><br>
             <b>Pestaña 1: Gestión (Administrador):</b><br>
-            - Si al chofer se le queda sin batería el celular, tildá sus guías acá y apretá 'Confirmar Entregas' para cerrarlas a mano.<br>
+            - Si al chofer se le queda sin batería el celular, tildá sus guías acá y apretá 'Confirmar Entregas' a mano.<br>
             - Botón <b>Deshacer:</b> Si te equivocaste, esto vuelve la guía a estado 'En Depósito'.<br><br>
             <b>Pestaña 2: Resumen Diario:</b><br>
-            - A la tarde, cuando vuelve el chofer, elegí su nombre y apretá <b>Imprimir PDF</b>. Te saca una liquidación perfecta mostrando qué cosas entregó bien y los motivos de las que trajo de vuelta.""",
+            - A la tarde elegí su nombre y apretá <b>Imprimir PDF</b>. Te saca una liquidación perfecta mostrando entregas y devoluciones.""",
             "4. Reportes": """<b>MÓDULO: Búsquedas Históricas</b><br><br>
             - Usá los filtros de arriba para buscar cualquier información del pasado.<br>
-            - <b>Ejemplo de uso:</b> Poner Fecha de todo el mes, elegir Cliente 'DHL', y Estado 'Entregado'.<br>
-            - <b>Botón Excel (Verde):</b> Descarga la tabla entera a un formato editable ideal para pasarle a tu contador.<br>
-            - <b>Botón PDF (Rojo):</b> Genera un informe sellado y formal.""",
+            - <b>Botón Excel (Verde):</b> Descarga la tabla entera a un formato editable.<br>
+            - <b>Botón PDF (Rojo):</b> Genera un informe formal con los totales de dinero.""",
             "5. Facturación": """<b>MÓDULO: Liquidación a Clientes</b><br><br>
             <b>Pestaña 1: Calcular Rendición:</b><br>
             - Elegí el mes, el cliente y hacé clic en Calcular.<br>
-            - ⚠️ <b>Alerta Amarilla:</b> Si una fila sale en amarillo, significa que ese paquete requirió varias visitas. Hacé doble clic o tocá 'Editar' para cobrarle la demora al cliente.<br>
-            - <b>Agregar Cargo Fijo:</b> Suma un costo extra suelto (Ej: Peajes o armado de palets).<br>
-            - Al imprimir el PDF, te preguntará si querés marcarlas como FACTURADAS. Al decirle que Sí, desaparecen de esta lista y pasan a Cuentas Corrientes.<br><br>
+            - ⚠️ <b>Alerta Amarilla:</b> Significa que ese paquete requirió varias visitas. Hacé doble clic en 'Editar' para cobrar demora.<br>
+            - Al imprimir el PDF, te preguntará si querés marcarlas como FACTURADAS.<br><br>
             <b>Pestaña 2: Cuentas Corrientes:</b><br>
-            - Muestra cuánto te debe históricamente cada cliente y te permite asentar pagos (transferencias) para limpiar la deuda.""",
+            - Muestra cuánto te debe históricamente cada cliente y permite asentar pagos.""",
             "💬 CRM / Contacto": """<b>MÓDULO: Atención Post-Venta</b><br><br>
-            - Esta pantalla te muestra los paquetes que se entregaron con éxito recientemente y que tienen un teléfono celular cargado.<br>
-            - <b>Enviar WhatsApp:</b> Al hacer clic, te abre WhatsApp Web con un mensaje pre-armado saludando al cliente por su nombre y pidiéndole feedback sobre nuestro servicio. Ideal para mejorar la imagen corporativa.""",
+            - Esta pantalla te muestra paquetes entregados con éxito que tienen celular.<br>
+            - <b>Enviar WhatsApp:</b> Al hacer clic, te abre WhatsApp Web con un mensaje pre-armado pidiendo feedback.""",
             "📈 Estadísticas": """<b>MÓDULO: Panel Gerencial Ejecutivo</b><br><br>
             - Es el resumen de salud de tu sucursal en tiempo real.<br>
-            - <b>Cajas de Colores:</b> Te muestran rápido cuántas cosas entraron, cuántas se entregaron y cuántas siguen en la calle AHORA MISMO.<br>
-            - <b>Ranking de Clientes:</b> Quién te está dando más volumen de trabajo este mes.<br>
-            - <b>Ranking de Choferes:</b> Una tabla de posiciones para ver qué transportista tiene mejor rendimiento operativo.""",
+            - Muestra cajas de colores operativas, Ranking de Clientes y de Choferes.""",
             "⚙️ Configuración": """<b>MÓDULO: Motor del Sistema</b><br><br>
-            <b>- Tarifas Locales / DHL:</b> Acá configurás los precios base de los envíos. Al cambiarlos, las guías nuevas tomarán el precio actualizado.<br>
-            <b>- Choferes:</b> Agregá a tu personal. Recordá que su DNI será la contraseña que deberán usar en el celular.<br>
-            <b>- Usuarios:</b> Creá los accesos a esta plataforma de computadora. Acá decidís si el nuevo empleado puede ver o no la facturación y la plata."""
+            <b>- Tarifas:</b> Acá configurás los precios base. Al cambiarlos, afecta a las guías nuevas.<br>
+            <b>- Choferes:</b> Su DNI será la contraseña para la App Web.<br>
+            <b>- Usuarios:</b> Creá accesos a la PC habilitando o bloqueando las pestañas visibles para cada empleado."""
         }
-        
         texto = diccionario_ayuda.get(tab_name, "Selecciona una pestaña específica para ver su manual de uso detallado.")
         box = QMessageBox(self); box.setWindowTitle(f"📖 Manual de Usuario: {tab_name.replace('📊', '').replace('⚙️', '').strip()}")
         box.setTextFormat(Qt.TextFormat.RichText); box.setText(texto); box.setStyleSheet("font-size: 14px;"); box.exec()
@@ -761,7 +764,7 @@ class PlataformaLogistica(QMainWindow):
             self.vista_stats.setHtml(html)
         except Exception as e: self.session.rollback()
 
-# 🔥 HILO DE FONDO: Conecta a Supabase mientra el usuario ve el logo 🔥
+# 🔥 HILO DE FONDO 🔥
 class DBWakeUpThread(QThread):
     finished_signal = pyqtSignal()
     def run(self):
@@ -771,7 +774,7 @@ class DBWakeUpThread(QThread):
         except: pass
         self.finished_signal.emit()
 
-# 🔥 NUEVA PANTALLA DE CARGA CON TU LOGO LOCAL Y TEXTO PARPADEANTE 🔥
+# 🔥 NUEVA PANTALLA DE CARGA (CON ARCHIVO .PNG LOCAL) 🔥
 class PantallaCargaMinimalista(QDialog):
     def __init__(self):
         super().__init__()
@@ -789,9 +792,13 @@ class PantallaCargaMinimalista(QDialog):
         lay_cont.setAlignment(Qt.AlignmentFlag.AlignCenter)
         
         self.lbl_logo = QLabel()
-        pixmap = QPixmap(r"C:\EK-Logistica\icons\eklogo.ico")
+        # Busca automáticamente el archivo "eklogo.png" en la misma carpeta que el programa
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        logo_path = os.path.join(base_dir, "eklogo.png")
+        
+        pixmap = QPixmap(logo_path)
         if not pixmap.isNull():
-            self.lbl_logo.setPixmap(pixmap.scaled(100, 100, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
+            self.lbl_logo.setPixmap(pixmap.scaled(120, 120, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
         else:
             self.lbl_logo.setText("📦 E.K.") 
             self.lbl_logo.setStyleSheet("font-size: 40px; color: #1565c0; font-weight: bold;")
