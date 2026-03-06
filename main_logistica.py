@@ -14,15 +14,15 @@ from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
                              QListWidget, QListWidgetItem, QAbstractItemView, QStatusBar, QDialog, QInputDialog,
                              QTextBrowser, QGraphicsDropShadowEffect, QStyledItemDelegate)
 from PyQt6.QtCore import Qt, QDate, QTimer, QUrl, QPropertyAnimation, QEasingCurve, QPoint, QRect, QSize, QVariantAnimation, QThread, pyqtSignal
-from PyQt6.QtGui import QColor, QFont, QDesktopServices, QPainter, QRadialGradient, QLinearGradient, QPen, QPolygon, QBrush
+from PyQt6.QtGui import QColor, QFont, QDesktopServices, QPainter, QRadialGradient, QLinearGradient, QPen, QPolygon, QBrush, QPixmap
 
 from qt_material import apply_stylesheet
 from sqlalchemy import text, extract, desc
 
-# 🔥 CARGA SÚPER RÁPIDA: Solo cargamos lo vital para el Login 🔥
+# Cargamos el motor pero NO verificamos tablas para que inicie volando
 from database import get_session, Usuario
 
-print(">>> Iniciando Plataforma con Lazy Loading (Inicio Ultra Rápido)...")
+print(">>> Iniciando Plataforma Ultra Rápida con Hilos de Carga...")
 
 def detector_temprano(exc_type, exc_value, exc_traceback):
     err_msg = "".join(traceback.format_exception(exc_type, exc_value, exc_traceback))
@@ -60,9 +60,9 @@ class LoginWindow(QDialog):
 
     def verificar_login(self):
         u = self.in_user.text().strip().lower(); p = self.in_pass.text().strip()
-        self.setWindowTitle("Conectando... Espere"); QApplication.processEvents() 
+        self.setWindowTitle("Validando credenciales..."); QApplication.processEvents() 
         try:
-            engine, self.session = get_session()
+            engine, self.session = get_session() # Esto ahora es instantáneo
             user_db = self.session.query(Usuario).filter(Usuario.username == u, Usuario.password == p).first()
             if user_db: 
                 self.usuario_logueado = user_db; self.accept()
@@ -73,7 +73,6 @@ class LoginWindow(QDialog):
             QMessageBox.critical(self, "Error", f"Error de conexión: {e}")
             self.setWindowTitle("Acceso Cloud - E.K. Logística")
 
-
 class PlataformaLogistica(QMainWindow):
     def __init__(self, usuario_db):
         super().__init__()
@@ -81,7 +80,6 @@ class PlataformaLogistica(QMainWindow):
         self.setWindowTitle(f"E.K. LOGISTICA (NUBE) - Usuario: {self.usuario.username.upper()}")
         self.setWindowState(Qt.WindowState.WindowMaximized) 
         
-        # 🔥 CARGA PEREZOSA (LAZY LOAD): Importamos todo el peso recién acá 🔥
         global Operacion, Historial, Tarifa, Chofer, ClienteRetiro, ClientePrincipal, DestinoFrecuente, Estados, Urgencia, TarifaDHL, HistorialTarifas, ReciboPago
         from database import Operacion, Historial, Tarifa, Chofer, ClienteRetiro, ClientePrincipal, DestinoFrecuente, Estados, Urgencia, TarifaDHL, HistorialTarifas, ReciboPago
         
@@ -104,9 +102,7 @@ class PlataformaLogistica(QMainWindow):
 
     def safe_rollback(self):
         try: self.session.rollback()
-        except Exception:
-            try: _, self.session = get_session()
-            except: pass
+        except: pass
 
     def al_cambiar_pestana(self, index):
         nombre_tab = self.tabs.tabText(index)
@@ -165,30 +161,21 @@ class PlataformaLogistica(QMainWindow):
         self.tab_monitor = QWidget(); self.tab_ruta = QWidget(); self.tab_reportes = QWidget(); self.tab_crm = QWidget(); self.tab_stats = QWidget(); 
         self.tab_ingreso = TabIngreso(self); self.tab_rendicion = TabRendicion(self); self.tab_cierre = TabFacturacion(self); self.tab_config = TabConfiguracion(self) 
         
-        self.tabs.addTab(self.tab_monitor, "📊 MONITOR GLOBAL")
-        self.tabs.addTab(self.tab_ingreso, "1. INGRESO")
-        self.tabs.addTab(self.tab_ruta, "2. Hoja de Ruta")
-        
+        # 🔥 APLICACIÓN DE LOS 8 CANDADOS 🔥
+        if self.usuario.ver_monitor: self.tabs.addTab(self.tab_monitor, "📊 MONITOR GLOBAL")
+        if self.usuario.ver_ingreso: self.tabs.addTab(self.tab_ingreso, "1. INGRESO")
+        if self.usuario.ver_ruta: self.tabs.addTab(self.tab_ruta, "2. Hoja de Ruta")
         if self.usuario.ver_rendicion: self.tabs.addTab(self.tab_rendicion, "3. Rendición")
         if self.usuario.ver_reportes: self.tabs.addTab(self.tab_reportes, "4. Reportes"); self.setup_reportes()
-        
         if self.usuario.ver_facturacion: 
             self.tabs.addTab(self.tab_cierre, "5. Facturación")
             if hasattr(self.tab_cierre, 'tabla_cierre'): self.tab_cierre.tabla_cierre.setItemDelegate(PintorCeldasDelegate(self.tab_cierre.tabla_cierre))
-                
-        # 🔥 AQUI SE APLICAN LOS NUEVOS PERMISOS 🔥
-        if self.usuario.ver_crm: 
-            self.tabs.addTab(self.tab_crm, "💬 CRM / Contacto"); self.setup_crm()
-        
-        if self.usuario.ver_estadisticas: 
-            self.tabs.addTab(self.tab_stats, "📈 Estadísticas"); self.setup_estadisticas()
-        
-        if self.usuario.ver_configuracion: 
-            self.tabs.addTab(self.tab_config, "⚙️ Configuración")
+        if self.usuario.ver_crm: self.tabs.addTab(self.tab_crm, "💬 CRM / Contacto"); self.setup_crm()
+        if self.usuario.ver_estadisticas: self.tabs.addTab(self.tab_stats, "📈 Estadísticas"); self.setup_estadisticas()
+        if self.usuario.ver_configuracion: self.tabs.addTab(self.tab_config, "⚙️ Configuración")
         
         self.setup_monitor(); self.setup_ruta(); self.setStatusBar(QStatusBar())
 
-    # 🔥 MANUAL DE AYUDA DEFINITIVO Y DETALLADO 🔥
     def mostrar_ayuda_inteligente(self):
         idx = self.tabs.currentIndex()
         tab_name = self.tabs.tabText(idx)
@@ -201,7 +188,6 @@ class PlataformaLogistica(QMainWindow):
             - <b>📍 Ver Mapa:</b> Si el chofer usó la App, aparecerá un enlace rojo. Hacé clic para ver en Google Maps el lugar exacto de la entrega.<br><br>
             <b>Pestaña 2: Novedades y Auditoría:</b><br>
             - Es el 'Cerebro de Seguridad'. Te muestra un historial exacto de <b>quién</b> tocó <b>qué</b> guía y a qué <b>hora</b>. Ideal para detectar errores o quién reprogramó un envío.""",
-            
             "1. INGRESO": """<b>MÓDULO: Ingreso al Depósito</b><br><br>
             <b>- Tipo (Reparto / Retiro):</b> Si elegís Retiro, el sistema creará un número de guía automáticamente.<br>
             <b>- Destinos Fijos:</b> Para no escribir todo a mano, podés guardar direcciones frecuentes y llamarlas usando el 'Código Rápido'.<br>
@@ -209,26 +195,22 @@ class PlataformaLogistica(QMainWindow):
             <b>- Aplicar Contingencia:</b> Si lo tildás, le suma un recargo extra al cliente al momento de facturar.<br>
             <b>- Contra Reembolso:</b> Escribí acá si el chofer debe cobrar dinero o si debe traer un remito firmado de vuelta (Intercambio).<br>
             <b>- Botón DHL:</b> Permite subir el archivo TXT para cargar 50 guías de un solo golpe.""",
-            
             "2. Hoja de Ruta": """<b>MÓDULO: Asignación y Despacho</b><br><br>
             <b>- Asignar Guías:</b> Tildá los envíos en la columna 'Sel.', elegí un chofer arriba y apretá ASIGNAR. Automáticamente les aparecerá en el celular.<br>
             <b>- Tercerizados:</b> Si no lo lleva un chofer tuyo, seleccionalo y apretá este botón para emitir un Remito Formal a un transporte externo.<br>
             <b>- Cambiar Fecha:</b> Si un paquete no sale hoy, seleccionalo y pasalo para mañana.<br>
             <b>- Cobro / Obs:</b> Prestá atención a esta columna, si está en ROJO significa que el chofer tiene que cobrar dinero en esa parada.""",
-            
             "3. Rendición": """<b>MÓDULO: Rendición de Caja y Mercadería</b><br><br>
             <b>Pestaña 1: Gestión (Administrador):</b><br>
             - Si al chofer se le queda sin batería el celular, tildá sus guías acá y apretá 'Confirmar Entregas' para cerrarlas a mano.<br>
             - Botón <b>Deshacer:</b> Si te equivocaste, esto vuelve la guía a estado 'En Depósito'.<br><br>
             <b>Pestaña 2: Resumen Diario:</b><br>
             - A la tarde, cuando vuelve el chofer, elegí su nombre y apretá <b>Imprimir PDF</b>. Te saca una liquidación perfecta mostrando qué cosas entregó bien y los motivos de las que trajo de vuelta.""",
-            
             "4. Reportes": """<b>MÓDULO: Búsquedas Históricas</b><br><br>
             - Usá los filtros de arriba para buscar cualquier información del pasado.<br>
             - <b>Ejemplo de uso:</b> Poner Fecha de todo el mes, elegir Cliente 'DHL', y Estado 'Entregado'.<br>
             - <b>Botón Excel (Verde):</b> Descarga la tabla entera a un formato editable ideal para pasarle a tu contador.<br>
             - <b>Botón PDF (Rojo):</b> Genera un informe sellado y formal.""",
-            
             "5. Facturación": """<b>MÓDULO: Liquidación a Clientes</b><br><br>
             <b>Pestaña 1: Calcular Rendición:</b><br>
             - Elegí el mes, el cliente y hacé clic en Calcular.<br>
@@ -237,17 +219,14 @@ class PlataformaLogistica(QMainWindow):
             - Al imprimir el PDF, te preguntará si querés marcarlas como FACTURADAS. Al decirle que Sí, desaparecen de esta lista y pasan a Cuentas Corrientes.<br><br>
             <b>Pestaña 2: Cuentas Corrientes:</b><br>
             - Muestra cuánto te debe históricamente cada cliente y te permite asentar pagos (transferencias) para limpiar la deuda.""",
-            
             "💬 CRM / Contacto": """<b>MÓDULO: Atención Post-Venta</b><br><br>
             - Esta pantalla te muestra los paquetes que se entregaron con éxito recientemente y que tienen un teléfono celular cargado.<br>
             - <b>Enviar WhatsApp:</b> Al hacer clic, te abre WhatsApp Web con un mensaje pre-armado saludando al cliente por su nombre y pidiéndole feedback sobre nuestro servicio. Ideal para mejorar la imagen corporativa.""",
-            
             "📈 Estadísticas": """<b>MÓDULO: Panel Gerencial Ejecutivo</b><br><br>
             - Es el resumen de salud de tu sucursal en tiempo real.<br>
             - <b>Cajas de Colores:</b> Te muestran rápido cuántas cosas entraron, cuántas se entregaron y cuántas siguen en la calle AHORA MISMO.<br>
             - <b>Ranking de Clientes:</b> Quién te está dando más volumen de trabajo este mes.<br>
             - <b>Ranking de Choferes:</b> Una tabla de posiciones para ver qué transportista tiene mejor rendimiento operativo.""",
-            
             "⚙️ Configuración": """<b>MÓDULO: Motor del Sistema</b><br><br>
             <b>- Tarifas Locales / DHL:</b> Acá configurás los precios base de los envíos. Al cambiarlos, las guías nuevas tomarán el precio actualizado.<br>
             <b>- Choferes:</b> Agregá a tu personal. Recordá que su DNI será la contraseña que deberán usar en el celular.<br>
@@ -782,43 +761,69 @@ class PlataformaLogistica(QMainWindow):
             self.vista_stats.setHtml(html)
         except Exception as e: self.session.rollback()
 
-class LogoWidget(QWidget):
-    def __init__(self, parent=None):
-        super().__init__(parent); self.setFixedSize(160, 160); self.escala = 1.0
-    def set_escala(self, scale):
-        try: self.escala = float(scale)
-        except: self.escala = 1.0
-        self.update() 
-    def paintEvent(self, event):
-        painter = QPainter(self); painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        cx = int(int(self.width()) / 2); cy = int(int(self.height()) / 2); radio_externo = 60; grosor = 16
-        painter.save(); painter.translate(cx, cy); painter.scale(self.escala, self.escala); painter.translate(-cx, -cy)
-        grad_back = QRadialGradient(cx, cy, int(radio_externo + 10)); grad_back.setColorAt(0.0, QColor(255, 255, 255, 50)); grad_back.setColorAt(1.0, Qt.GlobalColor.transparent); painter.fillRect(self.rect(), grad_back)
-        pen = QPen(); pen.setWidth(grosor); pen.setCapStyle(Qt.PenCapStyle.RoundCap)
-        rect_arco = QRect(cx - radio_externo, cy - radio_externo, radio_externo * 2, radio_externo * 2)
-        pen.setColor(QColor("#4FC3F7")); painter.setPen(pen); painter.drawArc(rect_arco, 30 * 16, 120 * 16) 
-        pen.setColor(QColor("#0D47A1")); painter.setPen(pen); painter.drawArc(rect_arco, 210 * 16, 120 * 16)
-        painter.restore()
+# 🔥 HILO DE FONDO: Conecta a Supabase mientra el usuario ve el logo 🔥
+class DBWakeUpThread(QThread):
+    finished_signal = pyqtSignal()
+    def run(self):
+        try: 
+            from database import engine, Base
+            Base.metadata.create_all(bind=engine)
+        except: pass
+        self.finished_signal.emit()
 
+# 🔥 NUEVA PANTALLA DE CARGA CON TU LOGO LOCAL Y TEXTO PARPADEANTE 🔥
 class PantallaCargaMinimalista(QDialog):
     def __init__(self):
         super().__init__()
         self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.WindowStaysOnTopHint)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         self.setStyleSheet("QDialog { background: transparent; border: none; }")
-        self.setFixedSize(500, 500) 
-        layout = QVBoxLayout(self); layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.contenedor = QWidget(); self.contenedor.setFixedSize(200, 200); self.contenedor.setStyleSheet("background: transparent; border: none;")
-        lay_cont = QVBoxLayout(self.contenedor); lay_cont.setAlignment(Qt.AlignmentFlag.AlignCenter); lay_cont.setContentsMargins(0,0,0,0)
-        self.logo_visual = LogoWidget(); lay_cont.addWidget(self.logo_visual)
-        shadow = QGraphicsDropShadowEffect(); shadow.setBlurRadius(30); shadow.setColor(QColor("#4FC3F7")); shadow.setOffset(0, 0); self.contenedor.setGraphicsEffect(shadow)
+        self.setFixedSize(400, 300) 
+        layout = QVBoxLayout(self)
+        layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        
+        self.contenedor = QWidget()
+        self.contenedor.setFixedSize(300, 200)
+        self.contenedor.setStyleSheet("background: rgba(255, 255, 255, 240); border-radius: 15px;")
+        lay_cont = QVBoxLayout(self.contenedor)
+        lay_cont.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        
+        self.lbl_logo = QLabel()
+        pixmap = QPixmap(r"C:\EK-Logistica\icons\eklogo.ico")
+        if not pixmap.isNull():
+            self.lbl_logo.setPixmap(pixmap.scaled(100, 100, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
+        else:
+            self.lbl_logo.setText("📦 E.K.") 
+            self.lbl_logo.setStyleSheet("font-size: 40px; color: #1565c0; font-weight: bold;")
+        self.lbl_logo.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        
+        self.lbl_texto = QLabel("Entrando a plataforma espere...")
+        self.lbl_texto.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        
+        lay_cont.addWidget(self.lbl_logo)
+        lay_cont.addWidget(self.lbl_texto)
+        
+        shadow = QGraphicsDropShadowEffect()
+        shadow.setBlurRadius(20)
+        shadow.setColor(QColor(0, 0, 0, 80))
+        shadow.setOffset(0, 0)
+        self.contenedor.setGraphicsEffect(shadow)
         layout.addWidget(self.contenedor)
-        self.anim_latido = QVariantAnimation(self); self.anim_latido.setDuration(1200) 
-        self.anim_latido.setStartValue(1.0); self.anim_latido.setKeyValueAt(0.15, 1.15); self.anim_latido.setKeyValueAt(0.25, 1.05); self.anim_latido.setKeyValueAt(0.35, 1.15); self.anim_latido.setKeyValueAt(0.50, 1.0); self.anim_latido.setEndValue(1.0)          
-        self.anim_latido.setEasingCurve(QEasingCurve.Type.InOutSine)
-        self.anim_latido.valueChanged.connect(self.logo_visual.set_escala)
-        self.timer_repeticion = QTimer(self); self.timer_repeticion.timeout.connect(self.anim_latido.start); self.timer_repeticion.start(1400) 
-        QTimer.singleShot(100, self.anim_latido.start)
+        
+        self.anim_latido = QVariantAnimation(self)
+        self.anim_latido.setDuration(1000)
+        self.anim_latido.setStartValue(1.0)
+        self.anim_latido.setKeyValueAt(0.5, 0.4)
+        self.anim_latido.setEndValue(1.0)
+        self.anim_latido.valueChanged.connect(self.actualizar_opacidad_texto)
+        self.timer_repeticion = QTimer(self)
+        self.timer_repeticion.timeout.connect(self.anim_latido.start)
+        self.timer_repeticion.start(1000)
+        self.anim_latido.start()
+
+    def actualizar_opacidad_texto(self, value):
+        self.lbl_texto.setStyleSheet(f"font-size: 15px; font-weight: bold; color: rgba(51, 51, 51, {int(255*value)}); margin-top: 10px;")
+
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
@@ -833,26 +838,29 @@ if __name__ == "__main__":
     """
     app.setStyleSheet(estilo_actual + estilo_tablas_blancas)
     
-    # 1. MOSTRAMOS EL LOGIN DE INMEDIATO
     login = LoginWindow()
     if login.exec() == QDialog.DialogCode.Accepted:
-        # 2. PANTALLA DE CARGA (Para darle feedback al usuario mientras piensa)
+        
         splash = PantallaCargaMinimalista()
         screen = app.primaryScreen().geometry()
         splash.move(int((screen.width() - splash.width()) / 2), int((screen.height() - splash.height()) / 2))
         splash.show()
         QApplication.processEvents()
         
-        # 3. AHORA SÍ CONSTRUIMOS EL MONSTRUO PESADO
-        try:
-            ventana = PlataformaLogistica(login.usuario_logueado)
-            ventana.cambiar_sucursal(ventana.sucursal_actual)
-            splash.close()
-            ventana.showMaximized() 
-        except Exception as e:
-            splash.close()
-            err = traceback.format_exc()
-            msg = QMessageBox(); msg.setIcon(QMessageBox.Icon.Critical); msg.setWindowTitle("Error Fatal"); msg.setText("Error al cargar los módulos."); msg.setDetailedText(err); msg.exec()
-            sys.exit(1)
-            
+        # Arranca el hilo pesado sin congelar la ventana
+        def terminar_arranque():
+            try:
+                global ventana
+                ventana = PlataformaLogistica(login.usuario_logueado)
+                ventana.cambiar_sucursal(ventana.sucursal_actual)
+                splash.close()
+                ventana.showMaximized() 
+            except Exception as e:
+                splash.close()
+                msg = QMessageBox(); msg.setIcon(QMessageBox.Icon.Critical); msg.setWindowTitle("Error Fatal"); msg.setText("Error al cargar los módulos."); msg.setDetailedText(traceback.format_exc()); msg.exec()
+                sys.exit(1)
+                
+        wake_thread = DBWakeUpThread()
+        wake_thread.finished_signal.connect(terminar_arranque)
+        wake_thread.start()
         sys.exit(app.exec())

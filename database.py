@@ -1,13 +1,11 @@
 import os
-from datetime import datetime  # <-- ¡Esta es la línea que faltaba!
+from datetime import datetime
 from sqlalchemy import create_engine, Column, Integer, String, Float, Boolean, Date, DateTime, ForeignKey
 from sqlalchemy.orm import declarative_base, sessionmaker, relationship
 from dotenv import load_dotenv
 
-# Carga la contraseña de forma segura desde el archivo .env
 load_dotenv()
 
-# Si no encuentra el .env, tira un error para protegerte
 DATABASE_URL = os.getenv("DB_URL")
 if not DATABASE_URL:
     raise ValueError("❌ ERROR CRÍTICO: No se encontró la variable DB_URL en el archivo .env")
@@ -23,12 +21,10 @@ engine = create_engine(
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
-# 🔥 CARGA PEREZOSA (LAZY LOAD): Crea las tablas recién cuando se llama a esta función 🔥
+# 🔥 CARGA SÚPER RÁPIDA: Ya no traba la pantalla verificando las tablas acá 🔥
 def get_session():
-    Base.metadata.create_all(bind=engine)
     return engine, SessionLocal()
 
-# --- MODELOS DE LA BASE DE DATOS ---
 class Estados:
     EN_DEPOSITO = "EN DEPOSITO"
     EN_REPARTO = "EN REPARTO"
@@ -47,12 +43,17 @@ class Usuario(Base):
     password = Column(String(50))
     sucursal_asignada = Column(String(50))
     es_admin_total = Column(Boolean, default=False)
-    ver_reportes = Column(Boolean, default=False)
-    ver_facturacion = Column(Boolean, default=False)
-    ver_configuracion = Column(Boolean, default=False)
+    
+    # 🔥 TODOS LOS PERMISOS (Las 8 pestañas) 🔥
+    ver_monitor = Column(Boolean, default=True)
+    ver_ingreso = Column(Boolean, default=True)
+    ver_ruta = Column(Boolean, default=True)
     ver_rendicion = Column(Boolean, default=False)
-    ver_crm = Column(Boolean, default=True)          # <--- NUEVO PERMISO CRM
-    ver_estadisticas = Column(Boolean, default=True) # <--- NUEVO PERMISO ESTADÍSTICAS
+    ver_facturacion = Column(Boolean, default=False)
+    ver_reportes = Column(Boolean, default=False)
+    ver_crm = Column(Boolean, default=True)          
+    ver_estadisticas = Column(Boolean, default=True) 
+    ver_configuracion = Column(Boolean, default=False)
 
 class Tarifa(Base):
     __tablename__ = "tarifas"
