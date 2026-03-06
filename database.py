@@ -23,7 +23,9 @@ engine = create_engine(
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
+# 🔥 CARGA PEREZOSA (LAZY LOAD): Crea las tablas recién cuando se llama a esta función 🔥
 def get_session():
+    Base.metadata.create_all(bind=engine)
     return engine, SessionLocal()
 
 # --- MODELOS DE LA BASE DE DATOS ---
@@ -49,6 +51,8 @@ class Usuario(Base):
     ver_facturacion = Column(Boolean, default=False)
     ver_configuracion = Column(Boolean, default=False)
     ver_rendicion = Column(Boolean, default=False)
+    ver_crm = Column(Boolean, default=True)          # <--- NUEVO PERMISO CRM
+    ver_estadisticas = Column(Boolean, default=True) # <--- NUEVO PERMISO ESTADÍSTICAS
 
 class Tarifa(Base):
     __tablename__ = "tarifas"
@@ -155,5 +159,3 @@ class ReciboPago(Base):
     monto = Column(Float, default=0.0)
     detalle = Column(String(200))
     usuario = Column(String(50))
-
-Base.metadata.create_all(bind=engine)
