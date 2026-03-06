@@ -297,7 +297,7 @@ class TabConfiguracion(QWidget):
             else: self.lbl_alerta_tarifa.setText(f"🟢 Tarifas actualizadas (último cambio hace {dias} días).")
         except: self.main.session.rollback()
 
-    # --- PANEL CHOFERES (CON DNI HABILITADO Y BOTÓN EDITAR) ---
+    # --- PANEL CHOFERES ---
     def setup_panel_choferes(self):
         l = QVBoxLayout(self.page_choferes); gb = QGroupBox("Gestión de Choferes"); f = QFormLayout()
         
@@ -334,7 +334,6 @@ class TabConfiguracion(QWidget):
         d = self.cfg_chofer_dni.text().strip()
         if n: 
             try: 
-                # Se usa SQL puro para inyectar el DNI sin romper el modelo actual de SQLAlchemy
                 self.main.session.execute(text("INSERT INTO choferes (nombre, sucursal, dni) VALUES (:n, :s, :d)"), {"n": n, "s": s, "d": d})
                 self.main.session.commit()
                 self.cfg_chofer_nombre.clear()
@@ -390,14 +389,23 @@ class TabConfiguracion(QWidget):
         self.tabla_clientes.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows); self.tabla_clientes.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         l.addWidget(self.tabla_clientes); btn_d = QPushButton("Eliminar Cliente"); btn_d.clicked.connect(lambda: self.main.eliminar_fila(self.tabla_clientes, ClienteRetiro)); l.addWidget(btn_d)
     
-    # --- PANEL USUARIOS ---
+    # 🔥 PANEL USUARIOS ACTUALIZADO CON CRM Y ESTADISTICAS 🔥
     def setup_panel_usuarios(self):
         l = QVBoxLayout(self.page_usuarios); gb = QGroupBox("Usuarios y Permisos"); f = QFormLayout()
         self.u_user = QLineEdit(); self.u_pass = QLineEdit(); self.u_suc = QComboBox(); self.u_suc.addItems(["Mendoza", "San Juan"]); self.chk_admin = QCheckBox("Es Admin Total"); 
-        self.chk_rep = QCheckBox("Ver Reportes"); self.chk_fac = QCheckBox("Ver Facturación"); self.chk_conf = QCheckBox("Ver Configuración"); self.chk_rend = QCheckBox("Ver Rendición (Paso 3)")
-        f.addRow("Usuario:", self.u_user); f.addRow("Pass:", self.u_pass); f.addRow("Sucursal:", self.u_suc); f.addRow(self.chk_admin); f.addRow("Permisos:", self.chk_rep); f.addRow("", self.chk_fac); f.addRow("", self.chk_conf); f.addRow("", self.chk_rend)
+        self.chk_rep = QCheckBox("Ver Reportes"); self.chk_fac = QCheckBox("Ver Facturación"); self.chk_conf = QCheckBox("Ver Configuración"); self.chk_rend = QCheckBox("Ver Rendición")
+        
+        # Nuevos checkboxes
+        self.chk_crm = QCheckBox("Ver CRM"); self.chk_est = QCheckBox("Ver Estadísticas")
+        
+        ly_checks1 = QHBoxLayout(); ly_checks1.addWidget(self.chk_rep); ly_checks1.addWidget(self.chk_fac); ly_checks1.addWidget(self.chk_conf); ly_checks1.addWidget(self.chk_rend)
+        ly_checks2 = QHBoxLayout(); ly_checks2.addWidget(self.chk_crm); ly_checks2.addWidget(self.chk_est); ly_checks2.addStretch()
+
+        f.addRow("Usuario:", self.u_user); f.addRow("Pass:", self.u_pass); f.addRow("Sucursal:", self.u_suc); f.addRow(self.chk_admin); 
+        f.addRow("Permisos:", ly_checks1); f.addRow("", ly_checks2)
         btn = QPushButton("➕ CREAR USUARIO"); btn.clicked.connect(self.guardar_usuario)
         gb.setLayout(f); l.addWidget(gb); l.addWidget(btn)
+        
         self.tabla_usuarios = QTableWidget(); self.tabla_usuarios.setColumnCount(5); self.tabla_usuarios.hideColumn(0); self.tabla_usuarios.setHorizontalHeaderLabels(["ID", "Usuario", "Sucursal", "Admin?", "Permisos"]); self.tabla_usuarios.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         self.tabla_usuarios.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows); self.tabla_usuarios.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         l.addWidget(self.tabla_usuarios)
@@ -415,7 +423,8 @@ class TabConfiguracion(QWidget):
         u = self.u_user.text().strip().lower(); p = self.u_pass.text().strip()
         if not u or not p: return
         try: 
-            self.main.session.add(Usuario(username=u, password=p, sucursal_asignada=self.u_suc.currentText(), es_admin_total=self.chk_admin.isChecked(), ver_reportes=self.chk_rep.isChecked(), ver_facturacion=self.chk_fac.isChecked(), ver_configuracion=self.chk_conf.isChecked(), ver_rendicion=self.chk_rend.isChecked())); self.main.session.commit(); QMessageBox.information(self, "Éxito", "Usuario creado."); self.u_user.clear(); self.u_pass.clear(); self.cargar_usuarios_tabla()
+            usr = Usuario(username=u, password=p, sucursal_asignada=self.u_suc.currentText(), es_admin_total=self.chk_admin.isChecked(), ver_reportes=self.chk_rep.isChecked(), ver_facturacion=self.chk_fac.isChecked(), ver_configuracion=self.chk_conf.isChecked(), ver_rendicion=self.chk_rend.isChecked(), ver_crm=self.chk_crm.isChecked(), ver_estadisticas=self.chk_est.isChecked())
+            self.main.session.add(usr); self.main.session.commit(); QMessageBox.information(self, "Éxito", "Usuario creado."); self.u_user.clear(); self.u_pass.clear(); self.cargar_usuarios_tabla()
         except Exception as e: self.main.session.rollback(); QMessageBox.warning(self, "Error", "El usuario ya existe.")
             
     def editar_usuario(self):
@@ -427,6 +436,7 @@ class TabConfiguracion(QWidget):
             id_obj = int(self.tabla_usuarios.item(r, 0).text())
             usr = self.main.session.query(Usuario).get(id_obj)
             if usr:
+                # Nota: El cuadro emergente solo editará permisos base. Para los nuevos, se respeta el valor existente (d.get).
                 dlg = EditarUsuarioDialog(usr, self)
                 if dlg.exec() == QDialog.DialogCode.Accepted:
                     d = dlg.datos
@@ -439,6 +449,11 @@ class TabConfiguracion(QWidget):
                         usr.ver_facturacion = d['fac']
                         usr.ver_configuracion = d['conf']
                         usr.ver_rendicion = d['rend']
+                        
+                        # Mantiene los permisos de CRM y Stats si el dialog no los proveyó
+                        usr.ver_crm = d.get('crm', usr.ver_crm)
+                        usr.ver_estadisticas = d.get('est', usr.ver_estadisticas)
+                        
                         self.main.session.commit()
                         self.cargar_usuarios_tabla()
                         QMessageBox.information(self, "Éxito", "Usuario editado correctamente.")
@@ -452,11 +467,13 @@ class TabConfiguracion(QWidget):
             self.tabla_usuarios.setRowCount(0); us = self.main.session.query(Usuario).all()
             for r, u in enumerate(us):
                 self.tabla_usuarios.insertRow(r); self.tabla_usuarios.setItem(r, 0, QTableWidgetItem(str(u.id))); self.tabla_usuarios.setItem(r, 1, QTableWidgetItem(u.username)); self.tabla_usuarios.setItem(r, 2, QTableWidgetItem(u.sucursal_asignada)); self.tabla_usuarios.setItem(r, 3, QTableWidgetItem("SI" if u.es_admin_total else "NO"))
-                perms = []; 
+                perms = []
                 if u.ver_reportes: perms.append("Rep")
                 if u.ver_facturacion: perms.append("Fac")
                 if u.ver_configuracion: perms.append("Cfg")
                 if u.ver_rendicion: perms.append("Rend")
+                if u.ver_crm: perms.append("CRM")
+                if u.ver_estadisticas: perms.append("Est")
                 self.tabla_usuarios.setItem(r, 4, QTableWidgetItem(", ".join(perms)))
         except Exception: self.main.session.rollback()
         
