@@ -1,11 +1,12 @@
 from flask import Flask, request, render_template_string, redirect, url_for, session, flash
 from sqlalchemy import create_engine, text
-from datetime import datetime, timedelta  # <-- Agregamos timedelta para calcular los días
+from datetime import datetime, timedelta
 import os
 import base64
 import requests
 import urllib.parse
 import re
+import json
 
 app = Flask(__name__)
 app.secret_key = "secreto_super_seguro_choferes_ek"
@@ -193,7 +194,7 @@ def index():
                 db_dni = str(res[0]).strip() if res and res[0] else ""
                 
                 if db_dni == str(chofer_dni).strip():
-                    session.permanent = True  # 🔥 ESTO LE ORDENA AL CELULAR QUE NO BORRE LA SESIÓN 🔥
+                    session.permanent = True  
                     session['chofer'] = chofer_nombre
                     return redirect(url_for('lista_viajes'))
                 else:
@@ -206,14 +207,17 @@ def index():
         
         return redirect(url_for('index'))
     
+    # 🔥 AHORA CARGAMOS TAMBIÉN LA SUCURSAL PARA PODER FILTRAR 🔥
     conn = get_db()
-    choferes = []
+    choferes_data = []
     if conn:
         try:
-            res = conn.execute(text("SELECT nombre FROM choferes ORDER BY nombre")).fetchall()
-            choferes = [r[0] for r in res]
+            res = conn.execute(text("SELECT nombre, sucursal FROM choferes ORDER BY sucursal, nombre")).fetchall()
+            choferes_data = [{"nombre": r[0], "sucursal": str(r[1])} for r in res]
         except: pass
         finally: conn.close()
+        
+    choferes_json = json.dumps(choferes_data)
         
     mensajes_html = ""
     mensajes = session.pop('_flashes', [])
@@ -228,6 +232,23 @@ def index():
     <html>
     {HTML_HEAD}
     <body style="background:white;">
+        <script>
+            var choferes = {choferes_json};
+            function filtrarChoferes() {{
+                var suc = document.getElementById('sucursal_select').value;
+                var selectChofer = document.getElementById('chofer_select');
+                selectChofer.innerHTML = '<option value="">Selecciona tu nombre...</option>';
+                if (!suc) return;
+                for (var i = 0; i < choferes.length; i++) {{
+                    if (choferes[i].sucursal === suc) {{
+                        var opt = document.createElement('option');
+                        opt.value = choferes[i].nombre;
+                        opt.innerHTML = choferes[i].nombre;
+                        selectChofer.appendChild(opt);
+                    }}
+                }}
+            }}
+        </script>
         <div class="container" style="display:flex; flex-direction:column; justify-content:center; height:90vh;">
             <div style="text-align: center;">
                 {svg_truck}
@@ -236,14 +257,21 @@ def index():
                 <br>
                 {mensajes_html}
                 <form method="POST" style="background: #f9f9f9; padding: 30px; border-radius: 15px; border: 1px solid #eee;">
-                    <label style="text-align: left;">Conductor:</label>
-                    <select name="chofer" required style="margin-bottom: 15px; padding: 15px;">
-                        <option value="">Selecciona tu nombre...</option>
-                        {"".join([f'<option value="{c}">{c}</option>' for c in choferes])}
+                    
+                    <label style="text-align: left;">1. Sucursal:</label>
+                    <select id="sucursal_select" required style="margin-bottom: 15px; padding: 15px;" onchange="filtrarChoferes()">
+                        <option value="">Selecciona tu base...</option>
+                        <option value="Mendoza">Mendoza</option>
+                        <option value="San Juan">San Juan</option>
+                    </select>
+
+                    <label style="text-align: left;">2. Conductor:</label>
+                    <select name="chofer" id="chofer_select" required style="margin-bottom: 15px; padding: 15px;">
+                        <option value="">Primero elige la sucursal...</option>
                     </select>
                     
-                    <label style="text-align: left;">DNI (Contraseña):</label>
-                    <input type="tel" inputmode="numeric" pattern="[0-9]*" name="dni" placeholder="Ingresa tu DNI..." required style="margin-bottom: 25px; padding: 15px; letter-spacing: 2px;">
+                    <label style="text-align: left;">3. DNI (Contraseña):</label>
+                    <input type="number" inputmode="numeric" pattern="[0-9]*" name="dni" placeholder="Ingresa tu DNI..." required style="margin-bottom: 25px; padding: 15px; letter-spacing: 2px; -webkit-text-security: disc;">
                     
                     <button type="submit" class="btn btn-blue">INGRESAR</button>
                 </form>
