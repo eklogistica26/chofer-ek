@@ -219,12 +219,16 @@ class PlataformaLogistica(QMainWindow):
             - <b>Botón Excel (Verde):</b> Descarga la tabla entera a un formato editable.<br>
             - <b>Botón PDF (Rojo):</b> Genera un informe formal con los totales de dinero.""",
             "5. Facturación": """<b>MÓDULO: Liquidación a Clientes</b><br><br>
+            <b>¿CÓMO CALCULA EL SISTEMA LAS TARIFAS?</b><br>
+            - <b>📦 Carga Común:</b> Se cobra 1 'Tarifa Base' cada 3 bultos. (Ej: 1 a 3 bultos = 1 Tarifa. De 4 a 6 bultos = 2 Tarifas).<br>
+            - <b>❄️ Carga Refrigerada:</b> Mismo cálculo (cada 3 bultos), pero usa el 'Precio Refrigerado' de esa zona.<br>
+            - <b>🔄 Combinado:</b> Calcula los bultos comunes y los fríos por separado y suma ambos montos.<br>
+            - <b>⚠️ Contingencia:</b> Es un recargo fijo extra que se suma al total si lo tildaste al ingresar la guía.<br>
+            - <b>📥 Tarifa DHL:</b> Se cobra por rangos de peso (Ej: 0 a 2kg, 2 a 5kg) multiplicado por los bultos. Si pasa los 30kg, suma el 'Excedente' por cada kilo extra.<br><br>
             <b>Pestaña 1: Calcular Rendición:</b><br>
-            - Elegí el mes, el cliente y hacé clic en Calcular.<br>
-            - ⚠️ <b>Alerta Amarilla:</b> Significa que ese paquete requirió varias visitas. Hacé doble clic en 'Editar' para cobrar demora.<br>
-            - Al imprimir el PDF, te preguntará si querés marcarlas como FACTURADAS.<br><br>
+            - Elegí mes y cliente. ⚠️ <b>Fila Amarilla:</b> El paquete requirió varias visitas (hacé clic en 'Editar' para cobrarle la demora al cliente).<br>
             <b>Pestaña 2: Cuentas Corrientes:</b><br>
-            - Muestra cuánto te debe históricamente cada cliente y permite asentar pagos.""",
+            - Muestra la deuda histórica y permite asentar pagos (transferencias).""",
             "💬 CRM / Contacto": """<b>MÓDULO: Atención Post-Venta</b><br><br>
             - Esta pantalla te muestra paquetes entregados con éxito que tienen celular.<br>
             - <b>Enviar WhatsApp:</b> Al hacer clic, te abre WhatsApp Web con un mensaje pre-armado pidiendo feedback.""",
@@ -239,7 +243,6 @@ class PlataformaLogistica(QMainWindow):
         texto = diccionario_ayuda.get(tab_name, "Selecciona una pestaña específica para ver su manual de uso detallado.")
         box = QMessageBox(self); box.setWindowTitle(f"📖 Manual de Usuario: {tab_name.replace('📊', '').replace('⚙️', '').strip()}")
         box.setTextFormat(Qt.TextFormat.RichText); box.setText(texto); box.setStyleSheet("font-size: 14px;"); box.exec()
-
     def abrir_tracking(self): d = TrackingDialog(self.session); d.exec()
     
     def cambiar_sucursal(self, suc):
