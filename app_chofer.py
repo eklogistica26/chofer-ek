@@ -29,6 +29,10 @@ UPLOAD_FOLDER = os.path.join(BASE_DIR, 'uploads')
 if not os.path.exists(UPLOAD_FOLDER): os.makedirs(UPLOAD_FOLDER)
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 
+# --- CORRECCIÓN DE ZONA HORARIA ARGENTINA (-3 HORAS) ---
+def hora_arg():
+    return datetime.now() - timedelta(hours=3)
+
 def get_db():
     try: return create_engine(DATABASE_URL, pool_pre_ping=True).connect()
     except Exception as e:
@@ -43,26 +47,32 @@ def limpiar_telefono_wsp(telefono):
 
 NUMERO_BASE_FINAL = limpiar_telefono_wsp(NUMERO_BASE_RAW)
 
-# --- MAIL AHORA SOPORTA MÚLTIPLES FOTOS APILADAS ---
+# --- MAIL BLINDADO: AHORA NO SE CANCELA SI EL CLIENTE TIENE EL MAIL MAL ---
 def enviar_email(destinatario, guia, rutas_fotos, proveedor, link_mapa=""):
     if not BREVO_API_KEY: return
     conn = get_db()
     email_prov = None
     if conn:
         try:
-            res = conn.execute(text("SELECT email_reportes FROM clientes_principales WHERE nombre = :n"), {"n": proveedor}).fetchone()
+            # Búsqueda a prueba de mayúsculas y espacios
+            sql = text("SELECT email_reportes FROM clientes_principales WHERE UPPER(TRIM(nombre)) = UPPER(TRIM(:n))")
+            res = conn.execute(sql, {"n": proveedor}).fetchone()
             if res: email_prov = res[0]
         except: pass
         finally: conn.close()
     
     destinatarios_lista = []
     if email_prov:
-        destinatarios_lista.append({"email": email_prov})
+        correos_limpios = str(email_prov).replace(',', ' ').replace(';', ' ')
+        for c in correos_limpios.split():
+            c_limpio = c.strip()
+            if "@" in c_limpio and "." in c_limpio:
+                destinatarios_lista.append({"email": c_limpio})
     
     if not destinatarios_lista:
-        print("⚠️ Proveedor sin mail. Enviando solo copia interna.")
+        print("⚠️ Proveedor sin mail válido. Enviando solo copia interna.")
+        destinatarios_lista = [{"email": EMAIL_REMITENTE}]
     
-    # ADJUNTAR TODAS LAS FOTOS
     adjuntos = []
     if rutas_fotos:
         for i, ruta in enumerate(rutas_fotos):
@@ -75,7 +85,7 @@ def enviar_email(destinatario, guia, rutas_fotos, proveedor, link_mapa=""):
                 except: pass
 
     url = "https://api.brevo.com/v3/smtp/email"
-    fecha_hora = datetime.now().strftime('%d/%m/%Y %H:%M')
+    fecha_hora = hora_arg().strftime('%d/%m/%Y %H:%M')
     
     texto_gps = f"<li><b>Ubicación (GPS):</b> <a href='{link_mapa}'>Ver en Google Maps</a></li>" if link_mapa else ""
 
@@ -98,17 +108,21 @@ def enviar_email(destinatario, guia, rutas_fotos, proveedor, link_mapa=""):
         "sender": {"name": "Logistica JetPaq", "email": EMAIL_REMITENTE},
         "subject": f"ENTREGA REALIZADA - Guía: {guia}",
         "htmlContent": html_content,
+        "to": destinatarios_lista,
         "bcc": [{"email": EMAIL_REMITENTE, "name": "Archivo EK Logistica"}]
     }
 
-    if destinatarios_lista: payload["to"] = destinatarios_lista
-    else: payload["to"] = [{"email": EMAIL_REMITENTE}]
-
-    if adjuntos: payload["attachment"] = adjuntos
+    if len(destinatarios_lista) == 1 and destinatarios_lista[0]["email"] == EMAIL_REMITENTE:
+        if "bcc" in payload: del payload["bcc"]
     
     headers = {"accept": "application/json", "api-key": BREVO_API_KEY, "content-type": "application/json"}
-    try: requests.post(url, json=payload, headers=headers)
-    except: pass
+    try: 
+        r = requests.post(url, json=payload, headers=headers)
+        if r.status_code not in [200, 201, 202]:
+            payload["to"] = [{"email": EMAIL_REMITENTE}]
+            if "bcc" in payload: del payload["bcc"]
+            requests.post(url, json=payload, headers=headers)
+    except Exception as e: print("Error en Brevo:", e)
 
 HTML_HEAD = """
 <head>
@@ -280,6 +294,7 @@ def lista_viajes():
             q = f"{v[3]}, {v[4]}"
             mapa_url = f"https://www.google.com/maps/search/?api=1&query={q}"
             
+            # 🔥 PROVEEDOR AGREGADO EN EL RECUADRO CELESTE 🔥
             cards_html += f"""
             <div class="card">
                 <div style="margin-bottom: 10px; overflow: hidden;">
@@ -290,7 +305,8 @@ def lista_viajes():
                     📍 {v[3]} <small>({v[4]})</small>
                 </div>
                 <div style="background: #f0f7ff; padding: 10px; border-radius: 6px; font-size: 0.85rem; color: #444; margin-bottom: 15px; border-left: 4px solid #1976D2;">
-                    📦 Guía: <b>{v[1]}</b>  |  Bultos: {v[5]}
+                    🏢 Cliente: <b>{v[7]}</b><br>
+                    📦 Guía: <b>{v[1]}</b> &nbsp;|&nbsp; Bultos: {v[5]}
                 </div>
                 <div style="display:flex; gap:10px;">
                     <a href="{mapa_url}" target="_blank" class="btn btn-outline" style="flex:1; margin-top:0;">🗺️ Mapa</a>
@@ -310,6 +326,13 @@ def lista_viajes():
         </div>
         <div class="container">
             {mensajes_html}
+            
+            <div style="margin-bottom: 15px;">
+                <a href="/guardia" class="btn btn-purple" style="display:flex; align-items:center; justify-content:center; gap:10px;">
+                    <span style="font-size:1.2rem;">🚨</span> CARGAR GUÍA DE GUARDIA
+                </a>
+            </div>
+
             {cards_html}
             <br>
             <a href="/viajes" class="btn btn-green" style="margin-bottom: 60px;">🔄 ACTUALIZAR LISTA</a>
@@ -324,6 +347,104 @@ def lista_viajes():
             <a href="https://wa.me/{NUMERO_BASE_FINAL}" class="nav-item" style="color:#D32F2F;">
                 <span class="nav-icon">🆘</span>Base
             </a>
+        </div>
+    </body>
+    </html>
+    """
+    return render_template_string(html)
+
+@app.route('/guardia', methods=['GET', 'POST'])
+def guardia():
+    chofer = session.get('chofer')
+    if not chofer: return redirect(url_for('index'))
+
+    if request.method == 'POST':
+        guia = request.form.get('guia_remito')
+        proveedor = request.form.get('proveedor')
+        destinatario = request.form.get('destinatario')
+        domicilio = request.form.get('domicilio')
+        localidad = request.form.get('localidad')
+        bultos = request.form.get('bultos', 1)
+        tipo_carga = request.form.get('tipo_carga', 'Común')
+        tipo_urgencia = request.form.get('tipo_urgencia', 'Normal')
+
+        conn = get_db()
+        if conn:
+            try:
+                sql_insert = text("""
+                    INSERT INTO operaciones 
+                    (guia_remito, proveedor, destinatario, domicilio, localidad, bultos, tipo_carga, tipo_urgencia, chofer_asignado, estado, fecha_salida)
+                    VALUES 
+                    (:g, :p, :d, :dom, :loc, :b, :tc, :tu, :c, 'EN REPARTO', :fs)
+                    RETURNING id
+                """)
+                res = conn.execute(sql_insert, {
+                    "g": guia, "p": proveedor, "d": destinatario, "dom": domicilio,
+                    "loc": localidad, "b": bultos, "tc": tipo_carga, "tu": tipo_urgencia,
+                    "c": chofer, "fs": hora_arg()
+                })
+                new_id = res.fetchone()[0]
+                
+                conn.execute(text("INSERT INTO historial_movimientos (operacion_id, usuario, accion, detalle, fecha_hora) VALUES (:o, :u, 'APP', 'Guía creada por Guardia', :f)"), {"o": new_id, "u": chofer, "f": hora_arg()})
+                conn.commit()
+                flash("✅ Guía de guardia generada e ingresada a tu ruta.", "success")
+            except Exception as e:
+                print("Error creando guardia:", e)
+                flash("❌ Error al crear la guía.", "error")
+            finally:
+                conn.close()
+        return redirect(url_for('lista_viajes'))
+
+    html = f"""
+    <!DOCTYPE html>
+    <html>
+    {HTML_HEAD}
+    <body>
+        <div class="header" style="background: #7B1FA2;">
+            <h2>🚨 Nueva Guía (Guardia)</h2>
+        </div>
+        <div class="container">
+            <form method="POST" class="card" style="border-top: 5px solid #7B1FA2;">
+                
+                <label>Nº de Guía / Remito:</label>
+                <input type="text" name="guia_remito" placeholder="Ej: REM-12345" required>
+                
+                <label>Proveedor (Cliente):</label>
+                <input type="text" name="proveedor" placeholder="Nombre de la empresa..." required>
+                
+                <label>Destinatario (Quién recibe):</label>
+                <input type="text" name="destinatario" required>
+                
+                <label>Domicilio:</label>
+                <input type="text" name="domicilio" required>
+                
+                <label>Localidad:</label>
+                <input type="text" name="localidad" required>
+                
+                <label>Cantidad de Bultos:</label>
+                <input type="number" name="bultos" value="1" required>
+                
+                <div style="display:flex; gap:10px; margin-top:10px;">
+                    <div style="flex:1;">
+                        <label>Tipo de Carga:</label>
+                        <select name="tipo_carga">
+                            <option value="Común">Común</option>
+                            <option value="Refrigerada">Refrigerada</option>
+                        </select>
+                    </div>
+                    <div style="flex:1;">
+                        <label>Modalidad:</label>
+                        <select name="tipo_urgencia">
+                            <option value="Normal">Normal</option>
+                            <option value="Contingencia">Contingencia</option>
+                        </select>
+                    </div>
+                </div>
+
+                <button type="submit" class="btn btn-purple" style="margin-top:25px;">CREAR Y PONER EN REPARTO</button>
+            </form>
+            <br>
+            <a href="/viajes" class="btn btn-outline">← Cancelar y Volver a mi ruta</a>
         </div>
     </body>
     </html>
@@ -435,7 +556,7 @@ def gestion(id_op):
         archivos = request.files.getlist('fotos')
         for i, archivo in enumerate(archivos):
             if archivo and archivo.filename != '':
-                filename = f"foto_{id_op}_{i}_{int(datetime.now().timestamp())}.jpg"
+                filename = f"foto_{id_op}_{i}_{int(hora_arg().timestamp())}.jpg"
                 ruta = os.path.join(app.config['UPLOAD_FOLDER'], filename)
                 archivo.save(ruta)
                 rutas_fotos.append(ruta)
@@ -497,9 +618,9 @@ def gestion(id_op):
                     else:
                         conn.execute(text("UPDATE operaciones SET estado=:e, chofer_asignado=NULL WHERE id=:i"), {"e": estado_db, "i": id_op})
                 else:
-                    conn.execute(text("UPDATE operaciones SET estado=:e, fecha_entrega=:f WHERE id=:i"), {"e": estado_db, "f": datetime.now(), "i": id_op})
+                    conn.execute(text("UPDATE operaciones SET estado=:e, fecha_entrega=:f WHERE id=:i"), {"e": estado_db, "f": hora_arg(), "i": id_op})
                 
-                conn.execute(text("INSERT INTO historial_movimientos (operacion_id, usuario, accion, detalle, fecha_hora) VALUES (:o, :u, 'APP', :d, :f)"), {"o": id_op, "u": chofer, "d": detalle_historial, "f": datetime.now()})
+                conn.execute(text("INSERT INTO historial_movimientos (operacion_id, usuario, accion, detalle, fecha_hora) VALUES (:o, :u, 'APP', :d, :f)"), {"o": id_op, "u": chofer, "d": detalle_historial, "f": hora_arg()})
                 conn.commit()
             except Exception as e: print("Error actualizando DB:", e)
             finally: conn.close()
