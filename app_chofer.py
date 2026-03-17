@@ -5,7 +5,6 @@ import os
 import base64
 import requests
 import urllib.parse
-import re
 import json
 
 app = Flask(__name__)
@@ -44,8 +43,8 @@ def limpiar_telefono_wsp(telefono):
 
 NUMERO_BASE_FINAL = limpiar_telefono_wsp(NUMERO_BASE_RAW)
 
-# --- MAIL AHORA INCLUYE EL ENLACE DEL MAPA ---
-def enviar_email(destinatario, guia, ruta_foto, proveedor, link_mapa=""):
+# --- MAIL AHORA SOPORTA MÚLTIPLES FOTOS Y ENLACE DEL MAPA ---
+def enviar_email(destinatario, guia, rutas_fotos, proveedor, link_mapa=""):
     if not BREVO_API_KEY: return
     conn = get_db()
     email_prov = None
@@ -63,13 +62,17 @@ def enviar_email(destinatario, guia, ruta_foto, proveedor, link_mapa=""):
     if not destinatarios_lista:
         print("⚠️ Proveedor sin mail. Enviando solo copia interna.")
     
+    # ADJUNTAR TODAS LAS FOTOS
     adjuntos = []
-    if ruta_foto and os.path.exists(ruta_foto):
-        try:
-            with open(ruta_foto, "rb") as f:
-                content = base64.b64encode(f.read()).decode('utf-8')
-                adjuntos.append({"content": content, "name": f"remito_{guia}.jpg"})
-        except: pass
+    if rutas_fotos:
+        for i, ruta in enumerate(rutas_fotos):
+            if os.path.exists(ruta):
+                try:
+                    with open(ruta, "rb") as f:
+                        content = base64.b64encode(f.read()).decode('utf-8')
+                        nombre_adjunto = f"remito_{guia}.jpg" if len(rutas_fotos) == 1 else f"remito_{guia}_parte{i+1}.jpg"
+                        adjuntos.append({"content": content, "name": nombre_adjunto})
+                except: pass
 
     url = "https://api.brevo.com/v3/smtp/email"
     fecha_hora = datetime.now().strftime('%d/%m/%Y %H:%M')
@@ -144,11 +147,11 @@ HTML_HEAD = """
     <script>
         function fileSelected(input) {
             var btn = document.getElementById('cameraLabel');
-            if (input.files && input.files[0]) {
+            if (input.files && input.files.length > 0) {
                 btn.style.backgroundColor = '#43A047';
                 btn.style.color = 'white';
                 btn.style.borderColor = '#43A047';
-                btn.innerHTML = '✅ Foto Lista';
+                btn.innerHTML = '✅ ' + input.files.length + ' Foto(s) Lista(s)';
             }
         }
         function toggleReprogramar() {
@@ -207,7 +210,6 @@ def index():
         
         return redirect(url_for('index'))
     
-    # 🔥 AHORA CARGAMOS TAMBIÉN LA SUCURSAL PARA PODER FILTRAR 🔥
     conn = get_db()
     choferes_data = []
     if conn:
@@ -463,14 +465,17 @@ def gestion(id_op):
         enlace_gps = f"https://maps.google.com/?q={lat},{lng}" if lat and lng else ""
         texto_gps_historial = f" | GPS: {enlace_gps}" if enlace_gps else ""
         
-        ruta_foto = None
+        # PROCESAR MÚLTIPLES FOTOS
+        rutas_fotos = []
         tiene_foto = False
-        archivo = request.files.get('foto')
-        if archivo and archivo.filename != '':
-            filename = f"foto_{id_op}_{int(datetime.now().timestamp())}.jpg"
-            ruta_foto = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-            archivo.save(ruta_foto)
-            tiene_foto = True
+        archivos = request.files.getlist('fotos')
+        for i, archivo in enumerate(archivos):
+            if archivo and archivo.filename != '':
+                filename = f"foto_{id_op}_{i}_{int(datetime.now().timestamp())}.jpg"
+                ruta = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+                archivo.save(ruta)
+                rutas_fotos.append(ruta)
+                tiene_foto = True
             
         recibe = request.form.get('recibe', '').strip()
         motivo = request.form.get('motivo', '').strip()
@@ -495,7 +500,7 @@ def gestion(id_op):
         if estado_btn == "ENTREGADO":
             estado_db = "ENTREGADO"
             detalle_historial = f"Recibio: {recibe}"
-            if tiene_foto: detalle_historial += " [CON FOTO]"
+            if tiene_foto: detalle_historial += f" [CON {len(rutas_fotos)} FOTO/S]"
             detalle_historial += texto_gps_historial 
             
         elif estado_btn == "Pendiente":
@@ -534,8 +539,8 @@ def gestion(id_op):
             finally: conn.close()
             
         if estado_btn == "ENTREGADO" and tiene_foto:
-            flash("✅ Confirmado. Enviando correo y guardando copia...", "success")
-            enviar_email(recibe, op[0], ruta_foto, op[10], link_mapa=enlace_gps)
+            flash(f"✅ Confirmado. Enviando {len(rutas_fotos)} foto/s y correo...", "success")
+            enviar_email(recibe, op[0], rutas_fotos, op[10], link_mapa=enlace_gps)
         elif estado_btn == "ENTREGADO":
             flash("✅ Confirmado correctamente.", "success")
         elif estado_btn == "Pendiente":
@@ -593,9 +598,9 @@ def gestion(id_op):
                     <input type="text" name="recibe" placeholder="Nombre y Apellido...">
                     <label>Comprobante:</label>
                     <label for="fileInput" id="cameraLabel" class="camera-btn">
-                        <span class="camera-icon">📷</span> SUBIR FOTO
+                        <span class="camera-icon">📷</span> SUBIR FOTOS
                     </label>
-                    <input type="file" id="fileInput" name="foto" accept="image/*" capture="environment" style="display:none;" onchange="fileSelected(this)">
+                    <input type="file" id="fileInput" name="fotos" accept="image/*" multiple style="display:none;" onchange="fileSelected(this)">
                     
                     <input type="hidden" name="lat" id="lat_entrega">
                     <input type="hidden" name="lng" id="lng_entrega">
