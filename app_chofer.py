@@ -43,7 +43,7 @@ def limpiar_telefono_wsp(telefono):
 
 NUMERO_BASE_FINAL = limpiar_telefono_wsp(NUMERO_BASE_RAW)
 
-# --- MAIL AHORA SOPORTA MÚLTIPLES FOTOS Y ENLACE DEL MAPA ---
+# --- MAIL AHORA SOPORTA MÚLTIPLES FOTOS APILADAS ---
 def enviar_email(destinatario, guia, rutas_fotos, proveedor, link_mapa=""):
     if not BREVO_API_KEY: return
     conn = get_db()
@@ -131,11 +131,11 @@ HTML_HEAD = """
         .btn-purple { background: #7B1FA2; color: white; }
         .btn-grey { background: #757575; color: white; }
         .btn-outline { background: transparent; border: 1px solid #999; color: #555; }
-        input, select { width: 100%; padding: 12px; margin-top: 8px; border: 1px solid #ddd; border-radius: 8px; font-size: 16px; background: #fff; box-sizing: border-box; }
+        input[type="text"], input[type="number"], input[type="date"], select { width: 100%; padding: 12px; margin-top: 8px; border: 1px solid #ddd; border-radius: 8px; font-size: 16px; background: #fff; box-sizing: border-box; }
         label { font-weight: 600; color: #444; margin-top: 15px; display: block; font-size: 0.9rem; }
         .tag { padding: 4px 8px; border-radius: 4px; font-size: 0.75rem; color: white; float: right; font-weight: bold; text-transform: uppercase; letter-spacing: 0.5px; }
         .tag-blue { background: #1976D2; } .tag-purple { background: #7B1FA2; } .tag-orange { background: #F57C00; }
-        .camera-btn { background-color: #E3F2FD; color: #1565C0; border: 2px solid #1976D2; border-radius: 8px; padding: 12px; text-align: center; cursor: pointer; margin-top: 5px; display: flex; align-items: center; justify-content: center; gap: 10px; font-weight: bold; }
+        .camera-btn { background-color: #E3F2FD; color: #1565C0; border: 2px solid #1976D2; border-radius: 8px; padding: 12px; text-align: center; cursor: pointer; margin-top: 10px; width: 100%; display: block; font-weight: bold; }
         .alert { padding: 12px; margin-bottom: 15px; border-radius: 8px; font-weight: 500; text-align: center; font-size: 0.9rem; }
         .alert-success { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
         .alert-error { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
@@ -144,43 +144,6 @@ HTML_HEAD = """
         .nav-icon { font-size: 1.4rem; display: block; margin-bottom: 3px; }
         .truck-icon { width: 80px; height: 80px; margin-bottom: 10px; fill: #1976D2; }
     </style>
-    <script>
-        function fileSelected(input) {
-            var btn = document.getElementById('cameraLabel');
-            if (input.files && input.files.length > 0) {
-                btn.style.backgroundColor = '#43A047';
-                btn.style.color = 'white';
-                btn.style.borderColor = '#43A047';
-                btn.innerHTML = '✅ ' + input.files.length + ' Foto(s) Lista(s)';
-            }
-        }
-        function toggleReprogramar() {
-            var val = document.getElementById('estado_select').value;
-            var repDiv = document.getElementById('div_reprogramar');
-            if (val === 'Reprogramado') {
-                repDiv.style.display = 'block';
-            } else {
-                repDiv.style.display = 'none';
-            }
-        }
-        function obtenerGPS() {
-            if (navigator.geolocation) {
-                navigator.geolocation.getCurrentPosition(function(position) {
-                    var lat = position.coords.latitude;
-                    var lng = position.coords.longitude;
-                    document.getElementById('lat_entrega').value = lat;
-                    document.getElementById('lng_entrega').value = lng;
-                    document.getElementById('lat_falla').value = lat;
-                    document.getElementById('lng_falla').value = lng;
-                }, function(error) {
-                    console.log("No se pudo obtener GPS", error);
-                }, {
-                    enableHighAccuracy: true, timeout: 10000, maximumAge: 0
-                });
-            }
-        }
-        window.onload = obtenerGPS;
-    </script>
 </head>
 """
 
@@ -454,18 +417,19 @@ def gestion(id_op):
     tipo_srv = op[11] if len(op) > 11 and op[11] else ""
     es_retiro = "Retiro" in tipo_srv
     
-    txt_exito = "✅ CONFIRMAR RETIRO" if es_retiro else "✅ CONFIRMAR ENTREGA"
-    txt_falla = "❌ No Retirado" if es_retiro else "❌ No Entregado"
+    lbl_exito = "✅ Retirado Exitosamente" if es_retiro else "✅ Entregado Exitosamente"
+    lbl_pend = "⏱️ No Retirado (Intentar luego)" if es_retiro else "⏱️ No Entregado (Intentar luego)"
+    lbl_repr = "🏠 No Retirado (Devolver)" if es_retiro else "🏠 No Entregado (Devolver a depósito)"
 
     if request.method == 'POST':
-        estado_btn = request.form.get('estado')
+        estado_btn = request.form.get('estado_select')
         
         lat = request.form.get('lat', '')
         lng = request.form.get('lng', '')
         enlace_gps = f"https://maps.google.com/?q={lat},{lng}" if lat and lng else ""
         texto_gps_historial = f" | GPS: {enlace_gps}" if enlace_gps else ""
         
-        # PROCESAR MÚLTIPLES FOTOS
+        # PROCESAR MÚLTIPLES FOTOS DINÁMICAS
         rutas_fotos = []
         tiene_foto = False
         archivos = request.files.getlist('fotos')
@@ -485,6 +449,8 @@ def gestion(id_op):
             if not recibe: 
                 flash("❌ ERROR: Escribe quién recibió.", "error")
                 return redirect(url_for('gestion', id_op=id_op))
+            
+            # 🔥 ACÁ ESTÁ LA REGLA DE JETPAQ INTACTA 🔥
             if "jetpaq" not in op[10].lower() and not tiene_foto:
                 flash("📸 ERROR: Faltó la foto (Obligatoria).", "error")
                 return redirect(url_for('gestion', id_op=id_op))
@@ -591,60 +557,122 @@ def gestion(id_op):
                 </div>
             </div>
             
-            <form method="POST" enctype="multipart/form-data">
-                <div class="card" style="border-top: 5px solid #43A047;">
-                    <h3 style="margin-top:0; color:#2E7D32;">{txt_exito.split(' ')[0]} {txt_exito.split(' ')[1]} {txt_exito.split(' ')[2] if len(txt_exito.split(' '))>2 else ''}</h3>
-                    <label>Quien Recibe:</label>
-                    <input type="text" name="recibe" placeholder="Nombre y Apellido...">
-                    <label>Comprobante:</label>
-                    <label for="fileInput" id="cameraLabel" class="camera-btn">
-                        <span class="camera-icon">📷</span> SUBIR FOTOS
-                    </label>
-                    <input type="file" id="fileInput" name="fotos" accept="image/*" multiple style="display:none;" onchange="fileSelected(this)">
+            <form method="POST" enctype="multipart/form-data" id="gestionForm">
+                <div class="card" style="border-top: 5px solid #1565C0;">
                     
-                    <input type="hidden" name="lat" id="lat_entrega">
-                    <input type="hidden" name="lng" id="lng_entrega">
-
-                    <button type="submit" name="estado" value="ENTREGADO" class="btn btn-green" style="margin-top:20px;">FINALIZAR</button>
-                </div>
-                
-                <div class="card" style="border-top: 5px solid #D32F2F;">
-                    <h3 style="margin-top:0; color:#c62828;">{txt_falla}</h3>
-                    
-                    <label>¿Qué vas a hacer?</label>
-                    <select name="estado_select" id="estado_select" onchange="toggleReprogramar()">
-                        <option value="Pendiente">Intentar luego en el día (Pendiente)</option>
-                        <option value="Reprogramado">Devolver al depósito (Reprogramar)</option>
+                    <label style="margin-top:0; font-size: 1.1rem;">¿Qué deseas hacer con la guía?</label>
+                    <select name="estado_select" id="estado_select" onchange="cambiarEstado()" style="width: 100%; padding: 12px; margin-top: 8px; border: 2px solid #1565c0; border-radius: 8px; font-size: 16px; font-weight: bold; color: #1565c0; background: #f0f7ff;">
+                        <option value="">-- Seleccionar Estado --</option>
+                        <option value="ENTREGADO">{lbl_exito}</option>
+                        <option value="Pendiente">{lbl_pend}</option>
+                        <option value="Reprogramado">{lbl_repr}</option>
                     </select>
-                    
-                    <label>Motivo del problema:</label>
-                    <input type="text" name="motivo" placeholder="Ej: No había nadie, mudado, etc.">
-                    
-                    <div id="div_reprogramar" style="display:none;">
-                        <label>Fecha sugerida de visita (Opcional):</label>
-                        <input type="date" name="fecha_repro">
-                        <p style="font-size: 0.8rem; color: #666; margin-top: 5px;">Al devolver al depósito, la guía se quitará de tu ruta.</p>
+
+                    <div id="panel_entregado" style="display:none; margin-top: 15px; padding-top: 15px; border-top: 1px solid #ddd;">
+                        <label>Quien Recibe:</label>
+                        <input type="text" name="recibe" placeholder="Nombre y Apellido...">
+                        
+                        <label style="margin-top:20px;">Fotos del Comprobante / Domicilio:</label>
+                        <div id="contenedor_fotos"></div>
+                        <button type="button" onclick="agregarFoto()" class="camera-btn">➕ AGREGAR OTRA FOTO</button>
                     </div>
                     
-                    <input type="hidden" name="lat" id="lat_falla">
-                    <input type="hidden" name="lng" id="lng_falla">
-
-                    <button type="button" class="btn btn-outline" style="border:2px solid #D32F2F; color:#D32F2F; margin-top:20px;" onclick="enviarFallo()">GUARDAR ESTADO</button>
-                    <input type="hidden" name="estado" id="hidden_estado" value="">
-                    <button type="submit" id="submit_falla" style="display:none;"></button>
+                    <div id="panel_falla" style="display:none; margin-top: 15px; padding-top: 15px; border-top: 1px solid #ddd;">
+                        <label>Motivo del problema:</label>
+                        <input type="text" name="motivo" placeholder="Ej: No había nadie, dirección incorrecta...">
+                        
+                        <div id="div_reprogramar" style="display:none;">
+                            <label>Fecha sugerida de visita (Opcional):</label>
+                            <input type="date" name="fecha_repro">
+                            <p style="font-size: 0.8rem; color: #666; margin-top: 5px;">Al devolver al depósito, la guía saldrá de tu ruta hoy.</p>
+                        </div>
+                    </div>
                     
-                    <script>
-                        function enviarFallo() {{
-                            document.getElementById('hidden_estado').value = document.getElementById('estado_select').value;
-                            document.getElementById('submit_falla').click();
-                        }}
-                    </script>
+                    <input type="hidden" name="lat" id="lat_gps">
+                    <input type="hidden" name="lng" id="lng_gps">
+
+                    <button type="button" id="btn_guardar" class="btn btn-blue" style="display:none; margin-top:20px;" onclick="validarYEnviar()">GUARDAR GESTIÓN</button>
                 </div>
             </form>
+            
             <br>
             <a href="/viajes" class="btn btn-outline" style="border:1px solid #ccc; color:#666;">← Volver a la lista</a>
             <br><br>
         </div>
+
+        <script>
+            let fotoCount = 0;
+            
+            function agregarFoto() {{
+                fotoCount++;
+                var container = document.getElementById("contenedor_fotos");
+                var div = document.createElement("div");
+                div.style.marginBottom = "10px";
+                div.innerHTML = '<input type="file" name="fotos" accept="image/*" capture="environment" style="padding: 10px; border: 2px dashed #1976D2; background: #e3f2fd; width: 100%; border-radius: 8px;">';
+                container.appendChild(div);
+            }}
+
+            function cambiarEstado() {{
+                var estado = document.getElementById("estado_select").value;
+                var p_ent = document.getElementById("panel_entregado");
+                var p_falla = document.getElementById("panel_falla");
+                var d_repro = document.getElementById("div_reprogramar");
+                var btn = document.getElementById("btn_guardar");
+
+                p_ent.style.display = "none";
+                p_falla.style.display = "none";
+                d_repro.style.display = "none";
+                btn.style.display = "none";
+
+                if (estado === "ENTREGADO") {{
+                    p_ent.style.display = "block";
+                    btn.style.display = "block";
+                    btn.className = "btn btn-green";
+                    btn.innerHTML = "CONFIRMAR ENTREGA";
+                    if(fotoCount === 0) agregarFoto(); // Auto-agrega la primera foto
+                }} else if (estado === "Pendiente") {{
+                    p_falla.style.display = "block";
+                    btn.style.display = "block";
+                    btn.className = "btn btn-orange";
+                    btn.innerHTML = "GUARDAR COMO PENDIENTE";
+                }} else if (estado === "Reprogramado") {{
+                    p_falla.style.display = "block";
+                    d_repro.style.display = "block";
+                    btn.style.display = "block";
+                    btn.className = "btn btn-purple";
+                    btn.innerHTML = "DEVOLVER A DEPÓSITO";
+                }}
+            }}
+
+            function validarYEnviar() {{
+                var estado = document.getElementById("estado_select").value;
+                if (!estado) {{
+                    alert("Por favor selecciona un estado de la guía.");
+                    return;
+                }}
+                
+                // Evita que el chofer toque dos veces rápido el botón
+                var btn = document.getElementById("btn_guardar");
+                btn.innerHTML = "ENVIANDO... ⏳";
+                btn.style.opacity = "0.5";
+                btn.style.pointerEvents = "none";
+                
+                document.getElementById("gestionForm").submit();
+            }}
+
+            function obtenerGPS() {{
+                if (navigator.geolocation) {{
+                    navigator.geolocation.getCurrentPosition(function(position) {{
+                        document.getElementById('lat_gps').value = position.coords.latitude;
+                        document.getElementById('lng_gps').value = position.coords.longitude;
+                    }}, function(error) {{
+                        console.log("No se pudo obtener GPS", error);
+                    }}, {{ enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }});
+                }}
+            }}
+            
+            window.onload = obtenerGPS;
+        </script>
     </body>
     </html>
     """
