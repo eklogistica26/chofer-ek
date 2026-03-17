@@ -22,7 +22,7 @@ if not DATABASE_URL:
 
 BREVO_API_KEY = os.environ.get("BREVO_API_KEY", "") 
 EMAIL_REMITENTE = "eklogistica19@gmail.com" 
-NUMERO_BASE_RAW = "2615555555" 
+NUMERO_BASE_RAW = "2613672674" 
 
 BASE_DIR = os.path.abspath(os.path.dirname(__file__))
 UPLOAD_FOLDER = os.path.join(BASE_DIR, 'uploads')
