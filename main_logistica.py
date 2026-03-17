@@ -222,7 +222,7 @@ class PlataformaLogistica(QMainWindow):
             <b>¿CÓMO CALCULA EL SISTEMA LAS TARIFAS?</b><br>
             - <b>📦 Carga Común:</b> Se cobra 1 'Tarifa Base' cada 3 bultos. (Ej: 1 a 3 bultos = 1 Tarifa. De 4 a 6 bultos = 2 Tarifas).<br>
             - <b>❄️ Carga Refrigerada:</b> Mismo cálculo (cada 3 bultos), pero usa el 'Precio Refrigerado' de esa zona.<br>
-            - <b>🔄 Combinado:</b> Calcula los bultos comunes y los fríos por separado y suma ambos montos.<br>
+            - <b>🔄 Combinado:</b> Toma el valor más alto (Refrigerado) y lo cobra cada 3 bultos totales.<br>
             - <b>⚠️ Contingencia:</b> Es un recargo fijo extra que se suma al total si lo tildaste al ingresar la guía.<br>
             - <b>📥 Tarifa DHL:</b> Se cobra por rangos de peso (Ej: 0 a 2kg, 2 a 5kg) multiplicado por los bultos. Si pasa los 30kg, suma el 'Excedente' por cada kilo extra.<br><br>
             <b>Pestaña 1: Calcular Rendición:</b><br>
@@ -243,6 +243,7 @@ class PlataformaLogistica(QMainWindow):
         texto = diccionario_ayuda.get(tab_name, "Selecciona una pestaña específica para ver su manual de uso detallado.")
         box = QMessageBox(self); box.setWindowTitle(f"📖 Manual de Usuario: {tab_name.replace('📊', '').replace('⚙️', '').strip()}")
         box.setTextFormat(Qt.TextFormat.RichText); box.setText(texto); box.setStyleSheet("font-size: 14px;"); box.exec()
+    
     def abrir_tracking(self): d = TrackingDialog(self.session); d.exec()
     
     def cambiar_sucursal(self, suc):
@@ -313,10 +314,19 @@ class PlataformaLogistica(QMainWindow):
             else:
                 t = self.session.query(Tarifa).filter(Tarifa.localidad == loc, Tarifa.sucursal == suc).first()
                 if not t: return 0.0
-                costo_comun = math.ceil(cant_comun / 3) * t.precio_base_comun if cant_comun > 0 else 0
-                costo_frio = math.ceil(cant_frio / 3) * t.precio_base_refrig if cant_frio > 0 else 0
-                return costo_comun + costo_frio
-        except Exception as e: self.session.rollback(); return 0.0
+                
+                # 🔥 LÓGICA DE PRECIO COMBINADO ACTUALIZADA 🔥
+                if cant_comun > 0 and cant_frio > 0:
+                    bultos_tot = cant_comun + cant_frio
+                    multiplicador = math.ceil(bultos_tot / 3)
+                    return multiplicador * t.precio_base_refrig
+                else:
+                    costo_comun = math.ceil(cant_comun / 3) * t.precio_base_comun if cant_comun > 0 else 0
+                    costo_frio = math.ceil(cant_frio / 3) * t.precio_base_refrig if cant_frio > 0 else 0
+                    return costo_comun + costo_frio
+        except Exception as e: 
+            self.session.rollback()
+            return 0.0
 
     def eliminar_fila(self, tabla, Modelo):
         r = tabla.currentRow(); 
@@ -363,13 +373,22 @@ class PlataformaLogistica(QMainWindow):
         btn_refresh = QPushButton("🔄 Actualizar Ahora"); btn_refresh.clicked.connect(lambda: {self.cargar_monitor_global(), self.cargar_novedades()})
         top_bar.addWidget(QLabel("Fecha:")); top_bar.addWidget(self.mon_date); top_bar.addWidget(QLabel("Chofer:")); top_bar.addWidget(self.mon_chofer_combo); top_bar.addWidget(btn_refresh); top_bar.addStretch()
         
-        self.tabla_monitor = QTableWidget(); self.tabla_monitor.setColumnCount(7); 
-        self.tabla_monitor.setHorizontalHeaderLabels(["Estado", "Guía", "Cliente", "Destinatario", "Zona", "Chofer", "Detalle"]); 
+        # 🔥 COLUMNAS ACTUALIZADAS PARA EL MONITOR GLOBAL 🔥
+        self.tabla_monitor = QTableWidget(); self.tabla_monitor.setColumnCount(8); 
+        self.tabla_monitor.setHorizontalHeaderLabels(["Estado", "Guía", "Cliente", "Destinatario", "Domicilio / Novedad", "Zona", "Bultos", "Chofer"])
+        
         self.pintor = PintorCeldasDelegate(self.tabla_monitor); self.tabla_monitor.setItemDelegate(self.pintor)
         
         header = self.tabla_monitor.horizontalHeader()
-        self.tabla_monitor.setColumnWidth(0, 160); self.tabla_monitor.setColumnWidth(1, 160); self.tabla_monitor.setColumnWidth(2, 160); self.tabla_monitor.setColumnWidth(4, 160); self.tabla_monitor.setColumnWidth(5, 180) 
-        header.setSectionResizeMode(3, QHeaderView.ResizeMode.Stretch); header.setSectionResizeMode(6, QHeaderView.ResizeMode.Stretch) 
+        self.tabla_monitor.setColumnWidth(0, 150)
+        self.tabla_monitor.setColumnWidth(1, 150)
+        self.tabla_monitor.setColumnWidth(2, 150)
+        self.tabla_monitor.setColumnWidth(5, 120)
+        self.tabla_monitor.setColumnWidth(6, 80)
+        self.tabla_monitor.setColumnWidth(7, 150)
+        header.setSectionResizeMode(3, QHeaderView.ResizeMode.Stretch)
+        header.setSectionResizeMode(4, QHeaderView.ResizeMode.Stretch)
+        
         self.tabla_monitor.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows); self.tabla_monitor.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         
         legend = QHBoxLayout()
@@ -463,25 +482,38 @@ class PlataformaLogistica(QMainWindow):
                 guia_texto = op.guia_remito or "-"
                 if op.tipo_servicio and "Retiro" in op.tipo_servicio: guia_texto = f"🔄 {guia_texto}"
                 
-                self.tabla_monitor.setItem(row_idx, 0, QTableWidgetItem(estado_visual)); self.tabla_monitor.setItem(row_idx, 1, QTableWidgetItem(guia_texto)); self.tabla_monitor.setItem(row_idx, 2, QTableWidgetItem(op.proveedor)); self.tabla_monitor.setItem(row_idx, 3, QTableWidgetItem(op.destinatario)); self.tabla_monitor.setItem(row_idx, 4, QTableWidgetItem(op.localidad)); self.tabla_monitor.setItem(row_idx, 5, QTableWidgetItem(op.chofer_asignado or "-"))
+                self.tabla_monitor.setItem(row_idx, 0, QTableWidgetItem(estado_visual))
+                self.tabla_monitor.setItem(row_idx, 1, QTableWidgetItem(guia_texto))
+                self.tabla_monitor.setItem(row_idx, 2, QTableWidgetItem(op.proveedor))
+                self.tabla_monitor.setItem(row_idx, 3, QTableWidgetItem(op.destinatario))
                 
+                # 🔥 LÓGICA DE LA COLUMNA DOMICILIO / GPS / COBRANZA 🔥
                 extra = ""
                 if op.es_contra_reembolso and op.monto_recaudacion: extra += f"Cobrar ${op.monto_recaudacion} "
                 if op.info_intercambio: extra += op.info_intercambio
                 
-                item_gps = QTableWidgetItem(extra); self.tabla_monitor.setItem(row_idx, 6, item_gps)
+                domicilio_full = op.domicilio
+                if extra: domicilio_full += f" | Obs: {extra}"
                 
                 detalle_gps = gps_dict.get(op.id)
                 if detalle_gps:
                     try:
                         link = detalle_gps.split("| GPS:")[1].strip()
-                        extra_html = f'{extra} <a href="{link}" style="color:#d32f2f; text-decoration:none; font-weight:bold; font-size:14px;">📍 VER MAPA</a>'
-                        lbl = QLabel(extra_html); lbl.setAlignment(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft); lbl.setOpenExternalLinks(True); lbl.setStyleSheet(f"background-color: transparent; padding-left: 5px;") 
-                        self.tabla_monitor.setCellWidget(row_idx, 6, lbl)
-                    except: pass
+                        dom_html = f'{domicilio_full} <a href="{link}" style="color:#d32f2f; text-decoration:none; font-weight:bold; font-size:13px;">[📍 MAPA]</a>'
+                        lbl = QLabel(dom_html); lbl.setAlignment(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft); lbl.setOpenExternalLinks(True); lbl.setStyleSheet(f"background-color: transparent; padding-left: 5px;") 
+                        self.tabla_monitor.setCellWidget(row_idx, 4, lbl)
+                        self.tabla_monitor.setItem(row_idx, 4, QTableWidgetItem(domicilio_full)) # Dummy para ordenar
+                    except: 
+                        self.tabla_monitor.setItem(row_idx, 4, QTableWidgetItem(domicilio_full))
+                else:
+                    self.tabla_monitor.setItem(row_idx, 4, QTableWidgetItem(domicilio_full))
+                
+                self.tabla_monitor.setItem(row_idx, 5, QTableWidgetItem(op.localidad))
+                self.tabla_monitor.setItem(row_idx, 6, QTableWidgetItem(str(op.bultos)))
+                self.tabla_monitor.setItem(row_idx, 7, QTableWidgetItem(op.chofer_asignado or "-"))
                 
                 brush_bg = QBrush(bg_color)
-                for col_idx in range(7):
+                for col_idx in range(8):
                     it = self.tabla_monitor.item(row_idx, col_idx)
                     if it:
                         it.setBackground(brush_bg)
@@ -795,7 +827,6 @@ class PantallaCargaMinimalista(QDialog):
         lay_cont.setAlignment(Qt.AlignmentFlag.AlignCenter)
         
         self.lbl_logo = QLabel()
-        # Busca automáticamente el archivo "eklogo.png" en la misma carpeta que el programa
         base_dir = os.path.dirname(os.path.abspath(__file__))
         logo_path = os.path.join(base_dir, "eklogo.png")
         
@@ -857,7 +888,6 @@ if __name__ == "__main__":
         splash.show()
         QApplication.processEvents()
         
-        # Arranca el hilo pesado sin congelar la ventana
         def terminar_arranque():
             try:
                 global ventana
