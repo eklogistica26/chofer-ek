@@ -297,27 +297,84 @@ class EditarOperacionDialog(QDialog):
         except Exception as e: QMessageBox.critical(self, "Error", f"No se pudo guardar: {e}")
 
 class TrackingDialog(QDialog):
-    def __init__(self, session):
-        super().__init__(); self.session = session; self.setWindowTitle("🔍 Rastreo de Guía (Tracking)"); self.setGeometry(400, 200, 600, 500); self.setStyleSheet("background-color: white;")
-        layout = QVBoxLayout(); h = QHBoxLayout(); self.in_buscar = QLineEdit(); self.in_buscar.setPlaceholderText("Ingrese N° de Guía o Remito..."); self.in_buscar.returnPressed.connect(self.buscar_tracking)
-        btn_bus = QPushButton("RASTREAR"); btn_bus.setStyleSheet("background-color: #0d6efd; color: white; font-weight: bold;"); btn_bus.clicked.connect(self.buscar_tracking); h.addWidget(self.in_buscar); h.addWidget(btn_bus)
-        self.lbl_info = QLabel("Ingrese una guía para ver el estado."); self.lbl_info.setStyleSheet("font-size: 14px; color: #333; padding: 10px; border: 1px solid #ccc; background: #f8f9fa;"); self.lbl_info.setWordWrap(True)
-        self.tabla = QTableWidget(); self.tabla.setColumnCount(4); self.tabla.setHorizontalHeaderLabels(["Fecha/Hora", "Usuario", "Acción", "Detalle"]); self.tabla.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
-        layout.addLayout(h); layout.addWidget(self.lbl_info); layout.addWidget(QLabel("<b>HISTORIAL DE MOVIMIENTOS:</b>")); layout.addWidget(self.tabla); self.setLayout(layout)
+    def __init__(self, session, usuario=None):
+        super().__init__()
+        self.session = session
+        self.usuario = usuario
+        self.setWindowTitle("🔍 Rastreo de Guía (Tracking)")
+        self.setGeometry(400, 200, 600, 500)
+        self.setStyleSheet("background-color: white;")
+        layout = QVBoxLayout()
+        h = QHBoxLayout()
+        self.in_buscar = QLineEdit()
+        self.in_buscar.setPlaceholderText("Ingrese N° de Guía o Remito...")
+        self.in_buscar.returnPressed.connect(self.buscar_tracking)
+        btn_bus = QPushButton("RASTREAR")
+        btn_bus.setStyleSheet("background-color: #0d6efd; color: white; font-weight: bold;")
+        btn_bus.clicked.connect(self.buscar_tracking)
+        
+        btn_reset = QPushButton("⚠️ RESETEAR A DEPÓSITO")
+        btn_reset.setStyleSheet("background-color: #dc3545; color: white; font-weight: bold;")
+        btn_reset.clicked.connect(self.resetear_guia)
+        # Solo los admin totales pueden ver el boton de reseteo
+        if not self.usuario or not self.usuario.es_admin_total:
+            btn_reset.hide()
+            
+        h.addWidget(self.in_buscar)
+        h.addWidget(btn_bus)
+        h.addWidget(btn_reset)
+        
+        self.lbl_info = QLabel("Ingrese una guía para ver el estado.")
+        self.lbl_info.setStyleSheet("font-size: 14px; color: #333; padding: 10px; border: 1px solid #ccc; background: #f8f9fa;")
+        self.lbl_info.setWordWrap(True)
+        self.tabla = QTableWidget()
+        self.tabla.setColumnCount(4)
+        self.tabla.setHorizontalHeaderLabels(["Fecha/Hora", "Usuario", "Acción", "Detalle"])
+        self.tabla.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        layout.addLayout(h)
+        layout.addWidget(self.lbl_info)
+        layout.addWidget(QLabel("<b>HISTORIAL DE MOVIMIENTOS:</b>"))
+        layout.addWidget(self.tabla)
+        self.setLayout(layout)
+        
+    def resetear_guia(self):
+        guia = self.in_buscar.text().strip()
+        if not guia: return
+        op = self.session.query(Operacion).filter(Operacion.guia_remito == guia).first()
+        if not op: op = self.session.query(Operacion).filter(Operacion.guia_remito.ilike(f"%{guia}%")).first()
+        if not op: return
+        
+        reply = QMessageBox.question(self, "⚠️ ALERTA DE SEGURIDAD EXTREMA", 
+            f"¿Está súper seguro de devolver la guía '{op.guia_remito}' a EN DEPOSITO?\n\n"
+            "Esto borrará de forma permanente TODO su historial de movimientos de la calle, perderá a su chofer asignado, se le borrará la marca de entregado y de facturado.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+        
+        if reply == QMessageBox.StandardButton.Yes:
+            try:
+                self.session.execute(text("DELETE FROM historial_movimientos WHERE operacion_id = :id"), {"id": op.id})
+                op.estado = Estados.EN_DEPOSITO
+                op.chofer_asignado = None
+                op.fecha_salida = None
+                op.fecha_entrega = None
+                op.facturado = False
+                self.session.commit()
+                QMessageBox.information(self, "Éxito", "Guía reseteada y borrada del historial exitosamente.")
+                self.buscar_tracking() 
+            except Exception as e:
+                self.session.rollback()
+                QMessageBox.critical(self, "Error", f"Fallo al resetear la guía: {str(e)}")
     
     def buscar_tracking(self):
-        guia = self.in_buscar.text().strip(); 
+        guia = self.in_buscar.text().strip()
         if not guia: return
         op = self.session.query(Operacion).filter(Operacion.guia_remito == guia).first()
         if not op: op = self.session.query(Operacion).filter(Operacion.guia_remito.ilike(f"%{guia}%")).first()
         if not op: 
-            # 🔥 CORRECCIÓN TEXTO ROJO: Si no existe, se pinta de rojo y se detiene acá.
             self.lbl_info.setText("❌ GUÍA NO ENCONTRADA")
             self.lbl_info.setStyleSheet("font-size: 16px; color: red; font-weight: bold; padding: 10px; border: 1px solid red;")
             self.tabla.setRowCount(0)
             return
             
-        # 🔥 RESTAURAR COLOR NORMAL SI EXISTE LA GUÍA
         self.lbl_info.setStyleSheet("font-size: 14px; color: #333; padding: 10px; border: 1px solid #ccc; background: #f8f9fa;")
             
         color_estado = "blue"; bg_color = "#e7f1ff"
@@ -328,10 +385,8 @@ class TrackingDialog(QDialog):
         else:
             fac_str = "SÍ" if op.facturado else "NO"; color_fac = "green" if op.facturado else "red"
             
-        # Buscamos historial para armar la tabla y extraer a quién se le entregó
         movs = self.session.query(Historial).filter(Historial.operacion_id == op.id).order_by(Historial.fecha_hora.desc()).all()
         
-        # 🔥 EXTRAER A QUIÉN SE LE ENTREGÓ Y CUÁNDO (Punto 5)
         entregado_info = ""
         if op.estado == Estados.ENTREGADO:
             for m in movs:
@@ -357,6 +412,8 @@ class TrackingDialog(QDialog):
                     partes = detalle_texto.split("| GPS:")
                     base_texto = partes[0].strip()
                     link = partes[1].strip()
+                    from PyQt6.QtWidgets import QLabel
+                    from PyQt6.QtCore import Qt
                     lbl = QLabel(f'{base_texto} <a href="{link}" style="color:#d32f2f; text-decoration:none; font-weight:bold; font-size:14px;">📍 VER MAPA</a>')
                     lbl.setAlignment(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft)
                     lbl.setOpenExternalLinks(True)
