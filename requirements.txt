@@ -3,6 +3,7 @@ gunicorn
 sqlalchemy
 psycopg2-binary
 requests
+Pillow
 
 
 
