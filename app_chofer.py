@@ -133,7 +133,6 @@ def enviar_email(destinatario, guia, rutas_fotos, proveedor, link_mapa=""):
             if "attachment" in payload:
                 del payload["attachment"]
                 
-                # Le avisamos al cliente por qué no llegó la foto
                 payload["htmlContent"] = html_content.replace(
                     "<b>Adjuntamos la foto del remito/guía conformado.</b>",
                     "<b style='color:#D32F2F;'>⚠️ La foto se guardó en nuestro sistema, pero era demasiado pesada para adjuntarse en este correo.</b>"
@@ -141,9 +140,7 @@ def enviar_email(destinatario, guia, rutas_fotos, proveedor, link_mapa=""):
                 
                 r2 = requests.post(url, json=payload, headers=headers)
                 
-                # INTENTO 3: Si por algún otro error sigue fallando, nos lo mandamos a nosotros mismos
                 if r2.status_code not in [200, 201, 202]:
-                    print(f"Error Brevo (Intento 2 sin fotos): {r2.text}")
                     payload["to"] = [{"email": EMAIL_REMITENTE}]
                     if "bcc" in payload: del payload["bcc"]
                     requests.post(url, json=payload, headers=headers)
@@ -651,7 +648,7 @@ def gestion(id_op):
         enlace_gps = f"https://maps.google.com/?q={lat},{lng}" if lat and lng else ""
         texto_gps_historial = f" | GPS: {enlace_gps}" if enlace_gps else ""
         
-        # PROCESAR MÚLTIPLES FOTOS DINÁMICAS
+        # PROCESAR MÚLTIPLES FOTOS DINÁMICAS Y COMPRIMIRLAS
         rutas_fotos = []
         tiene_foto = False
         archivos = request.files.getlist('fotos')
@@ -660,6 +657,24 @@ def gestion(id_op):
                 filename = f"foto_{id_op}_{i}_{int(hora_arg().timestamp())}.jpg"
                 ruta = os.path.join(app.config['UPLOAD_FOLDER'], filename)
                 archivo.save(ruta)
+                
+                # 🔥 COMPRESOR AUTOMÁTICO DE IMÁGENES 🔥
+                try:
+                    from PIL import Image
+                    img = Image.open(ruta)
+                    # Convertimos a RGB por si la foto viene en otro formato raro
+                    if img.mode in ("RGBA", "P"): 
+                        img = img.convert("RGB")
+                    # Achicamos la foto a un máximo de 800x800 manteniendo proporción
+                    img.thumbnail((800, 800))
+                    # Guardamos la versión liviana (quality 70) pisando la pesada
+                    img.save(ruta, "JPEG", quality=70, optimize=True)
+                except ImportError:
+                    print("⚠️ ATENCIÓN: La librería 'Pillow' no está instalada. Se subió la foto pesada original.")
+                except Exception as e:
+                    print(f"Error comprimiendo imagen: {e}")
+                # ----------------------------------------
+                
                 rutas_fotos.append(ruta)
                 tiene_foto = True
             
