@@ -1,4 +1,4 @@
-from flask import Flask, request, render_template_string, redirect, url_for, session, flash
+from flask import Flask, request, render_template_string, redirect, url_for, session, flash, send_from_directory
 from sqlalchemy import create_engine, text
 from datetime import datetime, timedelta
 import os
@@ -13,7 +13,7 @@ app.secret_key = "secreto_super_seguro_choferes_ek"
 # 🔥 CONFIGURACIÓN DE MEMORIA PERMANENTE (30 DÍAS SIN DESLOGUEARSE) 🔥
 app.permanent_session_lifetime = timedelta(days=30)
 
-# --- CONFIGURACIÓN DE SEGURIDAD (LEE DE RENDER O .ENV) ---
+# --- CONFIGURACIÓN DE SEGURIDAD ---
 DATABASE_URL = os.environ.get("DB_URL") 
 if not DATABASE_URL:
     from dotenv import load_dotenv
@@ -29,7 +29,6 @@ UPLOAD_FOLDER = os.path.join(BASE_DIR, 'uploads')
 if not os.path.exists(UPLOAD_FOLDER): os.makedirs(UPLOAD_FOLDER)
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 
-# --- CORRECCIÓN DE ZONA HORARIA ARGENTINA (-3 HORAS) ---
 def hora_arg():
     return datetime.now() - timedelta(hours=3)
 
@@ -47,14 +46,17 @@ def limpiar_telefono_wsp(telefono):
 
 NUMERO_BASE_FINAL = limpiar_telefono_wsp(NUMERO_BASE_RAW)
 
-# --- MAIL BLINDADO: AHORA NO SE CANCELA SI EL CLIENTE TIENE EL MAIL MAL ---
+@app.route('/eklogo.png')
+def serve_logo():
+    return send_from_directory(BASE_DIR, 'eklogo.png')
+
+# --- MAIL BLINDADO Y ACTUALIZADO (NOMBRES EK LOGISTICA) ---
 def enviar_email(destinatario, guia, rutas_fotos, proveedor, link_mapa=""):
     if not BREVO_API_KEY: return
     conn = get_db()
     email_prov = None
     if conn:
         try:
-            # Búsqueda a prueba de mayúsculas y espacios
             sql = text("SELECT email_reportes FROM clientes_principales WHERE UPPER(TRIM(nombre)) = UPPER(TRIM(:n))")
             res = conn.execute(sql, {"n": proveedor}).fetchone()
             if res: email_prov = res[0]
@@ -70,7 +72,6 @@ def enviar_email(destinatario, guia, rutas_fotos, proveedor, link_mapa=""):
                 destinatarios_lista.append({"email": c_limpio})
     
     if not destinatarios_lista:
-        print("⚠️ Proveedor sin mail válido. Enviando solo copia interna.")
         destinatarios_lista = [{"email": EMAIL_REMITENTE}]
     
     adjuntos = []
@@ -95,18 +96,18 @@ def enviar_email(destinatario, guia, rutas_fotos, proveedor, link_mapa=""):
     <p>Se informa la entrega exitosa. <b>Adjuntamos la foto del remito/guía conformado.</b></p>
     <ul>
         <li><b>Fecha:</b> {fecha_hora}</li>
-        <li><b>Guía:</b> {guia}</li>
+        <li><b>Guía/Remito:</b> {guia}</li>
         <li><b>Proveedor:</b> {proveedor}</li>
         <li><b>Recibió:</b> {destinatario}</li>
         {texto_gps}
     </ul>
-    <p>Atte.<br><b>Equipo JetPaq / EK Logística</b></p>
+    <p>Atte.<br><b>Equipo EK Logística</b></p>
     </body></html>
     """
     
     payload = {
-        "sender": {"name": "Logistica JetPaq", "email": EMAIL_REMITENTE},
-        "subject": f"ENTREGA REALIZADA - Guía: {guia}",
+        "sender": {"name": "EK Logística", "email": EMAIL_REMITENTE},
+        "subject": f"ENTREGA REALIZADA - Guía/Remito: {guia}",
         "htmlContent": html_content,
         "to": destinatarios_lista,
         "bcc": [{"email": EMAIL_REMITENTE, "name": "Archivo EK Logistica"}]
@@ -128,7 +129,7 @@ HTML_HEAD = """
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Choferes EK</title>
+    <title>EK ULTIMA MILLA</title>
     <style>
         body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background: #f0f2f5; margin: 0; padding: 0; font-size: 16px; padding-bottom: 80px; }
         .header { background: #1565C0; color: white; padding: 15px; text-align: center; position: sticky; top: 0; z-index: 100; box-shadow: 0 2px 4px rgba(0,0,0,0.2); display: flex; justify-content: space-between; align-items: center; }
@@ -136,7 +137,6 @@ HTML_HEAD = """
         .container { padding: 15px; max-width: 600px; margin: 0 auto; }
         .card { background: white; padding: 20px; margin-bottom: 15px; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
         .btn { display: block; width: 100%; padding: 14px; border: none; border-radius: 8px; font-size: 16px; font-weight: 600; cursor: pointer; text-align: center; text-decoration: none; box-sizing: border-box; margin-top: 10px; transition: all 0.2s; }
-        .btn:active { transform: scale(0.98); opacity: 0.9; }
         .btn-blue { background: #1976D2; color: white; }
         .btn-green { background: #43A047; color: white; }
         .btn-wa { background: #25D366; color: white; }
@@ -148,7 +148,7 @@ HTML_HEAD = """
         input[type="text"], input[type="number"], input[type="date"], select { width: 100%; padding: 12px; margin-top: 8px; border: 1px solid #ddd; border-radius: 8px; font-size: 16px; background: #fff; box-sizing: border-box; }
         label { font-weight: 600; color: #444; margin-top: 15px; display: block; font-size: 0.9rem; }
         .tag { padding: 4px 8px; border-radius: 4px; font-size: 0.75rem; color: white; float: right; font-weight: bold; text-transform: uppercase; letter-spacing: 0.5px; }
-        .tag-blue { background: #1976D2; } .tag-purple { background: #7B1FA2; } .tag-orange { background: #F57C00; }
+        .tag-blue { background: #1976D2; } .tag-purple { background: #7B1FA2; } .tag-orange { background: #F57C00; } .tag-red { background: #D32F2F; }
         .camera-btn { background-color: #E3F2FD; color: #1565C0; border: 2px solid #1976D2; border-radius: 8px; padding: 12px; text-align: center; cursor: pointer; margin-top: 10px; width: 100%; display: block; font-weight: bold; }
         .alert { padding: 12px; margin-bottom: 15px; border-radius: 8px; font-weight: 500; text-align: center; font-size: 0.9rem; }
         .alert-success { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
@@ -156,7 +156,6 @@ HTML_HEAD = """
         .bottom-nav { position: fixed; bottom: 0; left: 0; width: 100%; background: white; border-top: 1px solid #eee; display: flex; justify-content: space-around; padding: 12px 0; z-index: 99; box-shadow: 0 -2px 5px rgba(0,0,0,0.05); }
         .nav-item { text-decoration: none; color: #777; text-align: center; font-size: 0.75rem; font-weight: 500; }
         .nav-icon { font-size: 1.4rem; display: block; margin-bottom: 3px; }
-        .truck-icon { width: 80px; height: 80px; margin-bottom: 10px; fill: #1976D2; }
     </style>
 </head>
 """
@@ -204,8 +203,6 @@ def index():
         clase = "alert-success" if categoria == "success" else "alert-error"
         mensajes_html += f'<div class="alert {clase}">{mensaje}</div>'
         
-    svg_truck = """<svg class="truck-icon" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M20,8h-3V4H3C2.45,4,2,4.45,2,5v11h2c0,1.66,1.34,3,3,3s3-1.34,3-3h6c0,1.66,1.34,3,3,3s3-1.34,3-3h2v-5L20,8z M6,13.5 c-0.83,0-1.5-0.67-1.5-1.5s0.67-1.5,1.5-1.5s1.5,0.67,1.5,1.5S6.83,13.5,6,13.5z M19,17c-0.55,0-1-0.45-1-1s0.45-1,1-1s1,0.45,1,1 S19.55,17,19,17z M18,11V8.5h1.75L21,11H18z"/></svg>"""
-        
     html = f"""
     <!DOCTYPE html>
     <html>
@@ -230,8 +227,8 @@ def index():
         </script>
         <div class="container" style="display:flex; flex-direction:column; justify-content:center; height:90vh;">
             <div style="text-align: center;">
-                {svg_truck}
-                <h1 style="color: #1565C0; margin-bottom: 5px;">JetPaq Logística</h1>
+                <img src="/eklogo.png" alt="EK Logo" style="max-width: 140px; border-radius: 10px; margin-bottom: 10px;">
+                <h1 style="color: #1565C0; margin-bottom: 5px;">EK ULTIMA MILLA</h1>
                 <p style="color: #777; margin-top: 0;">Portal de Choferes</p>
                 <br>
                 {mensajes_html}
@@ -288,13 +285,24 @@ def lista_viajes():
     else:
         for v in viajes:
             tipo_srv = v[8] if v[8] else ""
+            
+            # 🔥 DETECCIÓN DE GUARDIA Y RETIROS PARA MARCAR CON ROJO/MORADO 🔥
             es_retiro = "Retiro" in tipo_srv
-            lbl_tipo = "🔄 RETIRO" if es_retiro else "🚚 ENTREGA"
-            color_tipo = "tag-purple" if es_retiro else "tag-blue"
+            es_guardia = "Guardia" in tipo_srv
+            
+            if es_guardia:
+                lbl_tipo = "🚨 GUARDIA"
+                color_tipo = "tag-red"
+            elif es_retiro:
+                lbl_tipo = "🔄 RETIRO"
+                color_tipo = "tag-purple"
+            else:
+                lbl_tipo = "🚚 ENTREGA"
+                color_tipo = "tag-blue"
+                
             q = f"{v[3]}, {v[4]}"
             mapa_url = f"https://www.google.com/maps/search/?api=1&query={q}"
             
-            # 🔥 PROVEEDOR AGREGADO EN EL RECUADRO CELESTE 🔥
             cards_html += f"""
             <div class="card">
                 <div style="margin-bottom: 10px; overflow: hidden;">
@@ -327,8 +335,9 @@ def lista_viajes():
         <div class="container">
             {mensajes_html}
             
+            <!-- 🔥 BOTÓN DE GUARDIA EN ROJO 🔥 -->
             <div style="margin-bottom: 15px;">
-                <a href="/guardia" class="btn btn-purple" style="display:flex; align-items:center; justify-content:center; gap:10px;">
+                <a href="/guardia" class="btn btn-red" style="display:flex; align-items:center; justify-content:center; gap:10px;">
                     <span style="font-size:1.2rem;">🚨</span> CARGAR GUÍA DE GUARDIA
                 </a>
             </div>
@@ -358,6 +367,8 @@ def guardia():
     chofer = session.get('chofer')
     if not chofer: return redirect(url_for('index'))
 
+    conn = get_db()
+
     if request.method == 'POST':
         guia = request.form.get('guia_remito')
         proveedor = request.form.get('proveedor')
@@ -368,14 +379,14 @@ def guardia():
         tipo_carga = request.form.get('tipo_carga', 'Común')
         tipo_urgencia = request.form.get('tipo_urgencia', 'Normal')
 
-        conn = get_db()
         if conn:
             try:
+                # 🔥 GUARDA AUTOMÁTICAMENTE EL tipo_servicio COMO "Entrega (Guardia)" PARA LA FACTURACIÓN 🔥
                 sql_insert = text("""
                     INSERT INTO operaciones 
-                    (guia_remito, proveedor, destinatario, domicilio, localidad, bultos, tipo_carga, tipo_urgencia, chofer_asignado, estado, fecha_salida)
+                    (guia_remito, proveedor, destinatario, domicilio, localidad, bultos, tipo_carga, tipo_urgencia, chofer_asignado, estado, fecha_salida, tipo_servicio)
                     VALUES 
-                    (:g, :p, :d, :dom, :loc, :b, :tc, :tu, :c, 'EN REPARTO', :fs)
+                    (:g, :p, :d, :dom, :loc, :b, :tc, :tu, :c, 'EN REPARTO', :fs, 'Entrega (Guardia)')
                     RETURNING id
                 """)
                 res = conn.execute(sql_insert, {
@@ -395,31 +406,90 @@ def guardia():
                 conn.close()
         return redirect(url_for('lista_viajes'))
 
+    # --- OBTENER CLIENTES Y DESTINOS DE LA BASE DE DATOS ---
+    clientes_db = []
+    destinos_db = []
+    if conn:
+        try:
+            res_cli = conn.execute(text("SELECT nombre FROM clientes_principales ORDER BY nombre")).fetchall()
+            clientes_db = [c[0] for c in res_cli]
+            
+            res_dest = conn.execute(text("SELECT proveedor, destinatario, domicilio, localidad FROM destinos_frecuentes")).fetchall()
+            destinos_db = [{"proveedor": d[0], "destinatario": d[1], "domicilio": d[2], "localidad": d[3]} for d in res_dest]
+        except Exception as e: print("Error DB listados:", e)
+        finally: conn.close()
+        
+    clientes_html = "".join([f'<option value="{c}">{c}</option>' for c in clientes_db])
+    destinos_json = json.dumps(destinos_db)
+
+    # 🔥 FORMULARIO ROJO CON LISTAS DESPLEGABLES INTELIGENTES 🔥
     html = f"""
     <!DOCTYPE html>
     <html>
     {HTML_HEAD}
     <body>
-        <div class="header" style="background: #7B1FA2;">
+        <script>
+            var destinos = {destinos_json};
+            
+            function actualizarDestinos() {{
+                var provSeleccionado = document.getElementById("prov_select").value;
+                var destSelect = document.getElementById("dest_fijo_select");
+                
+                destSelect.innerHTML = '<option value="">-- Escribir a mano (Nuevo) --</option>';
+                
+                for (var i = 0; i < destinos.length; i++) {{
+                    if (destinos[i].proveedor === provSeleccionado) {{
+                        var opt = document.createElement("option");
+                        opt.value = i;
+                        opt.innerHTML = destinos[i].destinatario + " (" + destinos[i].domicilio + ")";
+                        destSelect.appendChild(opt);
+                    }}
+                }}
+            }}
+            
+            function autocompletarDestino() {{
+                var index = document.getElementById("dest_fijo_select").value;
+                if (index !== "") {{
+                    var d = destinos[index];
+                    document.getElementById("in_destinatario").value = d.destinatario;
+                    document.getElementById("in_domicilio").value = d.domicilio;
+                    document.getElementById("in_localidad").value = d.localidad;
+                }} else {{
+                    document.getElementById("in_destinatario").value = "";
+                    document.getElementById("in_domicilio").value = "";
+                    document.getElementById("in_localidad").value = "";
+                }}
+            }}
+        </script>
+    
+        <div class="header" style="background: #D32F2F;">
             <h2>🚨 Nueva Guía (Guardia)</h2>
         </div>
         <div class="container">
-            <form method="POST" class="card" style="border-top: 5px solid #7B1FA2;">
+            <form method="POST" class="card" style="border-top: 5px solid #D32F2F;">
                 
                 <label>Nº de Guía / Remito:</label>
                 <input type="text" name="guia_remito" placeholder="Ej: REM-12345" required>
                 
-                <label>Proveedor (Cliente):</label>
-                <input type="text" name="proveedor" placeholder="Nombre de la empresa..." required>
+                <label>1. Proveedor (Cliente):</label>
+                <select name="proveedor" id="prov_select" required onchange="actualizarDestinos()">
+                    <option value="">-- Seleccionar Empresa --</option>
+                    {clientes_html}
+                </select>
+                
+                <label style="color: #1976D2;">📍 2. Destinos Fijos (Opcional):</label>
+                <select id="dest_fijo_select" onchange="autocompletarDestino()" style="border: 2px solid #1976D2; background: #e3f2fd;">
+                    <option value="">-- Primero elija un proveedor arriba --</option>
+                </select>
                 
                 <label>Destinatario (Quién recibe):</label>
-                <input type="text" name="destinatario" required>
+                <input type="text" id="in_destinatario" name="destinatario" required>
                 
                 <label>Domicilio:</label>
-                <input type="text" name="domicilio" required>
+                <input type="text" id="in_domicilio" name="domicilio" required>
                 
                 <label>Localidad:</label>
-                <input type="text" name="localidad" required>
+                <input type="text" id="in_localidad" name="localidad" required>
                 
                 <label>Cantidad de Bultos:</label>
                 <input type="number" name="bultos" value="1" required>
@@ -441,11 +511,16 @@ def guardia():
                     </div>
                 </div>
 
-                <button type="submit" class="btn btn-purple" style="margin-top:25px;">CREAR Y PONER EN REPARTO</button>
+                <button type="submit" class="btn btn-red" style="margin-top:25px;">CREAR Y PONER EN REPARTO</button>
             </form>
             <br>
             <a href="/viajes" class="btn btn-outline">← Cancelar y Volver a mi ruta</a>
         </div>
+        
+        <script>
+            // Llenar destinos si hay proveedor por defecto
+            window.onload = actualizarDestinos;
+        </script>
     </body>
     </html>
     """
@@ -571,7 +646,6 @@ def gestion(id_op):
                 flash("❌ ERROR: Escribe quién recibió.", "error")
                 return redirect(url_for('gestion', id_op=id_op))
             
-            # 🔥 ACÁ ESTÁ LA REGLA DE JETPAQ INTACTA 🔥
             if "jetpaq" not in op[10].lower() and not tiene_foto:
                 flash("📸 ERROR: Faltó la foto (Obligatoria).", "error")
                 return redirect(url_for('gestion', id_op=id_op))
@@ -652,7 +726,7 @@ def gestion(id_op):
         intercambio_html = f"<div style='background:#e2e3e5; padding:15px; border-radius:8px; margin-bottom:20px; border-left: 5px solid #6c757d; color:#383d41;'>📦 <b>OBS / INTERCAMBIO:</b><br>{op[9]}</div>"
 
     telefono_limpio = limpiar_telefono_wsp(op[4])
-    mensaje_wa = urllib.parse.quote(f"Hola, soy el chofer de JetPaq. Estoy en camino con tu envío (Guía: {op[0]}).")
+    mensaje_wa = urllib.parse.quote(f"Hola, soy el chofer de EK Logística. Estoy en camino con tu envío (Guía/Remito: {op[0]}).")
     link_wa = f"https://wa.me/{telefono_limpio}?text={mensaje_wa}" if telefono_limpio else "#"
     btn_wa_style = "opacity:0.5; pointer-events:none;" if not telefono_limpio else ""
 
