@@ -50,7 +50,7 @@ NUMERO_BASE_FINAL = limpiar_telefono_wsp(NUMERO_BASE_RAW)
 def serve_logo():
     return send_from_directory(BASE_DIR, 'eklogo.png')
 
-# --- MAIL BLINDADO Y ACTUALIZADO (NOMBRES EK LOGISTICA) ---
+# --- MAIL BLINDADO Y ACTUALIZADO (NOMBRES EK LOGISTICA Y FOTOS ADJUNTAS) ---
 def enviar_email(destinatario, guia, rutas_fotos, proveedor, link_mapa=""):
     if not BREVO_API_KEY: return
     conn = get_db()
@@ -115,6 +115,10 @@ def enviar_email(destinatario, guia, rutas_fotos, proveedor, link_mapa=""):
 
     if len(destinatarios_lista) == 1 and destinatarios_lista[0]["email"] == EMAIL_REMITENTE:
         if "bcc" in payload: del payload["bcc"]
+        
+    # 🔥 LA LÍNEA MÁGICA QUE FALTABA PARA ADJUNTAR LAS FOTOS 🔥
+    if adjuntos:
+        payload["attachment"] = adjuntos
     
     headers = {"accept": "application/json", "api-key": BREVO_API_KEY, "content-type": "application/json"}
     try: 
@@ -122,6 +126,7 @@ def enviar_email(destinatario, guia, rutas_fotos, proveedor, link_mapa=""):
         if r.status_code not in [200, 201, 202]:
             payload["to"] = [{"email": EMAIL_REMITENTE}]
             if "bcc" in payload: del payload["bcc"]
+            if adjuntos: payload["attachment"] = adjuntos
             requests.post(url, json=payload, headers=headers)
     except Exception as e: print("Error en Brevo:", e)
 
