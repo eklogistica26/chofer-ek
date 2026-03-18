@@ -125,7 +125,7 @@ def enviar_email(destinatario, guia, rutas_fotos, proveedor, link_mapa=""):
         # INTENTO 1: Mandar el correo con las fotos adjuntas
         r = requests.post(url, json=payload, headers=headers)
         
-        # Si Brevo rebota el correo (casi siempre porque las fotos son muy pesadas)
+        # Si Brevo rebota el correo
         if r.status_code not in [200, 201, 202]:
             print(f"Error Brevo (Intento 1 con fotos): {r.text}")
             
@@ -648,7 +648,7 @@ def gestion(id_op):
         enlace_gps = f"https://maps.google.com/?q={lat},{lng}" if lat and lng else ""
         texto_gps_historial = f" | GPS: {enlace_gps}" if enlace_gps else ""
         
-        # PROCESAR MÚLTIPLES FOTOS DINÁMICAS Y COMPRIMIRLAS
+        # PROCESAR MÚLTIPLES FOTOS DINÁMICAS (SIN PILLOW)
         rutas_fotos = []
         tiene_foto = False
         archivos = request.files.getlist('fotos')
@@ -657,24 +657,6 @@ def gestion(id_op):
                 filename = f"foto_{id_op}_{i}_{int(hora_arg().timestamp())}.jpg"
                 ruta = os.path.join(app.config['UPLOAD_FOLDER'], filename)
                 archivo.save(ruta)
-                
-                # 🔥 COMPRESOR AUTOMÁTICO DE IMÁGENES 🔥
-                try:
-                    from PIL import Image
-                    img = Image.open(ruta)
-                    # Convertimos a RGB por si la foto viene en otro formato raro
-                    if img.mode in ("RGBA", "P"): 
-                        img = img.convert("RGB")
-                    # Achicamos la foto a un máximo de 800x800 manteniendo proporción
-                    img.thumbnail((800, 800))
-                    # Guardamos la versión liviana (quality 70) pisando la pesada
-                    img.save(ruta, "JPEG", quality=70, optimize=True)
-                except ImportError:
-                    print("⚠️ ATENCIÓN: La librería 'Pillow' no está instalada. Se subió la foto pesada original.")
-                except Exception as e:
-                    print(f"Error comprimiendo imagen: {e}")
-                # ----------------------------------------
-                
                 rutas_fotos.append(ruta)
                 tiene_foto = True
             
