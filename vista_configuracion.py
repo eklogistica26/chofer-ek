@@ -10,15 +10,14 @@ from sqlalchemy import text, desc
 
 from database import (ClientePrincipal, DestinoFrecuente, Tarifa, TarifaDHL, 
                       HistorialTarifas, Chofer, ClienteRetiro, Usuario)
-# IMPORTANTE: No importamos EditarUsuarioDialog desde dialogos para no hacer conflicto
 from dialogos import EditarEmpresaDialog, EditarDestinoDialog, EditarTarifaDialog, HistorialTarifasDialog
 
-# --- DIÁLOGO PARA EDITAR CHOFERES ---
+# --- DIÁLOGO PARA EDITAR CHOFERES (CON CELULAR) ---
 class EditarChoferDialog(QDialog):
-    def __init__(self, chofer_id, nombre, sucursal, dni, parent=None):
+    def __init__(self, chofer_id, nombre, sucursal, dni, celular, parent=None):
         super().__init__(parent)
         self.setWindowTitle(f"✏️ Editar Chofer: {nombre}")
-        self.setGeometry(400, 300, 350, 200)
+        self.setGeometry(400, 300, 350, 250)
         layout = QVBoxLayout(self)
         form = QFormLayout()
         
@@ -29,9 +28,13 @@ class EditarChoferDialog(QDialog):
         self.in_dni = QLineEdit(dni)
         self.in_dni.setPlaceholderText("Ej: 35123456 (Sin puntos)")
         
+        self.in_celular = QLineEdit(celular)
+        self.in_celular.setPlaceholderText("Ej: 2615555555 (Para WhatsApp)")
+        
         form.addRow("Nombre:", self.in_nom)
         form.addRow("Sucursal:", self.in_suc)
         form.addRow("DNI (Clave App):", self.in_dni)
+        form.addRow("Celular (WhatsApp):", self.in_celular)
         layout.addLayout(form)
         
         btn = QPushButton("GUARDAR CAMBIOS")
@@ -41,9 +44,9 @@ class EditarChoferDialog(QDialog):
         
     @property
     def datos(self):
-        return self.in_nom.text().strip(), self.in_suc.currentText(), self.in_dni.text().strip()
+        return self.in_nom.text().strip(), self.in_suc.currentText(), self.in_dni.text().strip(), self.in_celular.text().strip()
 
-# --- DIÁLOGO ORDENADO PARA EDITAR USUARIOS (9 PERMISOS) ---
+# --- DIÁLOGO ORDENADO PARA EDITAR USUARIOS ---
 class EditarUsuarioDialog(QDialog):
     def __init__(self, usuario, parent=None):
         super().__init__(parent)
@@ -100,7 +103,6 @@ class EditarUsuarioDialog(QDialog):
             "cfg": self.chk_cfg.isChecked()
         }
 
-
 class TabConfiguracion(QWidget):
     def __init__(self, main_window):
         super().__init__()
@@ -136,12 +138,11 @@ class TabConfiguracion(QWidget):
     def cambiar_panel_config(self, index): 
         self.stack_config.setCurrentIndex(index)
     
-    # --- PANEL PROVEEDORES Y DESTINOS (MEJORADO CON PESTAÑAS) ---
+    # --- PANEL PROVEEDORES Y DESTINOS ---
     def setup_panel_proveedores(self):
         layout = QVBoxLayout(self.page_proveedores)
         self.tabs_prov = QTabWidget()
         
-        # PESTAÑA 1: EMPRESAS / PROVEEDORES
         tab_prov = QWidget()
         l_prov = QVBoxLayout(tab_prov)
         
@@ -172,7 +173,6 @@ class TabConfiguracion(QWidget):
         
         self.tabs_prov.addTab(tab_prov, "🏢 Empresas (Proveedores)")
 
-        # PESTAÑA 2: DESTINOS FRECUENTES
         tab_dest = QWidget()
         l_dest = QVBoxLayout(tab_dest)
         
@@ -435,7 +435,7 @@ class TabConfiguracion(QWidget):
             else: self.lbl_alerta_tarifa.setText(f"🟢 Tarifas actualizadas (último cambio hace {dias} días).")
         except: self.main.session.rollback()
 
-    # --- PANEL CHOFERES ---
+    # --- PANEL CHOFERES CON CELULAR ---
     def setup_panel_choferes(self):
         l = QVBoxLayout(self.page_choferes); gb = QGroupBox("Gestión de Choferes"); f = QFormLayout()
         
@@ -445,16 +445,20 @@ class TabConfiguracion(QWidget):
         self.cfg_chofer_dni = QLineEdit()
         self.cfg_chofer_dni.setPlaceholderText("Ej: 35123456 (Contraseña App)")
         
+        self.cfg_chofer_celular = QLineEdit()
+        self.cfg_chofer_celular.setPlaceholderText("Ej: 2615555555 (Para WhatsApp)")
+        
         f.addRow("Nombre:", self.cfg_chofer_nombre)
         f.addRow("Sucursal:", self.cfg_chofer_sucursal)
         f.addRow("DNI (Clave App):", self.cfg_chofer_dni)
+        f.addRow("Celular (WhatsApp):", self.cfg_chofer_celular)
         
         btn = QPushButton("➕ AGREGAR CHOFER")
         btn.clicked.connect(self.guardar_chofer)
         gb.setLayout(f); l.addWidget(gb); l.addWidget(btn)
         
-        self.tabla_choferes = QTableWidget(); self.tabla_choferes.setColumnCount(4); self.tabla_choferes.hideColumn(0)
-        self.tabla_choferes.setHorizontalHeaderLabels(["ID", "Nombre", "Sucursal", "DNI (Clave)"])
+        self.tabla_choferes = QTableWidget(); self.tabla_choferes.setColumnCount(5); self.tabla_choferes.hideColumn(0)
+        self.tabla_choferes.setHorizontalHeaderLabels(["ID", "Nombre", "Sucursal", "DNI (Clave)", "Celular (WSP)"])
         self.tabla_choferes.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         self.tabla_choferes.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.tabla_choferes.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
@@ -470,12 +474,14 @@ class TabConfiguracion(QWidget):
         n = self.cfg_chofer_nombre.text().strip()
         s = self.cfg_chofer_sucursal.currentText()
         d = self.cfg_chofer_dni.text().strip()
+        c = self.cfg_chofer_celular.text().strip()
         if n: 
             try: 
-                self.main.session.execute(text("INSERT INTO choferes (nombre, sucursal, dni) VALUES (:n, :s, :d)"), {"n": n, "s": s, "d": d})
+                self.main.session.execute(text("INSERT INTO choferes (nombre, sucursal, dni, celular) VALUES (:n, :s, :d, :c)"), {"n": n, "s": s, "d": d, "c": c})
                 self.main.session.commit()
                 self.cfg_chofer_nombre.clear()
                 self.cfg_chofer_dni.clear()
+                self.cfg_chofer_celular.clear()
                 self.cargar_choferes_tabla()
                 self.main.actualizar_combos_dinamicos()
             except Exception as e: 
@@ -485,13 +491,14 @@ class TabConfiguracion(QWidget):
     def cargar_choferes_tabla(self):
         try:
             self.tabla_choferes.setRowCount(0)
-            res = self.main.session.execute(text("SELECT id, nombre, sucursal, dni FROM choferes ORDER BY sucursal, nombre")).fetchall()
+            res = self.main.session.execute(text("SELECT id, nombre, sucursal, dni, celular FROM choferes ORDER BY sucursal, nombre")).fetchall()
             for r, c in enumerate(res): 
                 self.tabla_choferes.insertRow(r)
                 self.tabla_choferes.setItem(r, 0, QTableWidgetItem(str(c[0])))
                 self.tabla_choferes.setItem(r, 1, QTableWidgetItem(c[1]))
                 self.tabla_choferes.setItem(r, 2, QTableWidgetItem(c[2]))
                 self.tabla_choferes.setItem(r, 3, QTableWidgetItem(str(c[3] or "")))
+                self.tabla_choferes.setItem(r, 4, QTableWidgetItem(str(c[4] or "")))
         except Exception: self.main.session.rollback()
 
     def editar_chofer(self):
@@ -503,12 +510,13 @@ class TabConfiguracion(QWidget):
         n = self.tabla_choferes.item(r, 1).text()
         s = self.tabla_choferes.item(r, 2).text()
         d = self.tabla_choferes.item(r, 3).text()
+        c = self.tabla_choferes.item(r, 4).text()
         
-        dlg = EditarChoferDialog(id_obj, n, s, d, self)
+        dlg = EditarChoferDialog(id_obj, n, s, d, c, self)
         if dlg.exec() == QDialog.DialogCode.Accepted:
-            n_new, s_new, d_new = dlg.datos
+            n_new, s_new, d_new, c_new = dlg.datos
             try:
-                self.main.session.execute(text("UPDATE choferes SET nombre=:n, sucursal=:s, dni=:d WHERE id=:id"), {"n": n_new, "s": s_new, "d": d_new, "id": id_obj})
+                self.main.session.execute(text("UPDATE choferes SET nombre=:n, sucursal=:s, dni=:d, celular=:c WHERE id=:id"), {"n": n_new, "s": s_new, "d": d_new, "c": c_new, "id": id_obj})
                 self.main.session.commit()
                 self.cargar_choferes_tabla()
                 self.main.actualizar_combos_dinamicos()
@@ -537,7 +545,7 @@ class TabConfiguracion(QWidget):
         grid = QGridLayout()
         self.chk_mon = QCheckBox("📊 Monitor Global"); self.chk_mon.setChecked(True)
         self.chk_ing = QCheckBox("📥 Ingreso"); self.chk_ing.setChecked(True)
-        self.chk_rut = QCheckBox("🚚 Hoja de Ruta"); self.chk_rut.setChecked(True)
+        self.chk_rut = QCheckBox("🚚 Ruta"); self.chk_rut.setChecked(True)
         self.chk_ren = QCheckBox("💰 Rendición")
         self.chk_rep = QCheckBox("📋 Reportes")
         self.chk_fac = QCheckBox("🧾 Facturación")

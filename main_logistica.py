@@ -3,6 +3,7 @@ import os
 import re
 import math
 import traceback
+import urllib.parse
 from datetime import datetime
 
 from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, 
@@ -61,11 +62,10 @@ class LoginWindow(QDialog):
     def verificar_login(self):
         u = self.in_user.text().strip().lower(); p = self.in_pass.text().strip()
         
-        # Deshabilitar boton para que no haga doble clic
         self.sender().setEnabled(False)
         self.setWindowTitle("Validando credenciales... Espere un momento"); QApplication.processEvents() 
         try:
-            engine, self.session = get_session() # Esto ahora es instantáneo
+            engine, self.session = get_session() 
             user_db = self.session.query(Usuario).filter(Usuario.username == u, Usuario.password == p).first()
             if user_db: 
                 self.usuario_logueado = user_db; self.accept()
@@ -99,6 +99,14 @@ class PlataformaLogistica(QMainWindow):
         from utilidades import crear_pdf_ruta, crear_pdf_tercerizados, crear_pdf_reporte
 
         _, self.session = get_session()
+        
+        # 🔥 AUTO-PARCHE DE BASE DE DATOS: Agrega la columna celular si no existe 🔥
+        try:
+            self.session.execute(text("ALTER TABLE choferes ADD COLUMN celular VARCHAR(50)"))
+            self.session.commit()
+        except:
+            self.session.rollback()
+
         self.lista_proveedores = []; self.toast = ToastNotification(self); self.filtro_monitor = None
         self.init_ui()
         
@@ -166,7 +174,6 @@ class PlataformaLogistica(QMainWindow):
         self.tab_monitor = QWidget(); self.tab_ruta = QWidget(); self.tab_reportes = QWidget(); self.tab_crm = QWidget(); self.tab_stats = QWidget(); 
         self.tab_ingreso = TabIngreso(self); self.tab_rendicion = TabRendicion(self); self.tab_cierre = TabFacturacion(self); self.tab_config = TabConfiguracion(self) 
         
-        # 🔥 APLICACIÓN DE LOS 9 CANDADOS 🔥
         if getattr(self.usuario, 'ver_monitor', True): self.tabs.addTab(self.tab_monitor, "📊 MONITOR GLOBAL")
         if getattr(self.usuario, 'ver_ingreso', True): self.tabs.addTab(self.tab_ingreso, "1. INGRESO")
         if getattr(self.usuario, 'ver_ruta', True): self.tabs.addTab(self.tab_ruta, "2. Hoja de Ruta")
@@ -184,69 +191,90 @@ class PlataformaLogistica(QMainWindow):
         
         self.setup_monitor(); self.setup_ruta(); self.setStatusBar(QStatusBar())
 
+    # 🔥 MANUAL DE AYUDA 100% RENOVADO 🔥
     def mostrar_ayuda_inteligente(self):
         idx = self.tabs.currentIndex()
         tab_name = self.tabs.tabText(idx)
         
         diccionario_ayuda = {
-            "📊 MONITOR GLOBAL": """<b>MÓDULO: Monitor Global (Torre de Control)</b><br><br>
-            <b>Pestaña 1: Listado de Guías:</b><br>
-            - Muestra el movimiento del día en tiempo real. Se actualiza solo cada 15 segundos.<br>
-            - <b>Botones de Colores:</b> Hacé clic en ellos para filtrar la tabla rápidamente.<br>
-            - <b>📍 Ver Mapa:</b> Si el chofer usó la App, aparecerá un enlace rojo. Hacé clic para ver en Google Maps el lugar exacto de la entrega.<br><br>
-            <b>Pestaña 2: Novedades y Auditoría:</b><br>
-            - Es el 'Cerebro de Seguridad'. Te muestra un historial exacto de <b>quién</b> tocó <b>qué</b> guía y a qué <b>hora</b>.""",
+            "📊 MONITOR GLOBAL": """<b>MÓDULO: Monitor Global</b><br><br>
+            <b>¿CÓMO SE USA?</b><br>
+            1. <b>Para ver dónde está un paquete:</b> Mirá la columna 'Domicilio / Novedad'. Si el chofer usó su GPS, vas a ver un botón rojo [📍 MAPA]. Hacé clic ahí para abrir Google Maps con la ubicación exacta.<br>
+            2. <b>Para filtrar rápido:</b> Usá los botones de colores de abajo (Ej: tocá '🟢 ENTREGADO' para ver solo los éxitos del día).<br>
+            3. <b>Para buscar un día pasado:</b> Cambiá la 'Fecha' arriba a la izquierda y tocá 'Actualizar Ahora'.<br><br>
+            <b>Pestaña Auditoría:</b> Hacé clic en la segunda solapa para ver qué usuario tocó cada paquete y a qué hora.""",
+            
             "1. INGRESO": """<b>MÓDULO: Ingreso al Depósito</b><br><br>
-            <b>- Tipo (Reparto / Retiro):</b> Si elegís Retiro, el sistema creará un número de guía automáticamente.<br>
-            <b>- Destinos Fijos:</b> Para no escribir todo a mano, podés guardar direcciones frecuentes y llamarlas usando el 'Código Rápido'.<br>
-            <b>- Bultos y Frío:</b> Si tildás 'Combinado', te permite separar cuántos bultos van a heladera y cuántos no.<br>
-            <b>- Aplicar Contingencia:</b> Si lo tildás, le suma un recargo extra al cliente al momento de facturar.<br>
-            <b>- Contra Reembolso:</b> Escribí acá si el chofer debe cobrar dinero o traer un remito firmado.<br>
-            <b>- Botón DHL:</b> Permite subir el archivo TXT para cargar 50 guías de un solo golpe.""",
+            <b>¿CÓMO CARGAR UN PAQUETE NORMAL?</b><br>
+            1. Elegí el Proveedor en la lista.<br>
+            2. Escribí el Destinatario, Domicilio y Zona. <i>(Nota: Al guardar, el sistema aprenderá esta dirección sola para la próxima vez).</i><br>
+            3. Elegí los Bultos y el Tipo de Carga (Común, Refrigerado o Combinado).<br>
+            4. Tocá <b>GUARDAR EN DEPOSITO</b>. El sistema vaciará la pantalla sola para que cargues el siguiente.<br><br>
+            <b>¿CÓMO USAR DESTINOS FIJOS?</b><br>
+            - Elegí un Proveedor. En 'Destinos Fijos' abrí la lista y elegí uno. Los datos de dirección se completarán solos mágicamente.<br>
+            <b>¿CÓMO CARGAR UN RETIRO?</b><br>
+            - Cambiá 'Tipo' a 'Retiro'. El sistema inventará un número de guía automático. Buscá al cliente, poné los bultos y guardá.""",
+            
             "2. Hoja de Ruta": """<b>MÓDULO: Asignación y Despacho</b><br><br>
-            <b>- Asignar Guías:</b> Tildá los envíos en la columna 'Sel.', elegí un chofer arriba y apretá ASIGNAR.<br>
-            <b>- Tercerizados:</b> Si no lo lleva un chofer tuyo, seleccionalo y apretá este botón para emitir un Remito Formal.<br>
-            <b>- Cambiar Fecha:</b> Si un paquete no sale hoy, seleccionalo y pasalo para mañana.<br>
-            <b>- Cobro / Obs:</b> Prestá atención a esta columna, si está en ROJO significa que el chofer tiene que cobrar dinero.""",
+            <b>¿CÓMO MANDAR PAQUETES A LA CALLE?</b><br>
+            1. Tildá la cajita en la columna 'Sel.' de los paquetes que se lleva el chofer.<br>
+            2. Arriba de todo, elegí el nombre del Chofer en la lista.<br>
+            3. Tocá <b>ASIGNAR GUÍAS</b>.<br>
+            4. El sistema te preguntará si querés avisarle por WhatsApp (ideal para urgencias). Luego te preguntará si querés imprimir el PDF de la Hoja de Ruta.<br><br>
+            <b>¿CÓMO CAMBIAR ALGO PARA MAÑANA?</b><br>
+            - Tildá el paquete, tocá '📅 CAMBIAR FECHA', elegí el día de mañana, escribí por qué y guardá.""",
+            
             "3. Rendición": """<b>MÓDULO: Rendición de Caja y Mercadería</b><br><br>
-            <b>Pestaña 1: Gestión (Administrador):</b><br>
-            - Si al chofer se le queda sin batería el celular, tildá sus guías acá y apretá 'Confirmar Entregas' a mano.<br>
-            - Botón <b>Deshacer:</b> Si te equivocaste, esto vuelve la guía a estado 'En Depósito'.<br><br>
-            <b>Pestaña 2: Resumen Diario:</b><br>
-            - A la tarde elegí su nombre y apretá <b>Imprimir PDF</b>. Te saca una liquidación perfecta mostrando entregas y devoluciones.""",
+            <b>¿CÓMO CONFIRMAR UNA ENTREGA DESDE LA PC?</b> (Si al chofer no le anduvo la app)<br>
+            1. Tildá la guía del chofer.<br>
+            2. Tocá <b>✅ CONFIRMAR ENTREGAS</b>.<br>
+            3. Escribí quién recibió. Tocá 'Adjuntar Fotos' para subir la foto del remito escaneado.<br>
+            4. Al guardar, el sistema le mandará el mail automático al cliente con la foto.<br><br>
+            <b>¿CÓMO CORREGIR UN ERROR?</b><br>
+            - Si mandaste una guía por error, tildala y tocá <b>↩️ DESHACER (Admin)</b>. Volverá a depósito y el sistema ajustará la matemática para NO cobrarle visitas de más al cliente.""",
+            
             "4. Reportes": """<b>MÓDULO: Búsquedas Históricas</b><br><br>
-            - Usá los filtros de arriba para buscar cualquier información del pasado.<br>
-            - <b>Botón Excel (Verde):</b> Descarga la tabla entera a un formato editable.<br>
-            - <b>Botón PDF (Rojo):</b> Genera un informe formal con los totales de dinero.""",
+            <b>¿CÓMO BUSCAR ALGO VIEJO?</b><br>
+            1. Poné la Fecha 'Desde' y 'Hasta'.<br>
+            2. Si querés, filtrá por Cliente o Chofer.<br>
+            3. Tocá <b>🔍 Generar</b>.<br>
+            4. Para llevarlo a Excel y editarlo, tocá el botón Verde. Para dárselo a un cliente en formato formal, tocá el botón Rojo (PDF).""",
+            
             "5. Facturación": """<b>MÓDULO: Liquidación a Clientes</b><br><br>
-            <b>¿CÓMO CALCULA EL SISTEMA LAS TARIFAS?</b><br>
-            - <b>📦 Carga Común:</b> Se cobra 1 'Tarifa Base' cada 3 bultos. (Ej: 1 a 3 bultos = 1 Tarifa. De 4 a 6 bultos = 2 Tarifas).<br>
-            - <b>❄️ Carga Refrigerada:</b> Mismo cálculo (cada 3 bultos), pero usa el 'Precio Refrigerado' de esa zona.<br>
-            - <b>🔄 Combinado:</b> Toma el valor más alto (Refrigerado) y lo cobra cada 3 bultos totales.<br>
-            - <b>⚠️ Contingencia:</b> Es un recargo fijo extra que se suma al total si lo tildaste al ingresar la guía.<br>
-            - <b>📥 Tarifa DHL:</b> Se cobra por rangos de peso (Ej: 0 a 2kg, 2 a 5kg) multiplicado por los bultos. Si pasa los 30kg, suma el 'Excedente' por cada kilo extra.<br><br>
-            <b>Pestaña 1: Calcular Rendición:</b><br>
-            - Elegí mes y cliente. ⚠️ <b>Fila Amarilla:</b> El paquete requirió varias visitas (hacé clic en 'Editar' para cobrarle la demora al cliente).<br>
-            <b>Pestaña 2: Cuentas Corrientes:</b><br>
-            - Muestra la deuda histórica y permite asentar pagos (transferencias).""",
+            <b>¿CÓMO FACTURAR UN MES?</b><br>
+            1. Elegí la Sucursal, el Mes, el Año y el Proveedor arriba.<br>
+            2. Tocá <b>Calcular Listado</b>.<br>
+            3. <b>⚠️ ATENCIÓN FILAS AMARILLAS:</b> Si una fila sale amarilla, significa que el chofer fue varias veces a esa casa por culpa del cliente. Tocá el botón azul '✏️ Editar', tildá 'Cobrar Demora' y el sistema sumará el recargo solo.<br>
+            4. Si necesitás cobrar un alquiler de depósito, tocá '➕ Agregar Cargo Fijo'.<br>
+            5. Tocá <b>Rendición PDF</b>, decile que "SÍ" para que se marquen como facturadas, y guardá el archivo.<br><br>
+            <b>PESTAÑA CUENTAS CORRIENTES:</b><br>
+            - Tocá 'Actualizar Saldos' para ver quién te debe plata. Usá el botón '💰 Registrar Pago' cuando te hagan una transferencia.""",
+            
             "💬 CRM / Contacto": """<b>MÓDULO: Atención Post-Venta</b><br><br>
-            - Esta pantalla te muestra paquetes entregados con éxito que tienen celular.<br>
-            - <b>Enviar WhatsApp:</b> Al hacer clic, te abre WhatsApp Web con un mensaje pre-armado pidiendo feedback.""",
+            <b>¿CÓMO PEDIR FEEDBACK?</b><br>
+            1. Tocá '🔄 Cargar Entregas Recientes'.<br>
+            2. Buscá una entrega exitosa y tocá '💬 Enviar WhatsApp'.<br>
+            3. Se abrirá WhatsApp Web con un mensaje listo para mandar, preguntándole al cliente cómo fue su experiencia con tu empresa.""",
+            
             "📈 Estadísticas": """<b>MÓDULO: Panel Gerencial Ejecutivo</b><br><br>
             - Es el resumen de salud de tu sucursal en tiempo real.<br>
             - Muestra cajas de colores operativas, Ranking de Clientes y de Choferes.""",
+            
             "⚙️ Configuración": """<b>MÓDULO: Motor del Sistema</b><br><br>
-            <b>- Tarifas:</b> Acá configurás los precios base. Al cambiarlos, afecta a las guías nuevas.<br>
-            <b>- Choferes:</b> Su DNI será la contraseña para la App Web.<br>
-            <b>- Usuarios:</b> Creá accesos a la PC habilitando o bloqueando las pestañas visibles para cada empleado."""
+            <b>¿CÓMO CARGAR UN CHOFER NUEVO?</b><br>
+            - Vas a la pestaña 'Choferes'. Ponés su Nombre, Sucursal, su DNI (será su contraseña para la App) y su Celular (para que le lleguen tus avisos de WhatsApp).<br><br>
+            <b>¿CÓMO CARGAR UN USUARIO DE OFICINA?</b><br>
+            - Vas a 'Usuarios'. Ponés nombre, clave y tildás en la grilla EXACTAMENTE qué pestañas querés que vea. Si le tildás 'Admin Total', podrá ver todas las sucursales y usar el Botón de Reseteo del Tracking.<br><br>
+            <b>¿CÓMO ARREGLAR UN PRECIO?</b><br>
+            - Vas a 'Tarifas'. Seleccionás la Zona, tocás 'Editar', cambiás el valor y el sistema te preguntará si querés actualizar todas las zonas que tenían ese mismo precio de un solo golpe."""
         }
         texto = diccionario_ayuda.get(tab_name, "Selecciona una pestaña específica para ver su manual de uso detallado.")
         box = QMessageBox(self); box.setWindowTitle(f"📖 Manual de Usuario: {tab_name.replace('📊', '').replace('⚙️', '').strip()}")
         box.setTextFormat(Qt.TextFormat.RichText); box.setText(texto); box.setStyleSheet("font-size: 14px;"); box.exec()
     
     def abrir_tracking(self): 
-        # 🔥 PASAMOS EL USUARIO ACTUAL AL TRACKING PARA MOSTRAR EL BOTÓN RESET 🔥
-        d = TrackingDialog(self.session, self.usuario); d.exec()
+        from dialogos import TrackingDialog
+        d = TrackingDialog(self.session, getattr(self, 'usuario', None)); d.exec()
     
     def cambiar_sucursal(self, suc):
         self.sucursal_actual = suc
@@ -280,7 +308,6 @@ class PlataformaLogistica(QMainWindow):
             clis = self.session.query(ClienteRetiro).filter(ClienteRetiro.sucursal == self.sucursal_actual).order_by(ClienteRetiro.nombre).all()
             chs_todos = self.session.query(Chofer.nombre).all()
             
-            # 🔥 PROVEEDORES ORDENADOS ALFABÉTICAMENTE 🔥
             clientes_db = self.session.query(ClientePrincipal).order_by(ClientePrincipal.nombre.asc()).all()
             self.lista_proveedores = [c.nombre for c in clientes_db] if clientes_db else ["Andreani", "DHL", "Directo", "JetPaq", "MercadoLibre", "Otro"]
             
@@ -493,7 +520,6 @@ class PlataformaLogistica(QMainWindow):
                 domicilio_full = op.domicilio
                 if extra: domicilio_full += f" | Obs: {extra}"
                 
-                # 🔥 ARREGLO VISUAL DEL TEXTO ENCIMADO (GPS) 🔥
                 detalle_gps = gps_dict.get(op.id)
                 if detalle_gps:
                     try:
@@ -501,7 +527,6 @@ class PlataformaLogistica(QMainWindow):
                         dom_html = f'<div style="background-color:transparent;">{domicilio_full} <a href="{link}" style="color:#d32f2f; text-decoration:none; font-weight:bold; font-size:13px;">[📍 MAPA]</a></div>'
                         lbl = QLabel(dom_html); lbl.setAlignment(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft); lbl.setOpenExternalLinks(True); lbl.setStyleSheet("background-color: transparent; padding-left: 5px;") 
                         self.tabla_monitor.setCellWidget(row_idx, 4, lbl)
-                        # IMPORTANTE: Asignamos un texto vacío para que no dibuje dos cosas
                         self.tabla_monitor.setItem(row_idx, 4, QTableWidgetItem("")) 
                     except: 
                         self.tabla_monitor.setItem(row_idx, 4, QTableWidgetItem(domicilio_full))
@@ -625,6 +650,7 @@ class PlataformaLogistica(QMainWindow):
                 self.log_movimiento(op, "REPROGRAMADO (OFICINA)", detalle); self.session.commit(); self.toast.mostrar("✅ Fecha actualizada"); self.cargar_ruta(); self.cargar_monitor_global()
         except Exception as e: self.session.rollback()
 
+    # 🔥 MAGIA WHATSAPP 🔥
     def asignar_chofer_masivo(self):
         chofer = self.combo_masivo_chofer.currentText()
         if not chofer: return
@@ -638,8 +664,31 @@ class PlataformaLogistica(QMainWindow):
             ops = self.session.query(Operacion).filter(Operacion.id.in_(ids)).all(); now = datetime.now()
             for op in ops: op.chofer_asignado = chofer; op.estado = Estados.EN_REPARTO; op.fecha_salida = now; self.log_movimiento(op, "SALIDA A REPARTO", f"Asignado a {chofer}")
             self.session.commit()
-            box2 = QMessageBox(self); box2.setWindowTitle("Imprimir Hoja de Ruta"); box2.setText("✅ Asignación completada.\n\n¿Desea generar el PDF de Hoja de Ruta ahora?"); box2.setIcon(QMessageBox.Icon.Question); btn_si2 = box2.addButton("Sí, Imprimir", QMessageBox.ButtonRole.YesRole); btn_no2 = box2.addButton("No", QMessageBox.ButtonRole.NoRole); box2.exec()
+            
+            try:
+                res_cel = self.session.execute(text("SELECT celular FROM choferes WHERE nombre = :n"), {"n": chofer}).fetchone()
+                if res_cel and res_cel[0]:
+                    cel_chofer = "".join(filter(str.isdigit, str(res_cel[0])))
+                    if cel_chofer:
+                        msg_wsp = QMessageBox(self)
+                        msg_wsp.setWindowTitle("Aviso por WhatsApp")
+                        msg_wsp.setText(f"✅ Guías asignadas a {chofer}.\n¿Deseas avisarle por WhatsApp?")
+                        msg_wsp.setIcon(QMessageBox.Icon.Question)
+                        btn_wsp_si = msg_wsp.addButton("Sí, avisar", QMessageBox.ButtonRole.YesRole)
+                        btn_wsp_no = msg_wsp.addButton("No", QMessageBox.ButtonRole.NoRole)
+                        msg_wsp.exec()
+                        
+                        if msg_wsp.clickedButton() == btn_wsp_si:
+                            if not cel_chofer.startswith("54"): cel_chofer = "549" + cel_chofer
+                            mensaje = f"🚨 Hola {chofer}, te acabo de agregar {len(ids)} envío(s) a tu ruta. ¡Por favor revisá la App para ver los detalles!"
+                            url = f"https://web.whatsapp.com/send?phone={cel_chofer}&text={urllib.parse.quote(mensaje)}"
+                            QDesktopServices.openUrl(QUrl(url))
+            except Exception as e:
+                print("Error al abrir WhatsApp:", e)
+
+            box2 = QMessageBox(self); box2.setWindowTitle("Imprimir Hoja de Ruta"); box2.setText("¿Desea generar el PDF de Hoja de Ruta ahora?"); box2.setIcon(QMessageBox.Icon.Question); btn_si2 = box2.addButton("Sí, Imprimir", QMessageBox.ButtonRole.YesRole); btn_no2 = box2.addButton("No", QMessageBox.ButtonRole.NoRole); box2.exec()
             if box2.clickedButton() == btn_si2: self.generar_pdf_ruta(ids_forzados=ids)
+            
             self.cargar_ruta(); self.cargar_monitor_global()
         except Exception as e: self.session.rollback()
         
@@ -799,7 +848,6 @@ class PlataformaLogistica(QMainWindow):
             self.vista_stats.setHtml(html)
         except Exception as e: self.session.rollback()
 
-# 🔥 HILO DE FONDO 🔥
 class DBWakeUpThread(QThread):
     finished_signal = pyqtSignal()
     def run(self):
@@ -809,7 +857,6 @@ class DBWakeUpThread(QThread):
         except: pass
         self.finished_signal.emit()
 
-# 🔥 NUEVA PANTALLA DE CARGA (CON ARCHIVO .PNG LOCAL) 🔥
 class PantallaCargaMinimalista(QDialog):
     def __init__(self):
         super().__init__()
@@ -827,7 +874,6 @@ class PantallaCargaMinimalista(QDialog):
         lay_cont.setAlignment(Qt.AlignmentFlag.AlignCenter)
         
         self.lbl_logo = QLabel()
-        # Busca automáticamente el archivo "eklogo.png" en la misma carpeta que el programa
         base_dir = os.path.dirname(os.path.abspath(__file__))
         logo_path = os.path.join(base_dir, "eklogo.png")
         
@@ -866,7 +912,6 @@ class PantallaCargaMinimalista(QDialog):
     def actualizar_opacidad_texto(self, value):
         self.lbl_texto.setStyleSheet(f"font-size: 15px; font-weight: bold; color: rgba(51, 51, 51, {int(255*value)}); margin-top: 10px;")
 
-# 🔥 LA CLASE TRACKING AHORA TIENE EL BOTÓN DE RESETEO 🔥
 class TrackingDialog(QDialog):
     def __init__(self, session, usuario=None):
         super().__init__()
@@ -927,11 +972,9 @@ class TrackingDialog(QDialog):
                 op.fecha_salida = None
                 op.fecha_entrega = None
                 op.facturado = False
-                # No le borramos la plata (monto_servicio) por si se había editado a mano, 
-                # pero como facturado es False, se recalculará bien.
                 self.session.commit()
                 QMessageBox.information(self, "Éxito", "Guía reseteada y borrada del historial exitosamente.")
-                self.buscar_tracking() # Refresh
+                self.buscar_tracking() 
             except Exception as e:
                 self.session.rollback()
                 QMessageBox.critical(self, "Error", f"Fallo al resetear la guía: {str(e)}")
@@ -1015,7 +1058,6 @@ if __name__ == "__main__":
         splash.show()
         QApplication.processEvents()
         
-        # Arranca el hilo pesado sin congelar la ventana
         def terminar_arranque():
             try:
                 global ventana
