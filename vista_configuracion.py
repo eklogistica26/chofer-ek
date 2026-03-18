@@ -2,7 +2,7 @@ from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdi
                              QComboBox, QPushButton, QTableWidget, QTableWidgetItem, 
                              QHeaderView, QMessageBox, QGroupBox, QFormLayout, 
                              QListWidget, QStackedWidget, QAbstractItemView, 
-                             QDoubleSpinBox, QCheckBox, QTabWidget, QDialog)
+                             QDoubleSpinBox, QCheckBox, QTabWidget, QDialog, QGridLayout)
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QFont
 from datetime import datetime
@@ -10,9 +10,10 @@ from sqlalchemy import text, desc
 
 from database import (ClientePrincipal, DestinoFrecuente, Tarifa, TarifaDHL, 
                       HistorialTarifas, Chofer, ClienteRetiro, Usuario)
-from dialogos import EditarEmpresaDialog, EditarDestinoDialog, EditarTarifaDialog, HistorialTarifasDialog, EditarUsuarioDialog
+# IMPORTANTE: No importamos EditarUsuarioDialog desde dialogos para no hacer conflicto
+from dialogos import EditarEmpresaDialog, EditarDestinoDialog, EditarTarifaDialog, HistorialTarifasDialog
 
-# --- NUEVO DIÁLOGO PARA EDITAR CHOFERES (CON DNI) ---
+# --- DIÁLOGO PARA EDITAR CHOFERES ---
 class EditarChoferDialog(QDialog):
     def __init__(self, chofer_id, nombre, sucursal, dni, parent=None):
         super().__init__(parent)
@@ -41,6 +42,64 @@ class EditarChoferDialog(QDialog):
     @property
     def datos(self):
         return self.in_nom.text().strip(), self.in_suc.currentText(), self.in_dni.text().strip()
+
+# --- DIÁLOGO ORDENADO PARA EDITAR USUARIOS (9 PERMISOS) ---
+class EditarUsuarioDialog(QDialog):
+    def __init__(self, usuario, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle(f"✏️ Editar Permisos: {usuario.username}")
+        self.setGeometry(400, 200, 500, 350)
+        layout = QVBoxLayout(self)
+
+        form = QFormLayout()
+        self.in_user = QLineEdit(usuario.username)
+        self.in_pass = QLineEdit(usuario.password)
+        self.in_suc = QComboBox()
+        self.in_suc.addItems(["Mendoza", "San Juan", "Todas"])
+        self.in_suc.setCurrentText(usuario.sucursal_asignada)
+        self.chk_admin = QCheckBox("Es Admin Total (Desbloquea todo y el cambio de sucursal)")
+        self.chk_admin.setStyleSheet("color: red; font-weight: bold;")
+        self.chk_admin.setChecked(usuario.es_admin_total)
+
+        form.addRow("Usuario:", self.in_user)
+        form.addRow("Contraseña:", self.in_pass)
+        form.addRow("Sucursal:", self.in_suc)
+        form.addRow("", self.chk_admin)
+        layout.addLayout(form)
+
+        gb_perms = QGroupBox("Permisos de Acceso (Pestañas Visibles)")
+        grid = QGridLayout()
+        self.chk_mon = QCheckBox("📊 Monitor Global"); self.chk_mon.setChecked(usuario.ver_monitor)
+        self.chk_ing = QCheckBox("📥 Ingreso"); self.chk_ing.setChecked(usuario.ver_ingreso)
+        self.chk_rut = QCheckBox("🚚 Hoja de Ruta"); self.chk_rut.setChecked(usuario.ver_ruta)
+        self.chk_ren = QCheckBox("💰 Rendición"); self.chk_ren.setChecked(usuario.ver_rendicion)
+        self.chk_rep = QCheckBox("📋 Reportes"); self.chk_rep.setChecked(usuario.ver_reportes)
+        self.chk_fac = QCheckBox("🧾 Facturación"); self.chk_fac.setChecked(usuario.ver_facturacion)
+        self.chk_crm = QCheckBox("💬 CRM Contacto"); self.chk_crm.setChecked(usuario.ver_crm)
+        self.chk_est = QCheckBox("📈 Estadísticas"); self.chk_est.setChecked(usuario.ver_estadisticas)
+        self.chk_cfg = QCheckBox("⚙️ Configuración"); self.chk_cfg.setChecked(usuario.ver_configuracion)
+
+        grid.addWidget(self.chk_mon, 0, 0); grid.addWidget(self.chk_ing, 0, 1); grid.addWidget(self.chk_rut, 0, 2)
+        grid.addWidget(self.chk_ren, 1, 0); grid.addWidget(self.chk_rep, 1, 1); grid.addWidget(self.chk_fac, 1, 2)
+        grid.addWidget(self.chk_crm, 2, 0); grid.addWidget(self.chk_est, 2, 1); grid.addWidget(self.chk_cfg, 2, 2)
+        gb_perms.setLayout(grid)
+        layout.addWidget(gb_perms)
+
+        btn = QPushButton("GUARDAR CAMBIOS")
+        btn.setStyleSheet("background-color: #198754; color: white; font-weight: bold; padding: 10px;")
+        btn.clicked.connect(self.accept)
+        layout.addWidget(btn)
+
+    @property
+    def datos(self):
+        return {
+            "user": self.in_user.text().strip(), "pass": self.in_pass.text().strip(), "suc": self.in_suc.currentText(),
+            "admin": self.chk_admin.isChecked(), "mon": self.chk_mon.isChecked(), "ing": self.chk_ing.isChecked(),
+            "rut": self.chk_rut.isChecked(), "ren": self.chk_ren.isChecked(), "rep": self.chk_rep.isChecked(),
+            "fac": self.chk_fac.isChecked(), "crm": self.chk_crm.isChecked(), "est": self.chk_est.isChecked(),
+            "cfg": self.chk_cfg.isChecked()
+        }
+
 
 class TabConfiguracion(QWidget):
     def __init__(self, main_window):
@@ -77,45 +136,109 @@ class TabConfiguracion(QWidget):
     def cambiar_panel_config(self, index): 
         self.stack_config.setCurrentIndex(index)
     
-    # --- PANEL PROVEEDORES ---
+    # --- PANEL PROVEEDORES Y DESTINOS (MEJORADO CON PESTAÑAS) ---
     def setup_panel_proveedores(self):
-        l = QHBoxLayout(self.page_proveedores); col_prov = QVBoxLayout(); gb_prov = QGroupBox("1. Empresas / Proveedores"); f_prov = QHBoxLayout()
-        self.cfg_prov_nombre = QLineEdit(); self.cfg_prov_nombre.setPlaceholderText("Nombre Empresa")
-        btn_add_prov = QPushButton("➕"); btn_add_prov.clicked.connect(self.guardar_proveedor)
-        f_prov.addWidget(self.cfg_prov_nombre); f_prov.addWidget(btn_add_prov)
-        self.tabla_proveedores = QTableWidget(); self.tabla_proveedores.setColumnCount(3); self.tabla_proveedores.hideColumn(0)
-        self.tabla_proveedores.setHorizontalHeaderLabels(["ID", "Empresa", "Email Reportes"]); self.tabla_proveedores.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
-        self.tabla_proveedores.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows); self.tabla_proveedores.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
-        self.tabla_proveedores.itemClicked.connect(self.cargar_destinos_de_proveedor) 
-        btn_edit_prov = QPushButton("✏️ EDITAR EMPRESA"); btn_edit_prov.clicked.connect(self.editar_proveedor)
-        btn_del_prov = QPushButton("🗑️ Eliminar Empresa"); btn_del_prov.clicked.connect(lambda: self.main.eliminar_fila(self.tabla_proveedores, ClientePrincipal))
-        layout_prov = QVBoxLayout(); layout_prov.addLayout(f_prov); layout_prov.addWidget(self.tabla_proveedores); layout_prov.addWidget(btn_edit_prov); layout_prov.addWidget(btn_del_prov)
-        gb_prov.setLayout(layout_prov); col_prov.addWidget(gb_prov)
+        layout = QVBoxLayout(self.page_proveedores)
+        self.tabs_prov = QTabWidget()
         
-        col_dest = QVBoxLayout(); self.gb_dest = QGroupBox("2. Destinos Frecuentes (Seleccione Empresa primero)"); self.gb_dest.setEnabled(False); f_dest = QFormLayout()
-        self.cfg_dest_sucursal = QComboBox(); self.cfg_dest_sucursal.addItems(["Mendoza", "San Juan"]); f_dest.addRow("SUCURSAL:", self.cfg_dest_sucursal)
-        self.cfg_dest_nombre = QLineEdit(); self.cfg_dest_nombre.setPlaceholderText("Nombre del Destinatario"); self.cfg_dest_dom = QLineEdit(); self.cfg_dest_dom.setPlaceholderText("Calle 123"); self.cfg_dest_cel = QLineEdit(); self.cfg_dest_cel.setPlaceholderText("Teléfono / Celular"); self.cfg_dest_loc = QLineEdit(); self.cfg_dest_loc.setPlaceholderText("Zona (Para la tarifa)")
-        f_dest.addRow("DESTINATARIO:", self.cfg_dest_nombre); f_dest.addRow("DOMICILIO:", self.cfg_dest_dom); f_dest.addRow("CELULAR:", self.cfg_dest_cel); f_dest.addRow("ZONA:", self.cfg_dest_loc) 
-        btn_add_dest = QPushButton("💾 GUARDAR DESTINO"); btn_add_dest.clicked.connect(self.guardar_destino_frecuente)
-        self.tabla_destinos = QTableWidget(); self.tabla_destinos.setColumnCount(6); self.tabla_destinos.setHorizontalHeaderLabels(["ID", "SUC", "DESTINATARIO", "DOMICILIO", "CELULAR", "ZONA"]); self.tabla_destinos.verticalHeader().setVisible(False)
+        # PESTAÑA 1: EMPRESAS / PROVEEDORES
+        tab_prov = QWidget()
+        l_prov = QVBoxLayout(tab_prov)
+        
+        gb_prov = QGroupBox("Cargar Nueva Empresa")
+        f_prov = QHBoxLayout()
+        self.cfg_prov_nombre = QLineEdit(); self.cfg_prov_nombre.setPlaceholderText("Nombre de la Empresa...")
+        self.cfg_prov_email = QLineEdit(); self.cfg_prov_email.setPlaceholderText("Email para avisos (ejemplo@mail.com)...")
+        btn_add_prov = QPushButton("➕ AGREGAR EMPRESA")
+        btn_add_prov.setStyleSheet("background-color: #0d6efd; color: white; font-weight: bold; padding: 6px;")
+        btn_add_prov.clicked.connect(self.guardar_proveedor)
+        f_prov.addWidget(self.cfg_prov_nombre); f_prov.addWidget(self.cfg_prov_email); f_prov.addWidget(btn_add_prov)
+        gb_prov.setLayout(f_prov)
+        
+        self.tabla_proveedores = QTableWidget(); self.tabla_proveedores.setColumnCount(3); self.tabla_proveedores.hideColumn(0)
+        self.tabla_proveedores.setHorizontalHeaderLabels(["ID", "Empresa / Proveedor", "Email de Reportes"])
+        self.tabla_proveedores.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        self.tabla_proveedores.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        self.tabla_proveedores.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        
+        h_btns_prov = QHBoxLayout()
+        btn_edit_prov = QPushButton("✏️ EDITAR EMPRESA"); btn_edit_prov.clicked.connect(self.editar_proveedor)
+        btn_del_prov = QPushButton("🗑️ ELIMINAR EMPRESA"); btn_del_prov.clicked.connect(lambda: self.main.eliminar_fila(self.tabla_proveedores, ClientePrincipal))
+        h_btns_prov.addWidget(btn_edit_prov); h_btns_prov.addWidget(btn_del_prov)
+        
+        l_prov.addWidget(gb_prov)
+        l_prov.addWidget(self.tabla_proveedores)
+        l_prov.addLayout(h_btns_prov)
+        
+        self.tabs_prov.addTab(tab_prov, "🏢 Empresas (Proveedores)")
+
+        # PESTAÑA 2: DESTINOS FRECUENTES
+        tab_dest = QWidget()
+        l_dest = QVBoxLayout(tab_dest)
+        
+        top_dest = QHBoxLayout()
+        self.combo_prov_dest = QComboBox()
+        self.combo_prov_dest.setMinimumWidth(250)
+        self.combo_prov_dest.currentTextChanged.connect(self.cargar_destinos_de_proveedor_combo)
+        top_dest.addWidget(QLabel("<b>1. Seleccionar Empresa:</b>"))
+        top_dest.addWidget(self.combo_prov_dest)
+        top_dest.addStretch()
+        
+        gb_dest_add = QGroupBox("2. Cargar Nuevo Destino Frecuente")
+        f_dest = QFormLayout()
+        self.cfg_dest_sucursal = QComboBox(); self.cfg_dest_sucursal.addItems(["Mendoza", "San Juan"])
+        self.cfg_dest_nombre = QLineEdit(); self.cfg_dest_nombre.setPlaceholderText("Nombre del Destinatario (Ej: Juan Perez)")
+        self.cfg_dest_dom = QLineEdit(); self.cfg_dest_dom.setPlaceholderText("Calle, Altura, Barrio...")
+        self.cfg_dest_cel = QLineEdit(); self.cfg_dest_cel.setPlaceholderText("Teléfono / Celular (Opcional)")
+        self.cfg_dest_loc = QLineEdit(); self.cfg_dest_loc.setPlaceholderText("Zona (Sirve para que el sistema busque la tarifa)")
+        
+        f_dest.addRow("SUCURSAL:", self.cfg_dest_sucursal)
+        f_dest.addRow("DESTINATARIO:", self.cfg_dest_nombre)
+        f_dest.addRow("DOMICILIO:", self.cfg_dest_dom)
+        f_dest.addRow("CELULAR:", self.cfg_dest_cel)
+        f_dest.addRow("ZONA:", self.cfg_dest_loc)
+        
+        btn_add_dest = QPushButton("💾 GUARDAR DESTINO")
+        btn_add_dest.setStyleSheet("background-color: #198754; color: white; font-weight: bold; padding: 6px;")
+        btn_add_dest.clicked.connect(self.guardar_destino_frecuente)
+        f_dest.addRow("", btn_add_dest)
+        gb_dest_add.setLayout(f_dest)
+        
+        self.tabla_destinos = QTableWidget(); self.tabla_destinos.setColumnCount(6)
+        self.tabla_destinos.setHorizontalHeaderLabels(["ID", "SUC", "DESTINATARIO", "DOMICILIO", "CELULAR", "ZONA"])
+        self.tabla_destinos.verticalHeader().setVisible(False)
         header = self.tabla_destinos.horizontalHeader()
-        header.setSectionResizeMode(0, QHeaderView.ResizeMode.Fixed); self.tabla_destinos.setColumnWidth(0, 40); header.setSectionResizeMode(1, QHeaderView.ResizeMode.Fixed); self.tabla_destinos.setColumnWidth(1, 40)
-        header.setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch); header.setSectionResizeMode(3, QHeaderView.ResizeMode.Stretch) 
-        header.setSectionResizeMode(4, QHeaderView.ResizeMode.Fixed); self.tabla_destinos.setColumnWidth(4, 100); header.setSectionResizeMode(5, QHeaderView.ResizeMode.Fixed); self.tabla_destinos.setColumnWidth(5, 100) 
-        self.tabla_destinos.verticalHeader().setDefaultSectionSize(40); self.tabla_destinos.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows); self.tabla_destinos.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        header.setSectionResizeMode(0, QHeaderView.ResizeMode.Fixed); self.tabla_destinos.setColumnWidth(0, 50)
+        header.setSectionResizeMode(1, QHeaderView.ResizeMode.Fixed); self.tabla_destinos.setColumnWidth(1, 50)
+        header.setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
+        header.setSectionResizeMode(3, QHeaderView.ResizeMode.Stretch) 
+        header.setSectionResizeMode(4, QHeaderView.ResizeMode.Fixed); self.tabla_destinos.setColumnWidth(4, 120)
+        header.setSectionResizeMode(5, QHeaderView.ResizeMode.Fixed); self.tabla_destinos.setColumnWidth(5, 120) 
+        self.tabla_destinos.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        self.tabla_destinos.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        
+        h_btns_dest = QHBoxLayout()
         btn_edit_dest = QPushButton("✏️ EDITAR DESTINO"); btn_edit_dest.clicked.connect(self.editar_destino_frecuente)
-        btn_del_dest = QPushButton("🗑️ Eliminar Destino"); btn_del_dest.clicked.connect(lambda: self.main.eliminar_fila(self.tabla_destinos, DestinoFrecuente))
-        layout_dest = QVBoxLayout(); layout_dest.addLayout(f_dest); layout_dest.addWidget(btn_add_dest); layout_dest.addWidget(self.tabla_destinos) 
-        h_btns_dest = QHBoxLayout(); h_btns_dest.addWidget(btn_edit_dest); h_btns_dest.addWidget(btn_del_dest)
-        layout_dest.addLayout(h_btns_dest); self.gb_dest.setLayout(layout_dest); col_dest.addWidget(self.gb_dest)
-        l.addLayout(col_prov, 25); l.addLayout(col_dest, 75)
+        btn_del_dest = QPushButton("🗑️ ELIMINAR DESTINO"); btn_del_dest.clicked.connect(lambda: self.main.eliminar_fila(self.tabla_destinos, DestinoFrecuente))
+        h_btns_dest.addWidget(btn_edit_dest); h_btns_dest.addWidget(btn_del_dest)
+        
+        l_dest.addLayout(top_dest)
+        l_dest.addWidget(gb_dest_add)
+        l_dest.addWidget(QLabel("<b>3. Destinos Guardados para esta empresa:</b>"))
+        l_dest.addWidget(self.tabla_destinos)
+        l_dest.addLayout(h_btns_dest)
+        
+        self.tabs_prov.addTab(tab_dest, "📍 Destinos Frecuentes")
+        layout.addWidget(self.tabs_prov)
 
     def guardar_proveedor(self):
         n = self.cfg_prov_nombre.text().strip()
+        e = self.cfg_prov_email.text().strip()
         if n:
             try: 
-                self.main.session.add(ClientePrincipal(nombre=n)); self.main.session.commit()
-                self.cfg_prov_nombre.clear(); self.cargar_proveedores_tabla(); self.main.actualizar_combos_dinamicos()
+                self.main.session.add(ClientePrincipal(nombre=n, email_reportes=e)); self.main.session.commit()
+                self.cfg_prov_nombre.clear(); self.cfg_prov_email.clear()
+                self.cargar_proveedores_tabla(); self.main.actualizar_combos_dinamicos()
                 QMessageBox.information(self, "Éxito", "Empresa agregada.")
             except: 
                 self.main.session.rollback(); QMessageBox.warning(self, "Error", "Esa empresa ya existe o hubo un corte de red. Intenta de nuevo.")
@@ -135,20 +258,30 @@ class TabConfiguracion(QWidget):
     def cargar_proveedores_tabla(self):
         try:
             self.tabla_proveedores.setRowCount(0)
-            for r, c in enumerate(self.main.session.query(ClientePrincipal).all()): 
+            clientes = self.main.session.query(ClientePrincipal).order_by(ClientePrincipal.nombre.asc()).all()
+            
+            curr_prov = self.combo_prov_dest.currentText()
+            self.combo_prov_dest.blockSignals(True)
+            self.combo_prov_dest.clear()
+            self.combo_prov_dest.addItem("--- Seleccione una Empresa ---")
+            
+            for r, c in enumerate(clientes): 
                 self.tabla_proveedores.insertRow(r); self.tabla_proveedores.setItem(r, 0, QTableWidgetItem(str(c.id)))
                 self.tabla_proveedores.setItem(r, 1, QTableWidgetItem(c.nombre)); self.tabla_proveedores.setItem(r, 2, QTableWidgetItem(c.email_reportes or "-"))
+                self.combo_prov_dest.addItem(c.nombre)
+                
+            self.combo_prov_dest.setCurrentText(curr_prov)
+            self.combo_prov_dest.blockSignals(False)
         except Exception: self.main.session.rollback()
 
-    def cargar_destinos_de_proveedor(self):
-        r = self.tabla_proveedores.currentRow()
-        if r < 0: return
-        try:
-            self.prov_seleccionado = self.tabla_proveedores.item(r, 1).text()
-            self.gb_dest.setTitle(f"2. Destinos de: {self.prov_seleccionado}")
-            self.gb_dest.setEnabled(True)
+    def cargar_destinos_de_proveedor_combo(self, prov_seleccionado):
+        if not prov_seleccionado or "Seleccione" in prov_seleccionado:
             self.tabla_destinos.setRowCount(0)
-            dests = self.main.session.query(DestinoFrecuente).filter(DestinoFrecuente.proveedor == self.prov_seleccionado).order_by(DestinoFrecuente.id).all()
+            return
+        try:
+            self.prov_seleccionado = prov_seleccionado
+            self.tabla_destinos.setRowCount(0)
+            dests = self.main.session.query(DestinoFrecuente).filter(DestinoFrecuente.proveedor == self.prov_seleccionado).order_by(DestinoFrecuente.destinatario.asc()).all()
             for i, d in enumerate(dests):
                 self.tabla_destinos.insertRow(i)
                 id_item = QTableWidgetItem(str(d.id)); id_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter); id_item.setFont(QFont("Arial", 11, QFont.Weight.Bold)) 
@@ -158,14 +291,17 @@ class TabConfiguracion(QWidget):
         except Exception: self.main.session.rollback()
 
     def guardar_destino_frecuente(self):
-        if not hasattr(self, 'prov_seleccionado'): return
-        nombre = self.cfg_dest_nombre.text()
+        if not hasattr(self, 'prov_seleccionado') or "Seleccione" in self.prov_seleccionado:
+            QMessageBox.warning(self, "Error", "Debe elegir una empresa arriba primero.")
+            return
+        nombre = self.cfg_dest_nombre.text().strip()
         if not nombre: QMessageBox.warning(self, "Error", "El Destinatario es obligatorio"); return
         try:
-            nuevo = DestinoFrecuente(proveedor=self.prov_seleccionado, sucursal=self.cfg_dest_sucursal.currentText(), alias=None, destinatario=nombre, domicilio=self.cfg_dest_dom.text(), localidad=self.cfg_dest_loc.text(), celular=self.cfg_dest_cel.text())
+            nuevo = DestinoFrecuente(proveedor=self.prov_seleccionado, sucursal=self.cfg_dest_sucursal.currentText(), alias=None, destinatario=nombre, domicilio=self.cfg_dest_dom.text().strip(), localidad=self.cfg_dest_loc.text().strip(), celular=self.cfg_dest_cel.text().strip())
             self.main.session.add(nuevo); self.main.session.commit()
             self.cfg_dest_nombre.clear(); self.cfg_dest_dom.clear(); self.cfg_dest_loc.clear(); self.cfg_dest_cel.clear()
-            self.cargar_destinos_de_proveedor(); QMessageBox.information(self, "Guardado", f"Destino guardado. ID: {nuevo.id}")
+            self.cargar_destinos_de_proveedor_combo(self.prov_seleccionado)
+            self.main.toast.mostrar("✅ Destino guardado correctamente.")
         except Exception: self.main.session.rollback(); QMessageBox.warning(self, "Micro-corte", "Conexión inestable. Intenta de nuevo.")
 
     def editar_destino_frecuente(self):
@@ -176,7 +312,9 @@ class TabConfiguracion(QWidget):
             destino = self.main.session.query(DestinoFrecuente).get(id_obj)
             if destino:
                 dlg = EditarDestinoDialog(destino, self)
-                if dlg.exec() == QDialog.DialogCode.Accepted: self.main.session.commit(); self.cargar_destinos_de_proveedor()
+                if dlg.exec() == QDialog.DialogCode.Accepted: 
+                    self.main.session.commit()
+                    self.cargar_destinos_de_proveedor_combo(self.prov_seleccionado)
         except Exception: self.main.session.rollback()
 
     # --- PANEL TARIFAS ---
@@ -246,7 +384,7 @@ class TabConfiguracion(QWidget):
         suc_sel = self.cfg_tarifa_sucursal.currentText()
         try:
             self.tabla_tarifas.setRowCount(0)
-            tarifas = self.main.session.query(Tarifa).filter(Tarifa.sucursal == suc_sel).all()
+            tarifas = self.main.session.query(Tarifa).filter(Tarifa.sucursal == suc_sel).order_by(Tarifa.localidad.asc()).all()
             vistos = set()
             row = 0
             for t in tarifas:
@@ -389,25 +527,40 @@ class TabConfiguracion(QWidget):
         self.tabla_clientes.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows); self.tabla_clientes.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         l.addWidget(self.tabla_clientes); btn_d = QPushButton("Eliminar Cliente"); btn_d.clicked.connect(lambda: self.main.eliminar_fila(self.tabla_clientes, ClienteRetiro)); l.addWidget(btn_d)
     
-    # 🔥 PANEL USUARIOS ACTUALIZADO CON CRM Y ESTADISTICAS 🔥
+    # --- PANEL USUARIOS (LA GRILLA DE 9 PERMISOS) ---
     def setup_panel_usuarios(self):
-        l = QVBoxLayout(self.page_usuarios); gb = QGroupBox("Usuarios y Permisos"); f = QFormLayout()
-        self.u_user = QLineEdit(); self.u_pass = QLineEdit(); self.u_suc = QComboBox(); self.u_suc.addItems(["Mendoza", "San Juan"]); self.chk_admin = QCheckBox("Es Admin Total"); 
-        self.chk_rep = QCheckBox("Ver Reportes"); self.chk_fac = QCheckBox("Ver Facturación"); self.chk_conf = QCheckBox("Ver Configuración"); self.chk_rend = QCheckBox("Ver Rendición")
+        l = QVBoxLayout(self.page_usuarios); gb = QGroupBox("Crear Nuevo Usuario"); f = QFormLayout()
+        self.u_user = QLineEdit(); self.u_pass = QLineEdit(); self.u_suc = QComboBox(); self.u_suc.addItems(["Mendoza", "San Juan"]); 
+        self.chk_admin = QCheckBox("Es Admin Total (Desbloquea TODO y permite cambiar sucursal de vista)"); self.chk_admin.setStyleSheet("color: red; font-weight: bold;")
         
-        # Nuevos checkboxes
-        self.chk_crm = QCheckBox("Ver CRM"); self.chk_est = QCheckBox("Ver Estadísticas")
+        gb_checks = QGroupBox("Permisos de Acceso (Tildar pestañas que podrá ver)")
+        grid = QGridLayout()
+        self.chk_mon = QCheckBox("📊 Monitor Global"); self.chk_mon.setChecked(True)
+        self.chk_ing = QCheckBox("📥 Ingreso"); self.chk_ing.setChecked(True)
+        self.chk_rut = QCheckBox("🚚 Hoja de Ruta"); self.chk_rut.setChecked(True)
+        self.chk_ren = QCheckBox("💰 Rendición")
+        self.chk_rep = QCheckBox("📋 Reportes")
+        self.chk_fac = QCheckBox("🧾 Facturación")
+        self.chk_crm = QCheckBox("💬 CRM")
+        self.chk_est = QCheckBox("📈 Estadísticas")
+        self.chk_cfg = QCheckBox("⚙️ Configuración")
         
-        ly_checks1 = QHBoxLayout(); ly_checks1.addWidget(self.chk_rep); ly_checks1.addWidget(self.chk_fac); ly_checks1.addWidget(self.chk_conf); ly_checks1.addWidget(self.chk_rend)
-        ly_checks2 = QHBoxLayout(); ly_checks2.addWidget(self.chk_crm); ly_checks2.addWidget(self.chk_est); ly_checks2.addStretch()
+        grid.addWidget(self.chk_mon, 0, 0); grid.addWidget(self.chk_ing, 0, 1); grid.addWidget(self.chk_rut, 0, 2)
+        grid.addWidget(self.chk_ren, 1, 0); grid.addWidget(self.chk_rep, 1, 1); grid.addWidget(self.chk_fac, 1, 2)
+        grid.addWidget(self.chk_crm, 2, 0); grid.addWidget(self.chk_est, 2, 1); grid.addWidget(self.chk_cfg, 2, 2)
+        gb_checks.setLayout(grid)
 
-        f.addRow("Usuario:", self.u_user); f.addRow("Pass:", self.u_pass); f.addRow("Sucursal:", self.u_suc); f.addRow(self.chk_admin); 
-        f.addRow("Permisos:", ly_checks1); f.addRow("", ly_checks2)
+        f.addRow("Usuario:", self.u_user); f.addRow("Pass:", self.u_pass); f.addRow("Sucursal:", self.u_suc); f.addRow("", self.chk_admin)
+        f.addRow(gb_checks)
         btn = QPushButton("➕ CREAR USUARIO"); btn.clicked.connect(self.guardar_usuario)
-        gb.setLayout(f); l.addWidget(gb); l.addWidget(btn)
+        f.addRow("", btn)
+        gb.setLayout(f); l.addWidget(gb)
         
-        self.tabla_usuarios = QTableWidget(); self.tabla_usuarios.setColumnCount(5); self.tabla_usuarios.hideColumn(0); self.tabla_usuarios.setHorizontalHeaderLabels(["ID", "Usuario", "Sucursal", "Admin?", "Permisos"]); self.tabla_usuarios.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
-        self.tabla_usuarios.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows); self.tabla_usuarios.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.tabla_usuarios = QTableWidget(); self.tabla_usuarios.setColumnCount(5); self.tabla_usuarios.hideColumn(0)
+        self.tabla_usuarios.setHorizontalHeaderLabels(["ID", "Usuario", "Sucursal", "Admin?", "Permisos Habilitados"])
+        self.tabla_usuarios.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        self.tabla_usuarios.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        self.tabla_usuarios.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         l.addWidget(self.tabla_usuarios)
         
         h_btns_u = QHBoxLayout()
@@ -423,7 +576,10 @@ class TabConfiguracion(QWidget):
         u = self.u_user.text().strip().lower(); p = self.u_pass.text().strip()
         if not u or not p: return
         try: 
-            usr = Usuario(username=u, password=p, sucursal_asignada=self.u_suc.currentText(), es_admin_total=self.chk_admin.isChecked(), ver_reportes=self.chk_rep.isChecked(), ver_facturacion=self.chk_fac.isChecked(), ver_configuracion=self.chk_conf.isChecked(), ver_rendicion=self.chk_rend.isChecked(), ver_crm=self.chk_crm.isChecked(), ver_estadisticas=self.chk_est.isChecked())
+            usr = Usuario(username=u, password=p, sucursal_asignada=self.u_suc.currentText(), es_admin_total=self.chk_admin.isChecked(), 
+                          ver_monitor=self.chk_mon.isChecked(), ver_ingreso=self.chk_ing.isChecked(), ver_ruta=self.chk_rut.isChecked(),
+                          ver_rendicion=self.chk_ren.isChecked(), ver_reportes=self.chk_rep.isChecked(), ver_facturacion=self.chk_fac.isChecked(), 
+                          ver_crm=self.chk_crm.isChecked(), ver_estadisticas=self.chk_est.isChecked(), ver_configuracion=self.chk_cfg.isChecked())
             self.main.session.add(usr); self.main.session.commit(); QMessageBox.information(self, "Éxito", "Usuario creado."); self.u_user.clear(); self.u_pass.clear(); self.cargar_usuarios_tabla()
         except Exception as e: self.main.session.rollback(); QMessageBox.warning(self, "Error", "El usuario ya existe.")
             
@@ -436,26 +592,15 @@ class TabConfiguracion(QWidget):
             id_obj = int(self.tabla_usuarios.item(r, 0).text())
             usr = self.main.session.query(Usuario).get(id_obj)
             if usr:
-                # Nota: El cuadro emergente solo editará permisos base. Para los nuevos, se respeta el valor existente (d.get).
                 dlg = EditarUsuarioDialog(usr, self)
                 if dlg.exec() == QDialog.DialogCode.Accepted:
                     d = dlg.datos
                     if d['user'] and d['pass']:
-                        usr.username = d['user']
-                        usr.password = d['pass']
-                        usr.sucursal_asignada = d['suc']
-                        usr.es_admin_total = d['admin']
-                        usr.ver_reportes = d['rep']
-                        usr.ver_facturacion = d['fac']
-                        usr.ver_configuracion = d['conf']
-                        usr.ver_rendicion = d['rend']
-                        
-                        # Mantiene los permisos de CRM y Stats si el dialog no los proveyó
-                        usr.ver_crm = d.get('crm', usr.ver_crm)
-                        usr.ver_estadisticas = d.get('est', usr.ver_estadisticas)
-                        
-                        self.main.session.commit()
-                        self.cargar_usuarios_tabla()
+                        usr.username = d['user']; usr.password = d['pass']; usr.sucursal_asignada = d['suc']; usr.es_admin_total = d['admin']
+                        usr.ver_monitor = d['mon']; usr.ver_ingreso = d['ing']; usr.ver_ruta = d['rut']
+                        usr.ver_rendicion = d['ren']; usr.ver_reportes = d['rep']; usr.ver_facturacion = d['fac']
+                        usr.ver_crm = d['crm']; usr.ver_estadisticas = d['est']; usr.ver_configuracion = d['cfg']
+                        self.main.session.commit(); self.cargar_usuarios_tabla()
                         QMessageBox.information(self, "Éxito", "Usuario editado correctamente.")
                     else:
                         QMessageBox.warning(self, "Error", "Usuario y contraseña no pueden estar vacíos.")
@@ -464,16 +609,19 @@ class TabConfiguracion(QWidget):
 
     def cargar_usuarios_tabla(self):
         try:
-            self.tabla_usuarios.setRowCount(0); us = self.main.session.query(Usuario).all()
+            self.tabla_usuarios.setRowCount(0); us = self.main.session.query(Usuario).order_by(Usuario.username.asc()).all()
             for r, u in enumerate(us):
                 self.tabla_usuarios.insertRow(r); self.tabla_usuarios.setItem(r, 0, QTableWidgetItem(str(u.id))); self.tabla_usuarios.setItem(r, 1, QTableWidgetItem(u.username)); self.tabla_usuarios.setItem(r, 2, QTableWidgetItem(u.sucursal_asignada)); self.tabla_usuarios.setItem(r, 3, QTableWidgetItem("SI" if u.es_admin_total else "NO"))
                 perms = []
+                if u.ver_monitor: perms.append("Mon")
+                if u.ver_ingreso: perms.append("Ing")
+                if u.ver_ruta: perms.append("Rut")
+                if u.ver_rendicion: perms.append("Rend")
                 if u.ver_reportes: perms.append("Rep")
                 if u.ver_facturacion: perms.append("Fac")
-                if u.ver_configuracion: perms.append("Cfg")
-                if u.ver_rendicion: perms.append("Rend")
                 if u.ver_crm: perms.append("CRM")
                 if u.ver_estadisticas: perms.append("Est")
+                if u.ver_configuracion: perms.append("Cfg")
                 self.tabla_usuarios.setItem(r, 4, QTableWidgetItem(", ".join(perms)))
         except Exception: self.main.session.rollback()
         
