@@ -50,7 +50,7 @@ NUMERO_BASE_FINAL = limpiar_telefono_wsp(NUMERO_BASE_RAW)
 def serve_logo():
     return send_from_directory(BASE_DIR, 'eklogo.png')
 
-# --- MAIL BLINDADO Y ACTUALIZADO (NOMBRES EK LOGISTICA Y FOTOS ADJUNTAS) ---
+# --- MAIL BLINDADO Y ACTUALIZADO CON ANTI-REBOTE POR PESO ---
 def enviar_email(destinatario, guia, rutas_fotos, proveedor, link_mapa=""):
     if not BREVO_API_KEY: return
     conn = get_db()
@@ -116,19 +116,40 @@ def enviar_email(destinatario, guia, rutas_fotos, proveedor, link_mapa=""):
     if len(destinatarios_lista) == 1 and destinatarios_lista[0]["email"] == EMAIL_REMITENTE:
         if "bcc" in payload: del payload["bcc"]
         
-    # 🔥 LA LÍNEA MÁGICA QUE FALTABA PARA ADJUNTAR LAS FOTOS 🔥
     if adjuntos:
         payload["attachment"] = adjuntos
     
     headers = {"accept": "application/json", "api-key": BREVO_API_KEY, "content-type": "application/json"}
+    
     try: 
+        # INTENTO 1: Mandar el correo con las fotos adjuntas
         r = requests.post(url, json=payload, headers=headers)
+        
+        # Si Brevo rebota el correo (casi siempre porque las fotos son muy pesadas)
         if r.status_code not in [200, 201, 202]:
-            payload["to"] = [{"email": EMAIL_REMITENTE}]
-            if "bcc" in payload: del payload["bcc"]
-            if adjuntos: payload["attachment"] = adjuntos
-            requests.post(url, json=payload, headers=headers)
-    except Exception as e: print("Error en Brevo:", e)
+            print(f"Error Brevo (Intento 1 con fotos): {r.text}")
+            
+            # INTENTO 2: Le sacamos las fotos pesadas y lo mandamos de nuevo con un aviso
+            if "attachment" in payload:
+                del payload["attachment"]
+                
+                # Le avisamos al cliente por qué no llegó la foto
+                payload["htmlContent"] = html_content.replace(
+                    "<b>Adjuntamos la foto del remito/guía conformado.</b>",
+                    "<b style='color:#D32F2F;'>⚠️ La foto se guardó en nuestro sistema, pero era demasiado pesada para adjuntarse en este correo.</b>"
+                )
+                
+                r2 = requests.post(url, json=payload, headers=headers)
+                
+                # INTENTO 3: Si por algún otro error sigue fallando, nos lo mandamos a nosotros mismos
+                if r2.status_code not in [200, 201, 202]:
+                    print(f"Error Brevo (Intento 2 sin fotos): {r2.text}")
+                    payload["to"] = [{"email": EMAIL_REMITENTE}]
+                    if "bcc" in payload: del payload["bcc"]
+                    requests.post(url, json=payload, headers=headers)
+                    
+    except Exception as e: 
+        print("Error crítico en Brevo:", e)
 
 HTML_HEAD = """
 <head>
