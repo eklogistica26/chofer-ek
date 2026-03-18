@@ -92,8 +92,8 @@ class PlataformaLogistica(QMainWindow):
         from vistas_operativas import TabIngreso, TabRendicion, TabFacturacion
         from vista_configuracion import TabConfiguracion
         
-        global ToastNotification, ConfirmarEntregaDialog, ReprogramarAdminDialog, HistorialHojasRutaDialog, EditarOperacionDialog, TrackingDialog, CambiarFechaDialog
-        from dialogos import ToastNotification, ConfirmarEntregaDialog, ReprogramarAdminDialog, HistorialHojasRutaDialog, EditarOperacionDialog, TrackingDialog, CambiarFechaDialog
+        global ToastNotification, ConfirmarEntregaDialog, ReprogramarAdminDialog, HistorialHojasRutaDialog, EditarOperacionDialog, CambiarFechaDialog
+        from dialogos import ToastNotification, ConfirmarEntregaDialog, ReprogramarAdminDialog, HistorialHojasRutaDialog, EditarOperacionDialog, CambiarFechaDialog
         
         global crear_pdf_ruta, crear_pdf_tercerizados, crear_pdf_reporte
         from utilidades import crear_pdf_ruta, crear_pdf_tercerizados, crear_pdf_reporte
@@ -244,7 +244,9 @@ class PlataformaLogistica(QMainWindow):
         box = QMessageBox(self); box.setWindowTitle(f"📖 Manual de Usuario: {tab_name.replace('📊', '').replace('⚙️', '').strip()}")
         box.setTextFormat(Qt.TextFormat.RichText); box.setText(texto); box.setStyleSheet("font-size: 14px;"); box.exec()
     
-    def abrir_tracking(self): d = TrackingDialog(self.session); d.exec()
+    def abrir_tracking(self): 
+        # 🔥 PASAMOS EL USUARIO ACTUAL AL TRACKING PARA MOSTRAR EL BOTÓN RESET 🔥
+        d = TrackingDialog(self.session, self.usuario); d.exec()
     
     def cambiar_sucursal(self, suc):
         self.sucursal_actual = suc
@@ -277,8 +279,10 @@ class PlataformaLogistica(QMainWindow):
             nombres_choferes = [c[0] for c in chs]
             clis = self.session.query(ClienteRetiro).filter(ClienteRetiro.sucursal == self.sucursal_actual).order_by(ClienteRetiro.nombre).all()
             chs_todos = self.session.query(Chofer.nombre).all()
-            clientes_db = self.session.query(ClientePrincipal).all()
-            self.lista_proveedores = [c.nombre for c in clientes_db] if clientes_db else ["JetPaq", "DHL", "Andreani", "MercadoLibre", "Directo", "Otro"]
+            
+            # 🔥 PROVEEDORES ORDENADOS ALFABÉTICAMENTE 🔥
+            clientes_db = self.session.query(ClientePrincipal).order_by(ClientePrincipal.nombre.asc()).all()
+            self.lista_proveedores = [c.nombre for c in clientes_db] if clientes_db else ["Andreani", "DHL", "Directo", "JetPaq", "MercadoLibre", "Otro"]
             
             if hasattr(self, 'tab_ingreso'):
                 self.tab_ingreso.in_loc_combo.clear(); self.tab_ingreso.in_loc_combo.addItems(sorted([z[0] for z in zs]))
@@ -314,8 +318,6 @@ class PlataformaLogistica(QMainWindow):
             else:
                 t = self.session.query(Tarifa).filter(Tarifa.localidad == loc, Tarifa.sucursal == suc).first()
                 if not t: return 0.0
-                
-                # 🔥 LÓGICA DE PRECIO COMBINADO ACTUALIZADA 🔥
                 if cant_comun > 0 and cant_frio > 0:
                     bultos_tot = cant_comun + cant_frio
                     multiplicador = math.ceil(bultos_tot / 3)
@@ -324,9 +326,7 @@ class PlataformaLogistica(QMainWindow):
                     costo_comun = math.ceil(cant_comun / 3) * t.precio_base_comun if cant_comun > 0 else 0
                     costo_frio = math.ceil(cant_frio / 3) * t.precio_base_refrig if cant_frio > 0 else 0
                     return costo_comun + costo_frio
-        except Exception as e: 
-            self.session.rollback()
-            return 0.0
+        except Exception as e: self.session.rollback(); return 0.0
 
     def eliminar_fila(self, tabla, Modelo):
         r = tabla.currentRow(); 
@@ -373,7 +373,6 @@ class PlataformaLogistica(QMainWindow):
         btn_refresh = QPushButton("🔄 Actualizar Ahora"); btn_refresh.clicked.connect(lambda: {self.cargar_monitor_global(), self.cargar_novedades()})
         top_bar.addWidget(QLabel("Fecha:")); top_bar.addWidget(self.mon_date); top_bar.addWidget(QLabel("Chofer:")); top_bar.addWidget(self.mon_chofer_combo); top_bar.addWidget(btn_refresh); top_bar.addStretch()
         
-        # 🔥 COLUMNAS ACTUALIZADAS PARA EL MONITOR GLOBAL 🔥
         self.tabla_monitor = QTableWidget(); self.tabla_monitor.setColumnCount(8); 
         self.tabla_monitor.setHorizontalHeaderLabels(["Estado", "Guía", "Cliente", "Destinatario", "Domicilio / Novedad", "Zona", "Bultos", "Chofer"])
         
@@ -487,7 +486,6 @@ class PlataformaLogistica(QMainWindow):
                 self.tabla_monitor.setItem(row_idx, 2, QTableWidgetItem(op.proveedor))
                 self.tabla_monitor.setItem(row_idx, 3, QTableWidgetItem(op.destinatario))
                 
-                # 🔥 LÓGICA DE LA COLUMNA DOMICILIO / GPS / COBRANZA 🔥
                 extra = ""
                 if op.es_contra_reembolso and op.monto_recaudacion: extra += f"Cobrar ${op.monto_recaudacion} "
                 if op.info_intercambio: extra += op.info_intercambio
@@ -495,14 +493,16 @@ class PlataformaLogistica(QMainWindow):
                 domicilio_full = op.domicilio
                 if extra: domicilio_full += f" | Obs: {extra}"
                 
+                # 🔥 ARREGLO VISUAL DEL TEXTO ENCIMADO (GPS) 🔥
                 detalle_gps = gps_dict.get(op.id)
                 if detalle_gps:
                     try:
                         link = detalle_gps.split("| GPS:")[1].strip()
-                        dom_html = f'{domicilio_full} <a href="{link}" style="color:#d32f2f; text-decoration:none; font-weight:bold; font-size:13px;">[📍 MAPA]</a>'
-                        lbl = QLabel(dom_html); lbl.setAlignment(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft); lbl.setOpenExternalLinks(True); lbl.setStyleSheet(f"background-color: transparent; padding-left: 5px;") 
+                        dom_html = f'<div style="background-color:transparent;">{domicilio_full} <a href="{link}" style="color:#d32f2f; text-decoration:none; font-weight:bold; font-size:13px;">[📍 MAPA]</a></div>'
+                        lbl = QLabel(dom_html); lbl.setAlignment(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft); lbl.setOpenExternalLinks(True); lbl.setStyleSheet("background-color: transparent; padding-left: 5px;") 
                         self.tabla_monitor.setCellWidget(row_idx, 4, lbl)
-                        self.tabla_monitor.setItem(row_idx, 4, QTableWidgetItem(domicilio_full)) # Dummy para ordenar
+                        # IMPORTANTE: Asignamos un texto vacío para que no dibuje dos cosas
+                        self.tabla_monitor.setItem(row_idx, 4, QTableWidgetItem("")) 
                     except: 
                         self.tabla_monitor.setItem(row_idx, 4, QTableWidgetItem(domicilio_full))
                 else:
@@ -827,6 +827,7 @@ class PantallaCargaMinimalista(QDialog):
         lay_cont.setAlignment(Qt.AlignmentFlag.AlignCenter)
         
         self.lbl_logo = QLabel()
+        # Busca automáticamente el archivo "eklogo.png" en la misma carpeta que el programa
         base_dir = os.path.dirname(os.path.abspath(__file__))
         logo_path = os.path.join(base_dir, "eklogo.png")
         
@@ -865,6 +866,132 @@ class PantallaCargaMinimalista(QDialog):
     def actualizar_opacidad_texto(self, value):
         self.lbl_texto.setStyleSheet(f"font-size: 15px; font-weight: bold; color: rgba(51, 51, 51, {int(255*value)}); margin-top: 10px;")
 
+# 🔥 LA CLASE TRACKING AHORA TIENE EL BOTÓN DE RESETEO 🔥
+class TrackingDialog(QDialog):
+    def __init__(self, session, usuario=None):
+        super().__init__()
+        self.session = session
+        self.usuario = usuario
+        self.setWindowTitle("🔍 Rastreo de Guía (Tracking)")
+        self.setGeometry(400, 200, 600, 500)
+        self.setStyleSheet("background-color: white;")
+        layout = QVBoxLayout()
+        h = QHBoxLayout()
+        self.in_buscar = QLineEdit()
+        self.in_buscar.setPlaceholderText("Ingrese N° de Guía o Remito...")
+        self.in_buscar.returnPressed.connect(self.buscar_tracking)
+        btn_bus = QPushButton("RASTREAR")
+        btn_bus.setStyleSheet("background-color: #0d6efd; color: white; font-weight: bold;")
+        btn_bus.clicked.connect(self.buscar_tracking)
+        
+        btn_reset = QPushButton("⚠️ RESETEAR A DEPÓSITO")
+        btn_reset.setStyleSheet("background-color: #dc3545; color: white; font-weight: bold;")
+        btn_reset.clicked.connect(self.resetear_guia)
+        if not self.usuario or not self.usuario.es_admin_total:
+            btn_reset.hide()
+            
+        h.addWidget(self.in_buscar)
+        h.addWidget(btn_bus)
+        h.addWidget(btn_reset)
+        
+        self.lbl_info = QLabel("Ingrese una guía para ver el estado.")
+        self.lbl_info.setStyleSheet("font-size: 14px; color: #333; padding: 10px; border: 1px solid #ccc; background: #f8f9fa;")
+        self.lbl_info.setWordWrap(True)
+        self.tabla = QTableWidget()
+        self.tabla.setColumnCount(4)
+        self.tabla.setHorizontalHeaderLabels(["Fecha/Hora", "Usuario", "Acción", "Detalle"])
+        self.tabla.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        layout.addLayout(h)
+        layout.addWidget(self.lbl_info)
+        layout.addWidget(QLabel("<b>HISTORIAL DE MOVIMIENTOS:</b>"))
+        layout.addWidget(self.tabla)
+        self.setLayout(layout)
+        
+    def resetear_guia(self):
+        guia = self.in_buscar.text().strip()
+        if not guia: return
+        op = self.session.query(Operacion).filter(Operacion.guia_remito == guia).first()
+        if not op: op = self.session.query(Operacion).filter(Operacion.guia_remito.ilike(f"%{guia}%")).first()
+        if not op: return
+        
+        reply = QMessageBox.question(self, "⚠️ ALERTA DE SEGURIDAD EXTREMA", 
+            f"¿Está súper seguro de devolver la guía '{op.guia_remito}' a EN DEPOSITO?\n\n"
+            "Esto borrará de forma permanente TODO su historial de movimientos de la calle, perderá a su chofer asignado, se le borrará la marca de entregado y de facturado.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+        
+        if reply == QMessageBox.StandardButton.Yes:
+            try:
+                self.session.execute(text("DELETE FROM historial_movimientos WHERE operacion_id = :id"), {"id": op.id})
+                op.estado = Estados.EN_DEPOSITO
+                op.chofer_asignado = None
+                op.fecha_salida = None
+                op.fecha_entrega = None
+                op.facturado = False
+                # No le borramos la plata (monto_servicio) por si se había editado a mano, 
+                # pero como facturado es False, se recalculará bien.
+                self.session.commit()
+                QMessageBox.information(self, "Éxito", "Guía reseteada y borrada del historial exitosamente.")
+                self.buscar_tracking() # Refresh
+            except Exception as e:
+                self.session.rollback()
+                QMessageBox.critical(self, "Error", f"Fallo al resetear la guía: {str(e)}")
+    
+    def buscar_tracking(self):
+        guia = self.in_buscar.text().strip(); 
+        if not guia: return
+        op = self.session.query(Operacion).filter(Operacion.guia_remito == guia).first()
+        if not op: op = self.session.query(Operacion).filter(Operacion.guia_remito.ilike(f"%{guia}%")).first()
+        if not op: 
+            self.lbl_info.setText("❌ GUÍA NO ENCONTRADA")
+            self.lbl_info.setStyleSheet("font-size: 16px; color: red; font-weight: bold; padding: 10px; border: 1px solid red;")
+            self.tabla.setRowCount(0)
+            return
+            
+        self.lbl_info.setStyleSheet("font-size: 14px; color: #333; padding: 10px; border: 1px solid #ccc; background: #f8f9fa;")
+            
+        color_estado = "blue"; bg_color = "#e7f1ff"
+        if op.estado == Estados.ENTREGADO: color_estado = "#198754"; bg_color = "#d1e7dd"
+        elif op.estado == Estados.EN_REPARTO: color_estado = "#856404"; bg_color = "#fff3cd"
+        if op.proveedor and op.proveedor.lower() == "jetpaq":
+            fac_str = "NO SE FACTURA (USO INTERNO)"; color_fac = "gray"
+        else:
+            fac_str = "SÍ" if op.facturado else "NO"; color_fac = "green" if op.facturado else "red"
+            
+        movs = self.session.query(Historial).filter(Historial.operacion_id == op.id).order_by(Historial.fecha_hora.desc()).all()
+        
+        entregado_info = ""
+        if op.estado == Estados.ENTREGADO:
+            for m in movs:
+                if m.detalle and "Recibio:" in m.detalle:
+                    recibe = m.detalle.split("Recibio:")[1].split("[")[0].split("|")[0].strip()
+                    fecha_ent = m.fecha_hora.strftime("%d/%m/%Y a las %H:%M hs")
+                    entregado_info = f"<br><b>ENTREGADO A:</b> <span style='color:#198754;'>{recibe}</span> <b>EL:</b> {fecha_ent}"
+                    break
+        
+        info_txt = f"<div style='background-color: {bg_color}; padding: 10px;'><b>GUÍA:</b> {op.guia_remito} <br><b>ESTADO ACTUAL:</b> <span style='color:{color_estado}; font-size: 18px; font-weight: bold;'>{op.estado.upper()}</span> {entregado_info} <br><b>FACTURACIÓN:</b> <span style='color:{color_fac}; font-weight: bold;'>{fac_str}</span> <br><b>DESTINATARIO:</b> {op.destinatario} ({op.localidad}) <br><b>CHOFER:</b> {op.chofer_asignado or 'Sin Asignar'} <br><b>SERVICIO:</b> {op.tipo_servicio} <br><b>PESO TOTAL:</b> {op.peso} Kg</div>"
+        self.lbl_info.setText(info_txt)
+        self.tabla.setRowCount(0)
+        
+        for r, m in enumerate(movs): 
+            self.tabla.insertRow(r)
+            self.tabla.setItem(r, 0, QTableWidgetItem(m.fecha_hora.strftime("%d/%m/%Y %H:%M")))
+            self.tabla.setItem(r, 1, QTableWidgetItem(m.usuario))
+            self.tabla.setItem(r, 2, QTableWidgetItem(m.accion))
+            
+            detalle_texto = m.detalle or ""
+            if "| GPS:" in detalle_texto:
+                try:
+                    partes = detalle_texto.split("| GPS:")
+                    base_texto = partes[0].strip()
+                    link = partes[1].strip()
+                    lbl = QLabel(f'{base_texto} <a href="{link}" style="color:#d32f2f; text-decoration:none; font-weight:bold; font-size:14px;">📍 VER MAPA</a>')
+                    lbl.setAlignment(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft)
+                    lbl.setOpenExternalLinks(True)
+                    self.tabla.setCellWidget(r, 3, lbl)
+                except:
+                    self.tabla.setItem(r, 3, QTableWidgetItem(detalle_texto))
+            else:
+                self.tabla.setItem(r, 3, QTableWidgetItem(detalle_texto))
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
@@ -888,6 +1015,7 @@ if __name__ == "__main__":
         splash.show()
         QApplication.processEvents()
         
+        # Arranca el hilo pesado sin congelar la ventana
         def terminar_arranque():
             try:
                 global ventana

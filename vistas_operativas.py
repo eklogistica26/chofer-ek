@@ -1,6 +1,8 @@
 import os
 import re
 import calendar
+import requests
+import base64
 from datetime import datetime, date
 from PyQt6.QtWidgets import (QApplication, QDialog, QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, 
                              QComboBox, QPushButton, QTableWidget, QTableWidgetItem, 
@@ -13,7 +15,75 @@ from sqlalchemy import text, extract
 
 from database import Operacion, Historial, Estados, Urgencia, DestinoFrecuente, ClienteRetiro, ClientePrincipal, ReciboPago
 from utilidades import parsear_txt_dhl_logic, crear_pdf_retiro, crear_pdf_facturacion, crear_pdf_resumen_diario
-from dialogos import PreviewImportacionDialog, ConfirmarEntregaDialog, ReprogramarAdminDialog, EditarPrecioFacturacionDialog, AgregarCargoDialog, CargarPagoDialog, ResumenDiarioChoferDialog
+from dialogos import PreviewImportacionDialog, ReprogramarAdminDialog, EditarPrecioFacturacionDialog, AgregarCargoDialog, CargarPagoDialog, ResumenDiarioChoferDialog
+
+# 🔥 ENVIAR MAIL DESDE ESCRITORIO 🔥
+def enviar_email_desktop(session, destinatario, guia, rutas_fotos, proveedor):
+    BREVO_API_KEY = os.environ.get("BREVO_API_KEY", "")
+    if not BREVO_API_KEY: return
+    EMAIL_REMITENTE = "eklogistica19@gmail.com"
+    email_prov = None
+    try:
+        res = session.execute(text("SELECT email_reportes FROM clientes_principales WHERE UPPER(TRIM(nombre)) = UPPER(TRIM(:n))"), {"n": proveedor}).fetchone()
+        if res: email_prov = res[0]
+    except: pass
+    
+    destinatarios_lista = []
+    if email_prov:
+        correos_limpios = str(email_prov).replace(',', ' ').replace(';', ' ')
+        for c in correos_limpios.split():
+            if "@" in c: destinatarios_lista.append({"email": c.strip()})
+    
+    if not destinatarios_lista:
+        destinatarios_lista = [{"email": EMAIL_REMITENTE}]
+        
+    adjuntos = []
+    if rutas_fotos:
+        for i, ruta in enumerate(rutas_fotos):
+            if os.path.exists(ruta):
+                try:
+                    with open(ruta, "rb") as f:
+                        content = base64.b64encode(f.read()).decode('utf-8')
+                        nombre_adjunto = f"remito_{guia}.jpg" if len(rutas_fotos) == 1 else f"remito_{guia}_parte{i+1}.jpg"
+                        adjuntos.append({"content": content, "name": nombre_adjunto})
+                except: pass
+    
+    url = "https://api.brevo.com/v3/smtp/email"
+    fecha_hora = datetime.now().strftime('%d/%m/%Y %H:%M')
+    
+    html_content = f"""
+    <html><body>
+    <h3>Hola,</h3>
+    <p>Se informa la entrega exitosa. <b>Adjuntamos la foto del remito/guía conformado.</b></p>
+    <ul>
+        <li><b>Fecha:</b> {fecha_hora}</li>
+        <li><b>Guía:</b> {guia}</li>
+        <li><b>Proveedor:</b> {proveedor}</li>
+        <li><b>Recibió:</b> {destinatario}</li>
+    </ul>
+    <p>Atte.<br><b>Equipo JetPaq / EK Logística</b></p>
+    </body></html>
+    """
+    
+    payload = {
+        "sender": {"name": "Logistica JetPaq", "email": EMAIL_REMITENTE},
+        "subject": f"ENTREGA REALIZADA - Guía: {guia}",
+        "htmlContent": html_content,
+        "to": destinatarios_lista,
+        "bcc": [{"email": EMAIL_REMITENTE, "name": "Archivo EK Logistica"}]
+    }
+    if len(destinatarios_lista) == 1 and destinatarios_lista[0]["email"] == EMAIL_REMITENTE:
+        if "bcc" in payload: del payload["bcc"]
+    if adjuntos: payload["attachment"] = adjuntos
+    
+    headers = {"accept": "application/json", "api-key": BREVO_API_KEY, "content-type": "application/json"}
+    try: 
+        r = requests.post(url, json=payload, headers=headers)
+        if r.status_code not in [200, 201, 202]:
+            payload["to"] = [{"email": EMAIL_REMITENTE}]
+            if "bcc" in payload: del payload["bcc"]
+            requests.post(url, json=payload, headers=headers)
+    except: pass
 
 # 🔥 EL DELEGADO DIOS Y EL ESCUDO PARA GANARLE AL TEMA OSCURO 🔥
 class PintorCeldasDelegate(QStyledItemDelegate):
@@ -47,6 +117,58 @@ QGroupBox::title {
     background: transparent !important;
 }
 """
+
+# 🔥 CUADRO DE CONFIRMAR ENTREGA (AHORA CON FOTOS) 🔥
+class ConfirmarEntregaDialog(QDialog):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("✅ Confirmar Entrega")
+        self.setGeometry(400, 300, 400, 300)
+        layout = QVBoxLayout()
+        form = QFormLayout()
+        
+        self.in_recibe = QLineEdit()
+        self.in_recibe.setPlaceholderText("Nombre y Apellido de quien recibe")
+        self.in_fecha = QDateEdit(QDate.currentDate())
+        self.in_fecha.setCalendarPopup(True)
+        
+        self.rutas_fotos = []
+        self.btn_fotos = QPushButton("📸 ADJUNTAR FOTOS DEL REMITO (PC)")
+        self.btn_fotos.setStyleSheet("background-color: #17a2b8; color: white; font-weight: bold;")
+        self.btn_fotos.clicked.connect(self.seleccionar_fotos)
+        self.lbl_fotos = QLabel("Ninguna foto adjunta.")
+        self.lbl_fotos.setStyleSheet("color: #666;")
+        
+        form.addRow("Recibió (Obligatorio):", self.in_recibe)
+        form.addRow("Fecha:", self.in_fecha)
+        form.addRow("", self.btn_fotos)
+        form.addRow("", self.lbl_fotos)
+        
+        btn_ok = QPushButton("CONFIRMAR ENTREGA Y ENVIAR MAIL")
+        btn_ok.setStyleSheet("background-color: #28a745; color: white; font-weight: bold; padding: 10px; margin-top: 15px;")
+        btn_ok.clicked.connect(self.validar)
+        
+        layout.addLayout(form)
+        layout.addWidget(btn_ok)
+        self.setLayout(layout)
+        
+        self.recibe_final = ""
+        self.fecha_final = ""
+        
+    def seleccionar_fotos(self):
+        archivos, _ = QFileDialog.getOpenFileNames(self, "Seleccionar Fotos", "", "Images (*.png *.jpg *.jpeg)")
+        if archivos:
+            self.rutas_fotos = archivos
+            self.lbl_fotos.setText(f"✅ {len(archivos)} foto(s) adjunta(s) listas para enviar.")
+            self.lbl_fotos.setStyleSheet("color: green; font-weight: bold;")
+            
+    def validar(self):
+        if not self.in_recibe.text().strip():
+            QMessageBox.warning(self, "Error", "Debe indicar quién recibió.")
+            return
+        self.recibe_final = self.in_recibe.text().strip()
+        self.fecha_final = self.in_fecha.date().toPyDate()
+        self.accept()
 
 class TabIngreso(QWidget):
     def __init__(self, main_window):
@@ -314,7 +436,6 @@ class TabIngreso(QWidget):
             dom_texto = self.in_dom.text().strip()
             cel_texto = self.in_cel.text().strip()
             
-            # 🔥 GUARDADO AUTOMÁTICO DE DESTINOS FRECUENTES 🔥
             if prov and prov != "JetPaq" and dest_texto and dom_texto:
                 existe = self.main.session.query(DestinoFrecuente).filter_by(
                     proveedor=prov, sucursal=self.main.sucursal_actual, 
@@ -334,7 +455,6 @@ class TabIngreso(QWidget):
             
             if "Retiro" in servicio: crear_pdf_retiro(f"Comprobante_Retiro_{op.guia_remito or op.id}.pdf", op)
             
-            # 🔥 LIMPIEZA TOTAL DE TODOS LOS CAMPOS LUEGO DE GUARDAR 🔥
             self.main.cargar_ruta()
             self.in_guia.clear()
             self.in_dest.clear()
@@ -467,7 +587,6 @@ class TabRendicion(QWidget):
         chofer = self.resumen_chofer.currentText(); fecha = self.resumen_fecha.date().toPyDate()
         if not chofer or chofer == "Todos": return
         try:
-            # 🔥 LÓGICA ACTUALIZADA PARA INCLUIR LOS RETIROS VISUALMENTE EN LA TABLA 🔥
             sql_entregados = text("SELECT DISTINCT o.id, o.guia_remito, o.destinatario, o.domicilio, o.tipo_servicio FROM operaciones o JOIN historial_movimientos h ON o.id = h.operacion_id WHERE o.chofer_asignado = :c AND o.estado = 'ENTREGADO' AND DATE(h.fecha_hora) = :f AND (h.accion LIKE '%ENTREGA%' OR h.accion = 'APP')")
             entregados = self.main.session.execute(sql_entregados, {"c": chofer, "f": fecha}).fetchall()
             
@@ -533,17 +652,35 @@ class TabRendicion(QWidget):
         for r in range(self.tabla_rendicion.rowCount()):
             if self.tabla_rendicion.item(r, 1).checkState() == Qt.CheckState.Checked: ids.append(int(self.tabla_rendicion.item(r, 0).text()))
         if not ids: QMessageBox.warning(self, "Atención", "Seleccione guías para confirmar su entrega."); return
+        
+        # 🔥 EL NUEVO CUADRO MÁGICO QUE PERMITE SUBIR FOTOS DESDE LA PC 🔥
         dlg = ConfirmarEntregaDialog(self)
         if dlg.exec() != QDialog.DialogCode.Accepted: return
+        
         try:
             ops = self.main.session.query(Operacion).filter(Operacion.id.in_(ids)).all(); count = 0
             for op in ops:
                 if op.estado == Estados.ENTREGADO: continue 
-                op.estado = Estados.ENTREGADO; detalle = f"Recibió: {dlg.recibe_final}"
-                self.main.log_movimiento(op, "ENTREGA CONFIRMADA (ADMIN)", detalle); count += 1
-            self.main.session.commit(); QMessageBox.information(self, "Éxito", f"{count} entregadas."); self.cargar_rendicion()
+                op.estado = Estados.ENTREGADO
+                op.fecha_entrega = datetime.combine(dlg.fecha_final, datetime.now().time())
+                detalle = f"Recibió: {dlg.recibe_final}"
+                
+                # Le avisamos al historial que se adjuntaron fotos
+                if hasattr(dlg, 'rutas_fotos') and dlg.rutas_fotos:
+                    detalle += f" [CON {len(dlg.rutas_fotos)} FOTO/S CARGADAS POR PC]"
+                    # Disparamos el mail tal cual lo hace la App
+                    enviar_email_desktop(self.main.session, dlg.recibe_final, op.guia_remito, dlg.rutas_fotos, op.proveedor)
+                
+                self.main.log_movimiento(op, "ENTREGA CONFIRMADA (ADMIN)", detalle)
+                count += 1
+                
+            self.main.session.commit()
+            QMessageBox.information(self, "Éxito", f"{count} entregadas correctamente. Emails enviados si correspondía.")
+            self.cargar_rendicion()
             if hasattr(self.main, 'cargar_monitor_global'): self.main.cargar_monitor_global()
-        except Exception as e: self.main.session.rollback(); QMessageBox.warning(self, "Micro-corte", "La conexión parpadeó. Intenta de nuevo.")
+        except Exception as e: 
+            self.main.session.rollback()
+            QMessageBox.warning(self, "Micro-corte", "La conexión parpadeó. Intenta de nuevo.")
 
     def marcar_pendiente_masivo(self):
         ids = []
