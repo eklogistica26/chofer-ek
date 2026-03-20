@@ -296,7 +296,7 @@ def lista_viajes():
     viajes = []
     if conn:
         try:
-            sql = text("SELECT id, guia_remito, destinatario, domicilio, localidad, bultos, estado, proveedor, tipo_servicio FROM operaciones WHERE chofer_asignado = :c AND UPPER(estado) IN ('EN REPARTO', 'PENDIENTE') ORDER BY id ASC")
+            sql = text("SELECT id, guia_remito, destinatario, domicilio, localidad, bultos, estado, proveedor, tipo_servicio FROM operations WHERE chofer_asignado = :c AND UPPER(estado) IN ('EN REPARTO', 'PENDIENTE') ORDER BY id ASC")
             viajes = conn.execute(sql, {"c": chofer}).fetchall()
         except Exception as e: 
             print("Error cargando viajes:", e)
@@ -648,7 +648,7 @@ def gestion(id_op):
         enlace_gps = f"https://maps.google.com/?q={lat},{lng}" if lat and lng else ""
         texto_gps_historial = f" | GPS: {enlace_gps}" if enlace_gps else ""
         
-        # PROCESAR MÚLTIPLES FOTOS DINÁMICAS (SIN PILLOW)
+        # PROCESAR MÚLTIPLES FOTOS DINÁMICAS (CON COMPRESOR PILLOW)
         rutas_fotos = []
         tiene_foto = False
         archivos = request.files.getlist('fotos')
@@ -657,6 +657,21 @@ def gestion(id_op):
                 filename = f"foto_{id_op}_{i}_{int(hora_arg().timestamp())}.jpg"
                 ruta = os.path.join(app.config['UPLOAD_FOLDER'], filename)
                 archivo.save(ruta)
+                
+                # 🔥 COMPRESOR AUTOMÁTICO DE IMÁGENES 🔥
+                try:
+                    from PIL import Image
+                    img = Image.open(ruta)
+                    if img.mode in ("RGBA", "P"): 
+                        img = img.convert("RGB")
+                    # Achicamos la foto a un máximo de 800x800 manteniendo proporción
+                    img.thumbnail((800, 800))
+                    # Guardamos la versión liviana (quality 70) pisando la pesada
+                    img.save(ruta, "JPEG", quality=70, optimize=True)
+                except Exception as e:
+                    print(f"Error comprimiendo imagen: {e}")
+                # ----------------------------------------
+                
                 rutas_fotos.append(ruta)
                 tiene_foto = True
             
