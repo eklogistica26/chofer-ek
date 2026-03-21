@@ -122,29 +122,20 @@ def enviar_email(destinatario, guia, rutas_fotos, proveedor, link_mapa=""):
     headers = {"accept": "application/json", "api-key": BREVO_API_KEY, "content-type": "application/json"}
     
     try: 
-        # INTENTO 1: Mandar el correo con las fotos adjuntas
         r = requests.post(url, json=payload, headers=headers)
-        
-        # Si Brevo rebota el correo
         if r.status_code not in [200, 201, 202]:
             print(f"Error Brevo (Intento 1 con fotos): {r.text}")
-            
-            # INTENTO 2: Le sacamos las fotos pesadas y lo mandamos de nuevo con un aviso
             if "attachment" in payload:
                 del payload["attachment"]
-                
                 payload["htmlContent"] = html_content.replace(
                     "<b>Adjuntamos la foto del remito/guía conformado.</b>",
                     "<b style='color:#D32F2F;'>⚠️ La foto se guardó en nuestro sistema, pero era demasiado pesada para adjuntarse en este correo.</b>"
                 )
-                
                 r2 = requests.post(url, json=payload, headers=headers)
-                
                 if r2.status_code not in [200, 201, 202]:
                     payload["to"] = [{"email": EMAIL_REMITENTE}]
                     if "bcc" in payload: del payload["bcc"]
                     requests.post(url, json=payload, headers=headers)
-                    
     except Exception as e: 
         print("Error crítico en Brevo:", e)
 
@@ -392,39 +383,52 @@ def guardia():
     conn = get_db()
 
     if request.method == 'POST':
-        guia = request.form.get('guia_remito')
-        proveedor = request.form.get('proveedor')
-        destinatario = request.form.get('destinatario')
-        domicilio = request.form.get('domicilio')
-        localidad = request.form.get('localidad')
-        bultos = request.form.get('bultos', 1)
+        guia = request.form.get('guia_remito', '').strip()
+        proveedor = request.form.get('proveedor', '').strip()
+        destinatario = request.form.get('destinatario', '').strip()
+        domicilio = request.form.get('domicilio', '').strip()
+        localidad = request.form.get('localidad', '').strip()
+        
+        # FIX 1: Obligamos a que Bultos sea sí o sí un número entero para no romper la BD
+        try:
+            bultos = int(request.form.get('bultos') or 1)
+        except:
+            bultos = 1
+            
         tipo_carga = request.form.get('tipo_carga', 'Común')
         tipo_urgencia = request.form.get('tipo_urgencia', 'Normal')
 
         if conn:
             try:
-                # 🔥 FIX APLICADO: Cambiado 'operations' por 'operaciones' 🔥
+                # FIX 2: Buscamos a qué sucursal pertenece el chofer para no dejar la guía huérfana
+                res_suc = conn.execute(text("SELECT sucursal FROM choferes WHERE nombre = :n"), {"n": chofer}).fetchone()
+                sucursal_chofer = res_suc[0] if res_suc else "Mendoza"
+
+                # FIX 3: Un INSERT blindado con todos los datos requeridos por la base
                 sql_insert = text("""
                     INSERT INTO operaciones 
-                    (guia_remito, proveedor, destinatario, domicilio, localidad, bultos, tipo_carga, tipo_urgencia, chofer_asignado, estado, fecha_salida, tipo_servicio)
+                    (fecha_ingreso, sucursal, guia_remito, proveedor, destinatario, domicilio, localidad, bultos, tipo_carga, tipo_urgencia, chofer_asignado, estado, fecha_salida, tipo_servicio, bultos_frio, peso, monto_servicio, es_contra_reembolso, monto_recaudacion, facturado)
                     VALUES 
-                    (:g, :p, :d, :dom, :loc, :b, :tc, :tu, :c, 'EN REPARTO', :fs, 'Entrega (Guardia)')
+                    (:fi, :suc, :g, :p, :d, :dom, :loc, :b, :tc, :tu, :c, 'EN REPARTO', :fs, 'Entrega (Guardia)', 0, 0.0, 0.0, false, 0.0, false)
                     RETURNING id
                 """)
+                
                 res = conn.execute(sql_insert, {
+                    "fi": hora_arg().date(),
+                    "suc": sucursal_chofer,
                     "g": guia, "p": proveedor, "d": destinatario, "dom": domicilio,
                     "loc": localidad, "b": bultos, "tc": tipo_carga, "tu": tipo_urgencia,
                     "c": chofer, "fs": hora_arg()
                 })
                 new_id = res.fetchone()[0]
                 
-                # 🔥 FIX APLICADO: Asegurado que guarde en 'historial_movimientos' 🔥
                 conn.execute(text("INSERT INTO historial_movimientos (operacion_id, usuario, accion, detalle, fecha_hora) VALUES (:o, :u, 'APP', 'Guía creada por Guardia', :f)"), {"o": new_id, "u": chofer, "f": hora_arg()})
                 conn.commit()
                 flash("✅ Guía de guardia generada e ingresada a tu ruta.", "success")
             except Exception as e:
                 print("Error creando guardia:", e)
-                flash("❌ Error al crear la guía.", "error")
+                # FIX 4: Si falla, le imprime al chofer en rojo la falla exacta del sistema para que nosotros sepamos qué pasó.
+                flash(f"❌ Error de Servidor: {str(e)}", "error")
             finally:
                 conn.close()
         return redirect(url_for('lista_viajes'))
@@ -513,7 +517,7 @@ def guardia():
                 <input type="text" id="in_localidad" name="localidad" required>
                 
                 <label>Cantidad de Bultos:</label>
-                <input type="number" name="bultos" value="1" required>
+                <input type="number" inputmode="numeric" pattern="[0-9]*" name="bultos" value="1" required>
                 
                 <div style="display:flex; gap:10px; margin-top:10px;">
                     <div style="flex:1;">
@@ -854,7 +858,7 @@ def gestion(id_op):
                     btn.style.display = "block";
                     btn.className = "btn btn-green";
                     btn.innerHTML = "CONFIRMAR ENTREGA";
-                    if(fotoCount === 0) agregarFoto(); 
+                    if(fotoCount === 0) agregarFoto(); // Auto-agrega la primera foto
                 }} else if (estado === "Pendiente") {{
                     p_falla.style.display = "block";
                     btn.style.display = "block";
