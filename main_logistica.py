@@ -90,25 +90,31 @@ class PlataformaLogistica(QMainWindow):
         from vistas_operativas import TabIngreso, TabRendicion, TabFacturacion
         from vista_configuracion import TabConfiguracion
         
-        global ToastNotification, ConfirmarEntregaDialog, ReprogramarAdminDialog, HistorialHojasRutaDialog, EditarOperacionDialog, CambiarFechaDialog, TrackingDialog
-        from dialogos import ToastNotification, ConfirmarEntregaDialog, ReprogramarAdminDialog, HistorialHojasRutaDialog, EditarOperacionDialog, CambiarFechaDialog, TrackingDialog
+        # 🔥 FIX IMPORTANTE: Le sacamos el TrackingDialog a esta lista para que use el tuyo propio y NO el viejo
+        global ToastNotification, ConfirmarEntregaDialog, ReprogramarAdminDialog, HistorialHojasRutaDialog, EditarOperacionDialog, CambiarFechaDialog
+        from dialogos import ToastNotification, ConfirmarEntregaDialog, ReprogramarAdminDialog, HistorialHojasRutaDialog, EditarOperacionDialog, CambiarFechaDialog
         
         global crear_pdf_ruta, crear_pdf_tercerizados, crear_pdf_reporte
         from utilidades import crear_pdf_ruta, crear_pdf_tercerizados, crear_pdf_reporte
 
         _, self.session = get_session()
         
-        # 🔥 AUTO-PARCHE DE BASE DE DATOS: Agrega columnas si no existen 🔥
-        try:
-            self.session.execute(text("ALTER TABLE choferes ADD COLUMN celular VARCHAR(50)"))
-            self.session.execute(text("ALTER TABLE clientes_principales ADD COLUMN es_facturable BOOLEAN DEFAULT TRUE"))
-            self.session.execute(text("ALTER TABLE clientes_principales ADD COLUMN enviar_mail BOOLEAN DEFAULT FALSE"))
-            self.session.execute(text("ALTER TABLE clientes_principales ADD COLUMN exige_remito BOOLEAN DEFAULT FALSE"))
-            self.session.execute(text("ALTER TABLE clientes_principales ADD COLUMN cadena_frio BOOLEAN DEFAULT FALSE"))
-            self.session.execute(text("ALTER TABLE clientes_principales ADD COLUMN cobro_puerta BOOLEAN DEFAULT FALSE"))
-            self.session.commit()
-        except:
-            self.session.rollback()
+        # 🔥 AUTO-PARCHE BLINDADO: Se ejecutan de a uno. Así, si uno choca, los otros igual se instalan 🔥
+        parches = [
+            "ALTER TABLE choferes ADD COLUMN celular VARCHAR(50)",
+            "ALTER TABLE clientes_principales ADD COLUMN es_facturable BOOLEAN DEFAULT TRUE",
+            "ALTER TABLE clientes_principales ADD COLUMN enviar_mail BOOLEAN DEFAULT FALSE",
+            "ALTER TABLE clientes_principales ADD COLUMN exige_remito BOOLEAN DEFAULT FALSE",
+            "ALTER TABLE clientes_principales ADD COLUMN cadena_frio BOOLEAN DEFAULT FALSE",
+            "ALTER TABLE clientes_principales ADD COLUMN cobro_puerta BOOLEAN DEFAULT FALSE"
+        ]
+        
+        for p in parches:
+            try:
+                self.session.execute(text(p))
+                self.session.commit()
+            except:
+                self.session.rollback()
 
         self.lista_proveedores = []; self.toast = ToastNotification(self); self.filtro_monitor = None
         self.init_ui()
@@ -740,7 +746,10 @@ class PantallaCargaMinimalista(QDialog):
         if not pixmap.isNull(): self.lbl_logo.setPixmap(pixmap.scaled(120, 120, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
         else: self.lbl_logo.setText("📦 E.K."); self.lbl_logo.setStyleSheet("font-size: 40px; color: #1565c0; font-weight: bold;")
         self.lbl_logo.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.lbl_texto = QLabel("Despertando base de datos, espere...")
+        
+        # 🔥 EL TEXTO ORIGINAL DE CARGA QUE ME PEDISTE 🔥
+        self.lbl_texto = QLabel("Entrando a plataforma espere...")
+        
         self.lbl_texto.setAlignment(Qt.AlignmentFlag.AlignCenter)
         lay_cont.addWidget(self.lbl_logo); lay_cont.addWidget(self.lbl_texto)
         shadow = QGraphicsDropShadowEffect(); shadow.setBlurRadius(20); shadow.setColor(QColor(0, 0, 0, 80)); shadow.setOffset(0, 0)
