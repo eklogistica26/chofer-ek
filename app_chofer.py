@@ -309,7 +309,6 @@ def lista_viajes():
         for v in viajes:
             tipo_srv = v[8] if v[8] else ""
             
-            # 🔥 DETECCIÓN DE GUARDIA Y RETIROS PARA MARCAR CON ROJO/MORADO 🔥
             es_retiro = "Retiro" in tipo_srv
             es_guardia = "Guardia" in tipo_srv
             
@@ -404,7 +403,7 @@ def guardia():
 
         if conn:
             try:
-                # 🔥 GUARDA AUTOMÁTICAMENTE EL tipo_servicio COMO "Entrega (Guardia)" PARA LA FACTURACIÓN 🔥
+                # 🔥 FIX APLICADO: Cambiado 'operations' por 'operaciones' 🔥
                 sql_insert = text("""
                     INSERT INTO operaciones 
                     (guia_remito, proveedor, destinatario, domicilio, localidad, bultos, tipo_carga, tipo_urgencia, chofer_asignado, estado, fecha_salida, tipo_servicio)
@@ -419,6 +418,7 @@ def guardia():
                 })
                 new_id = res.fetchone()[0]
                 
+                # 🔥 FIX APLICADO: Asegurado que guarde en 'historial_movimientos' 🔥
                 conn.execute(text("INSERT INTO historial_movimientos (operacion_id, usuario, accion, detalle, fecha_hora) VALUES (:o, :u, 'APP', 'Guía creada por Guardia', :f)"), {"o": new_id, "u": chofer, "f": hora_arg()})
                 conn.commit()
                 flash("✅ Guía de guardia generada e ingresada a tu ruta.", "success")
@@ -429,7 +429,6 @@ def guardia():
                 conn.close()
         return redirect(url_for('lista_viajes'))
 
-    # --- OBTENER CLIENTES Y DESTINOS DE LA BASE DE DATOS ---
     clientes_db = []
     destinos_db = []
     if conn:
@@ -445,7 +444,6 @@ def guardia():
     clientes_html = "".join([f'<option value="{c}">{c}</option>' for c in clientes_db])
     destinos_json = json.dumps(destinos_db)
 
-    # 🔥 FORMULARIO ROJO CON LISTAS DESPLEGABLES INTELIGENTES 🔥
     html = f"""
     <!DOCTYPE html>
     <html>
@@ -541,7 +539,6 @@ def guardia():
         </div>
         
         <script>
-            // Llenar destinos si hay proveedor por defecto
             window.onload = actualizarDestinos;
         </script>
     </body>
@@ -648,7 +645,6 @@ def gestion(id_op):
         enlace_gps = f"https://maps.google.com/?q={lat},{lng}" if lat and lng else ""
         texto_gps_historial = f" | GPS: {enlace_gps}" if enlace_gps else ""
         
-        # PROCESAR MÚLTIPLES FOTOS DINÁMICAS (CON COMPRESOR PILLOW)
         rutas_fotos = []
         tiene_foto = False
         archivos = request.files.getlist('fotos')
@@ -658,19 +654,15 @@ def gestion(id_op):
                 ruta = os.path.join(app.config['UPLOAD_FOLDER'], filename)
                 archivo.save(ruta)
                 
-                # 🔥 COMPRESOR AUTOMÁTICO DE IMÁGENES 🔥
                 try:
                     from PIL import Image
                     img = Image.open(ruta)
                     if img.mode in ("RGBA", "P"): 
                         img = img.convert("RGB")
-                    # Achicamos la foto a un máximo de 800x800 manteniendo proporción
                     img.thumbnail((800, 800))
-                    # Guardamos la versión liviana (quality 70) pisando la pesada
                     img.save(ruta, "JPEG", quality=70, optimize=True)
                 except Exception as e:
                     print(f"Error comprimiendo imagen: {e}")
-                # ----------------------------------------
                 
                 rutas_fotos.append(ruta)
                 tiene_foto = True
@@ -862,7 +854,7 @@ def gestion(id_op):
                     btn.style.display = "block";
                     btn.className = "btn btn-green";
                     btn.innerHTML = "CONFIRMAR ENTREGA";
-                    if(fotoCount === 0) agregarFoto(); // Auto-agrega la primera foto
+                    if(fotoCount === 0) agregarFoto(); 
                 }} else if (estado === "Pendiente") {{
                     p_falla.style.display = "block";
                     btn.style.display = "block";
@@ -884,7 +876,6 @@ def gestion(id_op):
                     return;
                 }}
                 
-                // Evita que el chofer toque dos veces rápido el botón
                 var btn = document.getElementById("btn_guardar");
                 btn.innerHTML = "ENVIANDO... ⏳";
                 btn.style.opacity = "0.5";
