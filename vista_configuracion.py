@@ -10,9 +10,53 @@ from sqlalchemy import text, desc
 
 from database import (ClientePrincipal, DestinoFrecuente, Tarifa, TarifaDHL, 
                       HistorialTarifas, Chofer, ClienteRetiro, Usuario)
-from dialogos import EditarEmpresaDialog, EditarDestinoDialog, EditarTarifaDialog, HistorialTarifasDialog
+from dialogos import EditarDestinoDialog, EditarTarifaDialog, HistorialTarifasDialog
 
-# --- DIÁLOGO PARA EDITAR CHOFERES (CON CELULAR) ---
+# 🔥 NUEVO DIALOGO INTEGRADO PARA EDITAR EMPRESAS CON SUS PODERES 🔥
+class EditarEmpresaDialogLocal(QDialog):
+    def __init__(self, prov, parent=None):
+        super().__init__(parent)
+        self.prov = prov
+        self.setWindowTitle(f"✏️ Editar Empresa: {prov.nombre}")
+        self.setGeometry(400, 300, 480, 250)
+        layout = QVBoxLayout(self)
+        
+        form = QFormLayout()
+        self.in_nom = QLineEdit(prov.nombre)
+        self.in_mail = QLineEdit(prov.email_reportes or "")
+        form.addRow("Nombre de Empresa:", self.in_nom)
+        form.addRow("Email Reportes:", self.in_mail)
+        layout.addLayout(form)
+        
+        gb_checks = QGroupBox("Poderes Automáticos y Configuración")
+        grid = QGridLayout()
+        self.chk_fac = QCheckBox("🧾 Es Facturable"); self.chk_fac.setChecked(getattr(prov, 'es_facturable', True))
+        self.chk_mail = QCheckBox("📧 Enviar Mail Auto"); self.chk_mail.setChecked(getattr(prov, 'enviar_mail', False))
+        self.chk_rem = QCheckBox("📄 Exige Remito Físico"); self.chk_rem.setChecked(getattr(prov, 'exige_remito', False))
+        self.chk_frio = QCheckBox("❄️ Siempre Frío"); self.chk_frio.setChecked(getattr(prov, 'cadena_frio', False))
+        self.chk_cr = QCheckBox("💰 Permite Cobro (CR)"); self.chk_cr.setChecked(getattr(prov, 'cobro_puerta', False))
+        
+        grid.addWidget(self.chk_fac, 0, 0); grid.addWidget(self.chk_mail, 0, 1)
+        grid.addWidget(self.chk_rem, 1, 0); grid.addWidget(self.chk_frio, 1, 1)
+        grid.addWidget(self.chk_cr, 2, 0)
+        gb_checks.setLayout(grid)
+        layout.addWidget(gb_checks)
+        
+        btn = QPushButton("GUARDAR CAMBIOS")
+        btn.setStyleSheet("background-color: #0d6efd; color: white; font-weight: bold; padding: 10px;")
+        btn.clicked.connect(self.guardar)
+        layout.addWidget(btn)
+        
+    def guardar(self):
+        self.prov.nombre = self.in_nom.text().strip()
+        self.prov.email_reportes = self.in_mail.text().strip()
+        self.prov.es_facturable = self.chk_fac.isChecked()
+        self.prov.enviar_mail = self.chk_mail.isChecked()
+        self.prov.exige_remito = self.chk_rem.isChecked()
+        self.prov.cadena_frio = self.chk_frio.isChecked()
+        self.prov.cobro_puerta = self.chk_cr.isChecked()
+        self.accept()
+
 class EditarChoferDialog(QDialog):
     def __init__(self, chofer_id, nombre, sucursal, dni, celular, parent=None):
         super().__init__(parent)
@@ -46,7 +90,6 @@ class EditarChoferDialog(QDialog):
     def datos(self):
         return self.in_nom.text().strip(), self.in_suc.currentText(), self.in_dni.text().strip(), self.in_celular.text().strip()
 
-# --- DIÁLOGO ORDENADO PARA EDITAR USUARIOS ---
 class EditarUsuarioDialog(QDialog):
     def __init__(self, usuario, parent=None):
         super().__init__(parent)
@@ -138,7 +181,7 @@ class TabConfiguracion(QWidget):
     def cambiar_panel_config(self, index): 
         self.stack_config.setCurrentIndex(index)
     
-    # --- PANEL PROVEEDORES Y DESTINOS ---
+    # --- PANEL PROVEEDORES Y DESTINOS (NUEVOS PODERES) ---
     def setup_panel_proveedores(self):
         layout = QVBoxLayout(self.page_proveedores)
         self.tabs_prov = QTabWidget()
@@ -147,17 +190,33 @@ class TabConfiguracion(QWidget):
         l_prov = QVBoxLayout(tab_prov)
         
         gb_prov = QGroupBox("Cargar Nueva Empresa")
-        f_prov = QHBoxLayout()
+        f_prov = QVBoxLayout()
+        
+        h_inputs = QHBoxLayout()
         self.cfg_prov_nombre = QLineEdit(); self.cfg_prov_nombre.setPlaceholderText("Nombre de la Empresa...")
         self.cfg_prov_email = QLineEdit(); self.cfg_prov_email.setPlaceholderText("Email para avisos (ejemplo@mail.com)...")
+        h_inputs.addWidget(self.cfg_prov_nombre); h_inputs.addWidget(self.cfg_prov_email)
+        
+        h_checks = QHBoxLayout()
+        self.chk_prov_facturable = QCheckBox("🧾 Es Facturable"); self.chk_prov_facturable.setChecked(True)
+        self.chk_prov_mail = QCheckBox("📧 Enviar Mail Auto")
+        self.chk_prov_remito = QCheckBox("📄 Exige Remito Físico")
+        self.chk_prov_frio = QCheckBox("❄️ Siempre Frío")
+        self.chk_prov_cobro = QCheckBox("💰 Permite Cobro (CR)")
+        h_checks.addWidget(self.chk_prov_facturable); h_checks.addWidget(self.chk_prov_mail)
+        h_checks.addWidget(self.chk_prov_remito); h_checks.addWidget(self.chk_prov_frio); h_checks.addWidget(self.chk_prov_cobro)
+        
         btn_add_prov = QPushButton("➕ AGREGAR EMPRESA")
         btn_add_prov.setStyleSheet("background-color: #0d6efd; color: white; font-weight: bold; padding: 6px;")
         btn_add_prov.clicked.connect(self.guardar_proveedor)
-        f_prov.addWidget(self.cfg_prov_nombre); f_prov.addWidget(self.cfg_prov_email); f_prov.addWidget(btn_add_prov)
+        
+        f_prov.addLayout(h_inputs)
+        f_prov.addLayout(h_checks)
+        f_prov.addWidget(btn_add_prov)
         gb_prov.setLayout(f_prov)
         
-        self.tabla_proveedores = QTableWidget(); self.tabla_proveedores.setColumnCount(3); self.tabla_proveedores.hideColumn(0)
-        self.tabla_proveedores.setHorizontalHeaderLabels(["ID", "Empresa / Proveedor", "Email de Reportes"])
+        self.tabla_proveedores = QTableWidget(); self.tabla_proveedores.setColumnCount(4); self.tabla_proveedores.hideColumn(0)
+        self.tabla_proveedores.setHorizontalHeaderLabels(["ID", "Empresa / Proveedor", "Email de Reportes", "Poderes Activos"])
         self.tabla_proveedores.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         self.tabla_proveedores.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.tabla_proveedores.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
@@ -236,11 +295,27 @@ class TabConfiguracion(QWidget):
         e = self.cfg_prov_email.text().strip()
         if n:
             try: 
-                self.main.session.add(ClientePrincipal(nombre=n, email_reportes=e)); self.main.session.commit()
+                nuevo = ClientePrincipal(
+                    nombre=n, email_reportes=e,
+                    es_facturable=self.chk_prov_facturable.isChecked(),
+                    enviar_mail=self.chk_prov_mail.isChecked(),
+                    exige_remito=self.chk_prov_remito.isChecked(),
+                    cadena_frio=self.chk_prov_frio.isChecked(),
+                    cobro_puerta=self.chk_prov_cobro.isChecked()
+                )
+                self.main.session.add(nuevo); self.main.session.commit()
                 self.cfg_prov_nombre.clear(); self.cfg_prov_email.clear()
+                
+                # Restaurar a valores por defecto
+                self.chk_prov_facturable.setChecked(True)
+                self.chk_prov_mail.setChecked(False)
+                self.chk_prov_remito.setChecked(False)
+                self.chk_prov_frio.setChecked(False)
+                self.chk_prov_cobro.setChecked(False)
+                
                 self.cargar_proveedores_tabla(); self.main.actualizar_combos_dinamicos()
                 QMessageBox.information(self, "Éxito", "Empresa agregada.")
-            except: 
+            except Exception as ex: 
                 self.main.session.rollback(); QMessageBox.warning(self, "Error", "Esa empresa ya existe o hubo un corte de red. Intenta de nuevo.")
 
     def editar_proveedor(self):
@@ -250,7 +325,7 @@ class TabConfiguracion(QWidget):
             id_obj = int(self.tabla_proveedores.item(r, 0).text())
             prov = self.main.session.query(ClientePrincipal).get(id_obj)
             if prov:
-                dlg = EditarEmpresaDialog(prov, self)
+                dlg = EditarEmpresaDialogLocal(prov, self)
                 if dlg.exec() == QDialog.DialogCode.Accepted:
                     self.main.session.commit(); self.cargar_proveedores_tabla(); self.main.actualizar_combos_dinamicos()
         except Exception as e: self.main.session.rollback()
@@ -267,7 +342,19 @@ class TabConfiguracion(QWidget):
             
             for r, c in enumerate(clientes): 
                 self.tabla_proveedores.insertRow(r); self.tabla_proveedores.setItem(r, 0, QTableWidgetItem(str(c.id)))
-                self.tabla_proveedores.setItem(r, 1, QTableWidgetItem(c.nombre)); self.tabla_proveedores.setItem(r, 2, QTableWidgetItem(c.email_reportes or "-"))
+                self.tabla_proveedores.setItem(r, 1, QTableWidgetItem(c.nombre))
+                self.tabla_proveedores.setItem(r, 2, QTableWidgetItem(c.email_reportes or "-"))
+                
+                poderes = []
+                if getattr(c, 'es_facturable', True): poderes.append("🧾 Facturable")
+                if getattr(c, 'enviar_mail', False): poderes.append("📧 Mail")
+                if getattr(c, 'exige_remito', False): poderes.append("📄 Remito")
+                if getattr(c, 'cadena_frio', False): poderes.append("❄️ Frío")
+                if getattr(c, 'cobro_puerta', False): poderes.append("💰 Cobro")
+                
+                texto_poderes = " | ".join(poderes) if poderes else "Sin poderes extra"
+                self.tabla_proveedores.setItem(r, 3, QTableWidgetItem(texto_poderes))
+                
                 self.combo_prov_dest.addItem(c.nombre)
                 
             self.combo_prov_dest.setCurrentText(curr_prov)

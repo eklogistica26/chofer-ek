@@ -21,7 +21,6 @@ engine = create_engine(
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
-# 🔥 CARGA SÚPER RÁPIDA: Ya no traba la pantalla verificando las tablas acá 🔥
 def get_session():
     return engine, SessionLocal()
 
@@ -44,7 +43,6 @@ class Usuario(Base):
     sucursal_asignada = Column(String(50))
     es_admin_total = Column(Boolean, default=False)
     
-    # 🔥 TODOS LOS PERMISOS (Las 8 pestañas) 🔥
     ver_monitor = Column(Boolean, default=True)
     ver_ingreso = Column(Boolean, default=True)
     ver_ruta = Column(Boolean, default=True)
@@ -102,6 +100,13 @@ class ClientePrincipal(Base):
     id = Column(Integer, primary_key=True, index=True)
     nombre = Column(String(100), unique=True)
     email_reportes = Column(String(150), nullable=True)
+    
+    # 🔥 LOS NUEVOS 5 PODERES PARA CADA EMPRESA 🔥
+    es_facturable = Column(Boolean, default=True)
+    enviar_mail = Column(Boolean, default=False)
+    exige_remito = Column(Boolean, default=False)
+    cadena_frio = Column(Boolean, default=False)
+    cobro_puerta = Column(Boolean, default=False)
 
 class DestinoFrecuente(Base):
     __tablename__ = "destinos_frecuentes"

@@ -17,7 +17,6 @@ from database import Operacion, Historial, Estados, Urgencia, DestinoFrecuente, 
 from utilidades import parsear_txt_dhl_logic, crear_pdf_retiro, crear_pdf_facturacion, crear_pdf_resumen_diario
 from dialogos import PreviewImportacionDialog, ReprogramarAdminDialog, EditarPrecioFacturacionDialog, AgregarCargoDialog, CargarPagoDialog, ResumenDiarioChoferDialog
 
-# 🔥 ENVIAR MAIL DESDE ESCRITORIO 🔥
 def enviar_email_desktop(session, destinatario, guia, rutas_fotos, proveedor):
     BREVO_API_KEY = os.environ.get("BREVO_API_KEY", "")
     if not BREVO_API_KEY: return
@@ -85,7 +84,6 @@ def enviar_email_desktop(session, destinatario, guia, rutas_fotos, proveedor):
             requests.post(url, json=payload, headers=headers)
     except: pass
 
-# 🔥 EL DELEGADO DIOS Y EL ESCUDO PARA GANARLE AL TEMA OSCURO 🔥
 class PintorCeldasDelegate(QStyledItemDelegate):
     def paint(self, painter, option, index):
         bg_color = index.data(Qt.ItemDataRole.BackgroundRole)
@@ -99,7 +97,6 @@ QTableWidget::item { background-color: transparent !important; color: #000000 !i
 QTableWidget::item:selected { background-color: #bbdefb !important; color: #000000 !important; }
 """
 
-# 🔥 MARGENES REDUCIDOS PARA QUE OCUPE MENOS ESPACIO VERTICAL 🔥
 ESTILO_GRUPO = """
 QGroupBox {
     font-weight: bold !important;
@@ -118,7 +115,6 @@ QGroupBox::title {
 }
 """
 
-# 🔥 CUADRO DE CONFIRMAR ENTREGA (AHORA CON FOTOS) 🔥
 class ConfirmarEntregaDialog(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -179,7 +175,6 @@ class TabIngreso(QWidget):
     def setup_ui(self):
         l = QHBoxLayout(self)
         
-        # 🔥 ZONA DE SCROLL (Formulario) 🔥
         self.scroll_izq = QScrollArea()
         self.scroll_izq.setWidgetResizable(True)
         self.scroll_izq.setStyleSheet("QScrollArea { border: none; background-color: transparent; }")
@@ -192,7 +187,10 @@ class TabIngreso(QWidget):
         p_datos.setStyleSheet(ESTILO_GRUPO)
         fl = QFormLayout()
         self.in_serv = QComboBox(); self.in_serv.addItems(["Entrega (Reparto)", "Retiro (Solicitud Cliente)"]); self.in_serv.currentTextChanged.connect(self.actualizar_interfaz_retiro)
-        self.in_fecha = QDateEdit(QDate.currentDate()); self.in_fecha.setEnabled(False)
+        self.in_fecha = QDateEdit(QDate.currentDate())
+        
+        # 🔥 ACA LE QUITAMOS EL CANDADO A LA FECHA SI SOS ADMIN 🔥
+        self.in_fecha.setEnabled(getattr(self.main.usuario, 'es_admin_total', False))
         
         self.lbl_guia = QLabel("Guía / Remito:"); self.in_guia = QLineEdit()
         self.lbl_cli_ret = QLabel("Buscar Cliente:"); self.in_cliente_retiro = QComboBox(); self.in_cliente_retiro.setEditable(True); self.in_cliente_retiro.completer().setFilterMode(Qt.MatchFlag.MatchContains); self.in_cliente_retiro.currentIndexChanged.connect(self.cargar_datos_cliente); self.lbl_cli_ret.hide(); self.in_cliente_retiro.hide()
@@ -502,7 +500,7 @@ class TabIngreso(QWidget):
                 self.main.session.commit(); QApplication.restoreOverrideCursor(); self.main.setWindowTitle(f"E.K. LOGISTICA (NUBE) - Usuario: {self.main.usuario.username.upper()}")
                 QMessageBox.information(self, "Importación Exitosa", f"✅ {agregadas} guías agregadas.\n⚠️ {omitidas} omitidas (ya existían)."); self.cargar_movimientos_dia()
                 if hasattr(self.main, 'cargar_monitor_global'): self.main.cargar_monitor_global()
-        except Exception as e: QApplication.restoreOverrideCursor(); self.main.setWindowTitle(f"E.K. LOGISTICA (NUBE) - Usuario: {self.main.usuario.username.upper()}"); self.main.session.rollback(); QMessageBox.warning(self, "Micro-corte", "Se interrumpió la conexión.")
+        except Exception: QApplication.restoreOverrideCursor(); self.main.setWindowTitle(f"E.K. LOGISTICA (NUBE) - Usuario: {self.main.usuario.username.upper()}"); self.main.session.rollback(); QMessageBox.warning(self, "Micro-corte", "Se interrumpió la conexión.")
 
     def cargar_movimientos_dia(self):
         try:
@@ -517,7 +515,7 @@ class TabIngreso(QWidget):
                 if op.bultos_frio and op.bultos_frio > 0 and op.bultos_frio < op.bultos: det_b += f" ({op.bultos-op.bultos_frio}C/{op.bultos_frio}R)"
                 elif op.bultos_frio == op.bultos: det_b += " (R)"
                 self.tabla_ingresos.setItem(row, 7, QTableWidgetItem(det_b))
-        except Exception as e: self.main.session.rollback()
+        except Exception: self.main.session.rollback()
 
 
 class TabRendicion(QWidget):
@@ -644,7 +642,7 @@ class TabRendicion(QWidget):
                 it_est = QTableWidgetItem(estado_calle)
                 if "Pendiente" in estado_calle: it_est.setForeground(QColor("#f57f17"))
                 self.tabla_rendicion.setItem(row, 8, it_est); self.tabla_rendicion.setItem(row, 9, QTableWidgetItem("Hoy")) 
-        except Exception as e: self.main.session.rollback()
+        except Exception: self.main.session.rollback()
         finally: self.tabla_rendicion.blockSignals(False)
         
     def confirmar_entrega_rendicion(self):
@@ -653,7 +651,6 @@ class TabRendicion(QWidget):
             if self.tabla_rendicion.item(r, 1).checkState() == Qt.CheckState.Checked: ids.append(int(self.tabla_rendicion.item(r, 0).text()))
         if not ids: QMessageBox.warning(self, "Atención", "Seleccione guías para confirmar su entrega."); return
         
-        # 🔥 EL NUEVO CUADRO MÁGICO QUE PERMITE SUBIR FOTOS DESDE LA PC 🔥
         dlg = ConfirmarEntregaDialog(self)
         if dlg.exec() != QDialog.DialogCode.Accepted: return
         
@@ -665,10 +662,8 @@ class TabRendicion(QWidget):
                 op.fecha_entrega = datetime.combine(dlg.fecha_final, datetime.now().time())
                 detalle = f"Recibió: {dlg.recibe_final}"
                 
-                # Le avisamos al historial que se adjuntaron fotos
                 if hasattr(dlg, 'rutas_fotos') and dlg.rutas_fotos:
                     detalle += f" [CON {len(dlg.rutas_fotos)} FOTO/S CARGADAS POR PC]"
-                    # Disparamos el mail tal cual lo hace la App
                     enviar_email_desktop(self.main.session, dlg.recibe_final, op.guia_remito, dlg.rutas_fotos, op.proveedor)
                 
                 self.main.log_movimiento(op, "ENTREGA CONFIRMADA (ADMIN)", detalle)
@@ -678,7 +673,7 @@ class TabRendicion(QWidget):
             QMessageBox.information(self, "Éxito", f"{count} entregadas correctamente. Emails enviados si correspondía.")
             self.cargar_rendicion()
             if hasattr(self.main, 'cargar_monitor_global'): self.main.cargar_monitor_global()
-        except Exception as e: 
+        except Exception: 
             self.main.session.rollback()
             QMessageBox.warning(self, "Micro-corte", "La conexión parpadeó. Intenta de nuevo.")
 
@@ -696,7 +691,7 @@ class TabRendicion(QWidget):
                 for op in ops: op.estado = Estados.EN_DEPOSITO; op.monto_servicio = nuevo_precio; op.chofer_asignado = None; self.main.log_movimiento(op, "REPROGRAMADO (ADMIN)", f"Nuevo Precio: {nuevo_precio}")
                 self.main.session.commit(); self.cargar_rendicion()
                 if hasattr(self.main, 'cargar_monitor_global'): self.main.cargar_monitor_global()
-        except Exception as e: self.main.session.rollback()
+        except Exception: self.main.session.rollback()
         
     def deshacer_estado(self):
         ids = []
@@ -708,7 +703,7 @@ class TabRendicion(QWidget):
             for op in ops: antiguo = op.estado; op.estado = Estados.EN_DEPOSITO; op.chofer_asignado = None; self.main.log_movimiento(op, "DESHACER (ADMIN)", f"Restaurado a En Deposito")
             self.main.session.commit(); self.cargar_rendicion()
             if hasattr(self.main, 'cargar_monitor_global'): self.main.cargar_monitor_global()
-        except Exception as e: self.main.session.rollback()
+        except Exception: self.main.session.rollback()
 
 class TabFacturacion(QWidget):
     def __init__(self, main_window):
@@ -791,7 +786,7 @@ class TabFacturacion(QWidget):
             try:
                 op = Operacion(fecha_ingreso=datetime.now(), sucursal=self.cierre_sucursal.currentText() if self.cierre_sucursal.currentText() != "Todas" else self.main.sucursal_actual, guia_remito="CARGO-FIJO", proveedor=dlg.in_prov.currentText(), destinatario=dlg.in_concepto.text(), domicilio="-", localidad="-", bultos=1, bultos_frio=0, peso=0.0, tipo_carga="COMUN", monto_servicio=dlg.in_monto.value(), estado=Estados.ENTREGADO, facturado=False, tipo_servicio="Cargo Extra")
                 self.main.session.add(op); self.main.session.commit(); self.main.toast.mostrar("✅ Cargo extra agregado."); self.calcular_cierre()
-            except Exception as e: self.main.session.rollback(); QMessageBox.warning(self, "Error", "No se pudo guardar.")
+            except Exception: self.main.session.rollback(); QMessageBox.warning(self, "Error", "No se pudo guardar.")
 
     def registrar_pago_ctacte(self):
         r = self.tabla_ctacte.currentRow()
@@ -801,7 +796,7 @@ class TabFacturacion(QWidget):
             try:
                 pago = ReciboPago(proveedor=prov, monto=dlg.in_monto.value(), detalle=dlg.in_detalle.text(), usuario=self.main.usuario.username)
                 self.main.session.add(pago); self.main.session.commit(); self.main.toast.mostrar("✅ Pago registrado."); self.cargar_ctas_ctes()
-            except Exception as e: self.main.session.rollback()
+            except Exception: self.main.session.rollback()
 
     def cargar_ctas_ctes(self):
         try:
@@ -821,7 +816,7 @@ class TabFacturacion(QWidget):
                 if saldo > 0: it_saldo.setForeground(QColor("red"))
                 else: it_saldo.setForeground(QColor("green"))
                 self.tabla_ctacte.setItem(i, 3, it_saldo)
-        except Exception as e: self.main.session.rollback()
+        except Exception: self.main.session.rollback()
 
     def doble_clic_ajuste_precio(self, row, col):
         id_op = self.mapa_filas_cierre.get(row)
@@ -833,7 +828,7 @@ class TabFacturacion(QWidget):
             if not op: return
             dlg = EditarPrecioFacturacionDialog(op, self.main, self)
             if dlg.exec() == QDialog.DialogCode.Accepted: op.monto_servicio = dlg.precio_final; self.main.session.commit(); self.calcular_cierre(); self.main.toast.mostrar("✅ Precio actualizado")
-        except Exception as e: self.main.session.rollback()
+        except Exception: self.main.session.rollback()
 
     def calcular_cierre(self):
         mes = self.cierre_mes.currentIndex() + 1
@@ -881,7 +876,6 @@ class TabFacturacion(QWidget):
 
             op_ids = [op.id for op in self.resultados_cierre]
             
-            # 🔥 LÓGICA INTELIGENTE DE VISITAS (PUNTO 6) 🔥
             conteo_repartos = {}
             if op_ids:
                 hist_records = self.main.session.query(Historial.operacion_id, Historial.accion).filter(
@@ -916,7 +910,6 @@ class TabFacturacion(QWidget):
                 
                 self.tabla_cierre.setItem(row, 4, QTableWidgetItem(det_b))
                 
-                # Leemos la variable ajustada que no acumula errores administrativos
                 visitas = conteo_repartos.get(op.id, 1)
                 if visitas < 1: visitas = 1 
                 
@@ -925,7 +918,7 @@ class TabFacturacion(QWidget):
                 
                 if visitas > 1:
                     estado_txt = f"{estado_txt} (⚠️ {visitas} Visitas)"
-                    bg_color_row = QColor("#fff3cd") # Amarillo clarito
+                    bg_color_row = QColor("#fff3cd")
                 
                 self.tabla_cierre.setItem(row, 5, QTableWidgetItem(estado_txt))
                 
