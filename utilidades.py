@@ -284,7 +284,10 @@ def crear_pdf_resumen_diario(nombre_archivo, chofer, fecha_str, entregados, no_e
     elements.append(Paragraph(f"✅ ENTREGAS / RETIROS EXITOSOS ({len(entregados)})", styles['Heading2']))
     if entregados:
         data_e = [["GUÍA", "DESTINATARIO", "DOMICILIO"]]
-        for g, dest, dom in entregados:
+        for row in entregados:
+            g = row[1]
+            dest = row[2]
+            dom = row[3]
             data_e.append([Paragraph(g or "-", styles['Normal']), Paragraph(dest, styles['Normal']), Paragraph(dom, styles['Normal'])])
         t_e = Table(data_e, colWidths=[120, 180, 235])
         t_e.setStyle(TableStyle([
@@ -302,7 +305,10 @@ def crear_pdf_resumen_diario(nombre_archivo, chofer, fecha_str, entregados, no_e
     elements.append(Paragraph(f"⚠️ NO ENTREGADOS / PENDIENTES ({len(no_entregados)})", styles['Heading2']))
     if no_entregados:
         data_n = [["GUÍA", "DESTINATARIO", "MOTIVO"]]
-        for g, dest, mot in no_entregados:
+        for row in no_entregados:
+            g = row[0]
+            dest = row[1]
+            mot = row[2]
             data_n.append([Paragraph(g or "-", styles['Normal']), Paragraph(dest, styles['Normal']), Paragraph(mot, styles['Normal'])])
         t_n = Table(data_n, colWidths=[120, 180, 235])
         t_n.setStyle(TableStyle([
