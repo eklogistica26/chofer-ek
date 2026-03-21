@@ -290,7 +290,7 @@ def lista_viajes():
     viajes = []
     if conn:
         try:
-            sql = text("SELECT id, guia_remito, destinatario, domicilio, localidad, bultos, estado, proveedor, tipo_servicio FROM operaciones WHERE chofer_asignado = :c AND UPPER(estado) IN ('EN REPARTO', 'PENDIENTE') ORDER BY id ASC")
+            sql = text("SELECT id, guia_remito, destinatario, domicilio, localidad, bultos, estado, proveedor, tipo_servicio, fecha_salida FROM operaciones WHERE chofer_asignado = :c AND UPPER(estado) IN ('EN REPARTO', 'PENDIENTE') ORDER BY id ASC")
             viajes = conn.execute(sql, {"c": chofer}).fetchall()
         except Exception as e: 
             print("Error cargando viajes:", e)
@@ -302,6 +302,7 @@ def lista_viajes():
     else:
         for v in viajes:
             tipo_srv = v[8] if v[8] else ""
+            fecha_salida = v[9]
             
             es_retiro = "Retiro" in tipo_srv
             es_guardia = "Guardia" in tipo_srv
@@ -319,13 +320,28 @@ def lista_viajes():
             q = f"{v[3]}, {v[4]}"
             mapa_url = f"https://www.google.com/maps/search/?api=1&query={q}"
             
-            # 🔥 MAGIA DEL SUPERPODER PARA BORRAR 🔥
+            es_guardia_reciente = False
+            if es_guardia and fecha_salida:
+                tiempo_transcurrido = hora_arg() - fecha_salida
+                if tiempo_transcurrido.total_seconds() < 3600:
+                    es_guardia_reciente = True
+
             btn_eliminar_html = ""
             if chofer in CHOFERES_ADMIN:
                 btn_eliminar_html = f"""
-                <form method="POST" action="/eliminar_guia/{v[0]}" onsubmit="return confirm('⚠️ ATENCIÓN ADMIN: ¿Estás COMPLETAMENTE SEGURO de eliminar esta guía de la base de datos de forma permanente?');" style="margin-top:15px;">
-                    <button type="submit" class="btn" style="background-color: white; color: #D32F2F; border: 2px solid #D32F2F; padding: 10px;">🗑️ ELIMINAR GUÍA DUPLICADA</button>
-                </form>
+                <div style="text-align: right; margin-top: 10px;">
+                    <form method="POST" action="/eliminar_guia_admin/{v[0]}" onsubmit="return confirm('⚠️ ATENCIÓN ADMIN: ¿Estás seguro de eliminar esta guía de forma permanente?');" style="display:inline;">
+                        <button type="submit" style="background-color: #D32F2F; color: white; border: none; padding: 6px 12px; border-radius: 5px; font-size: 0.85rem; font-weight: bold; cursor: pointer;">🗑️ ELIMINAR</button>
+                    </form>
+                </div>
+                """
+            elif es_guardia_reciente:
+                btn_eliminar_html = f"""
+                <div style="text-align: right; margin-top: 10px;">
+                    <form method="POST" action="/eliminar_guia_propia/{v[0]}" onsubmit="return confirm('⚠️ ¿Cargaste esta guardia por error? Se borrará de tu lista.');" style="display:inline;">
+                        <button type="submit" style="background-color: #D32F2F; color: white; border: none; padding: 6px 12px; border-radius: 5px; font-size: 0.85rem; font-weight: bold; cursor: pointer;">🗑️ ELIMINAR</button>
+                    </form>
+                </div>
                 """
             
             cards_html += f"""
@@ -387,12 +403,11 @@ def lista_viajes():
     """
     return render_template_string(html)
 
-# 🔥 RUTA NUEVA: ELIMINAR GUÍA (SOLO PARA ADMINS) 🔥
-@app.route('/eliminar_guia/<int:id_op>', methods=['POST'])
-def eliminar_guia(id_op):
+@app.route('/eliminar_guia_admin/<int:id_op>', methods=['POST'])
+def eliminar_guia_admin(id_op):
     chofer = session.get('chofer')
     if chofer not in CHOFERES_ADMIN:
-        return "Acceso denegado. Este botón es solo para Administradores.", 403
+        return "Acceso denegado.", 403
         
     conn = get_db()
     if conn:
@@ -404,6 +419,35 @@ def eliminar_guia(id_op):
         except Exception as e:
             conn.rollback()
             flash(f"❌ Error al intentar eliminar: {e}", "error")
+        finally:
+            conn.close()
+            
+    return redirect(url_for('lista_viajes'))
+
+@app.route('/eliminar_guia_propia/<int:id_op>', methods=['POST'])
+def eliminar_guia_propia(id_op):
+    chofer = session.get('chofer')
+    if not chofer: return redirect(url_for('index'))
+    
+    conn = get_db()
+    if conn:
+        try:
+            sql_check = text("SELECT fecha_salida, tipo_servicio FROM operaciones WHERE id = :id AND chofer_asignado = :c")
+            op_db = conn.execute(sql_check, {"id": id_op, "c": chofer}).fetchone()
+            
+            if op_db and "Guardia" in (op_db[1] or ""):
+                if op_db[0] and (hora_arg() - op_db[0]).total_seconds() < 3600:
+                    conn.execute(text("DELETE FROM historial_movimientos WHERE operacion_id = :id"), {"id": id_op})
+                    conn.execute(text("DELETE FROM operaciones WHERE id = :id"), {"id": id_op})
+                    conn.commit()
+                    flash("🗑️ Error deshecho. Guía borrada correctamente.", "success")
+                else:
+                    flash("❌ Ya pasó más de 1 hora desde que creaste esta guardia. Pide a la base que la anule.", "error")
+            else:
+                flash("❌ Operación de borrado no permitida.", "error")
+        except Exception as e:
+            conn.rollback()
+            flash(f"❌ Error al eliminar: {e}", "error")
         finally:
             conn.close()
             
