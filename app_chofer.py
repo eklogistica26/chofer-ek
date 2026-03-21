@@ -13,6 +13,9 @@ app.secret_key = "secreto_super_seguro_choferes_ek"
 # 🔥 CONFIGURACIÓN DE MEMORIA PERMANENTE (30 DÍAS SIN DESLOGUEARSE) 🔥
 app.permanent_session_lifetime = timedelta(days=30)
 
+# 🦸‍♂️ LISTA VIP DE CHOFERES ADMINISTRADORES 🦸‍♂️
+CHOFERES_ADMIN = ["Karim Carbajo"]
+
 # --- CONFIGURACIÓN DE SEGURIDAD ---
 DATABASE_URL = os.environ.get("DB_URL") 
 if not DATABASE_URL:
@@ -316,6 +319,15 @@ def lista_viajes():
             q = f"{v[3]}, {v[4]}"
             mapa_url = f"https://www.google.com/maps/search/?api=1&query={q}"
             
+            # 🔥 MAGIA DEL SUPERPODER PARA BORRAR 🔥
+            btn_eliminar_html = ""
+            if chofer in CHOFERES_ADMIN:
+                btn_eliminar_html = f"""
+                <form method="POST" action="/eliminar_guia/{v[0]}" onsubmit="return confirm('⚠️ ATENCIÓN ADMIN: ¿Estás COMPLETAMENTE SEGURO de eliminar esta guía de la base de datos de forma permanente?');" style="margin-top:15px;">
+                    <button type="submit" class="btn" style="background-color: white; color: #D32F2F; border: 2px solid #D32F2F; padding: 10px;">🗑️ ELIMINAR GUÍA DUPLICADA</button>
+                </form>
+                """
+            
             cards_html += f"""
             <div class="card">
                 <div style="margin-bottom: 10px; overflow: hidden;">
@@ -333,6 +345,7 @@ def lista_viajes():
                     <a href="{mapa_url}" target="_blank" class="btn btn-outline" style="flex:1; margin-top:0;">🗺️ Mapa</a>
                     <a href="/gestion/{v[0]}" class="btn btn-blue" style="flex:2; margin-top:0;">Gestionar</a>
                 </div>
+                {btn_eliminar_html}
             </div>
             """
             
@@ -348,7 +361,6 @@ def lista_viajes():
         <div class="container">
             {mensajes_html}
             
-            <!-- 🔥 BOTÓN DE GUARDIA EN ROJO 🔥 -->
             <div style="margin-bottom: 15px;">
                 <a href="/guardia" class="btn btn-red" style="display:flex; align-items:center; justify-content:center; gap:10px;">
                     <span style="font-size:1.2rem;">🚨</span> CARGAR GUÍA DE GUARDIA
@@ -375,6 +387,28 @@ def lista_viajes():
     """
     return render_template_string(html)
 
+# 🔥 RUTA NUEVA: ELIMINAR GUÍA (SOLO PARA ADMINS) 🔥
+@app.route('/eliminar_guia/<int:id_op>', methods=['POST'])
+def eliminar_guia(id_op):
+    chofer = session.get('chofer')
+    if chofer not in CHOFERES_ADMIN:
+        return "Acceso denegado. Este botón es solo para Administradores.", 403
+        
+    conn = get_db()
+    if conn:
+        try:
+            conn.execute(text("DELETE FROM historial_movimientos WHERE operacion_id = :id"), {"id": id_op})
+            conn.execute(text("DELETE FROM operaciones WHERE id = :id"), {"id": id_op})
+            conn.commit()
+            flash("🗑️ Guía eliminada permanentemente.", "success")
+        except Exception as e:
+            conn.rollback()
+            flash(f"❌ Error al intentar eliminar: {e}", "error")
+        finally:
+            conn.close()
+            
+    return redirect(url_for('lista_viajes'))
+
 @app.route('/guardia', methods=['GET', 'POST'])
 def guardia():
     chofer = session.get('chofer')
@@ -389,7 +423,6 @@ def guardia():
         domicilio = request.form.get('domicilio', '').strip()
         localidad = request.form.get('localidad', '').strip()
         
-        # FIX 1: Obligamos a que Bultos sea sí o sí un número entero para no romper la BD
         try:
             bultos = int(request.form.get('bultos') or 1)
         except:
@@ -400,11 +433,9 @@ def guardia():
 
         if conn:
             try:
-                # FIX 2: Buscamos a qué sucursal pertenece el chofer para no dejar la guía huérfana
                 res_suc = conn.execute(text("SELECT sucursal FROM choferes WHERE nombre = :n"), {"n": chofer}).fetchone()
                 sucursal_chofer = res_suc[0] if res_suc else "Mendoza"
 
-                # FIX 3: Un INSERT blindado con todos los datos requeridos por la base
                 sql_insert = text("""
                     INSERT INTO operaciones 
                     (fecha_ingreso, sucursal, guia_remito, proveedor, destinatario, domicilio, localidad, bultos, tipo_carga, tipo_urgencia, chofer_asignado, estado, fecha_salida, tipo_servicio, bultos_frio, peso, monto_servicio, es_contra_reembolso, monto_recaudacion, facturado)
@@ -427,7 +458,6 @@ def guardia():
                 flash("✅ Guía de guardia generada e ingresada a tu ruta.", "success")
             except Exception as e:
                 print("Error creando guardia:", e)
-                # FIX 4: Si falla, le imprime al chofer en rojo la falla exacta del sistema para que nosotros sepamos qué pasó.
                 flash(f"❌ Error de Servidor: {str(e)}", "error")
             finally:
                 conn.close()
