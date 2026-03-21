@@ -98,8 +98,14 @@ class PlataformaLogistica(QMainWindow):
 
         _, self.session = get_session()
         
+        # 🔥 AUTO-PARCHE DE BASE DE DATOS: Agrega columnas si no existen 🔥
         try:
             self.session.execute(text("ALTER TABLE choferes ADD COLUMN celular VARCHAR(50)"))
+            self.session.execute(text("ALTER TABLE clientes_principales ADD COLUMN es_facturable BOOLEAN DEFAULT TRUE"))
+            self.session.execute(text("ALTER TABLE clientes_principales ADD COLUMN enviar_mail BOOLEAN DEFAULT FALSE"))
+            self.session.execute(text("ALTER TABLE clientes_principales ADD COLUMN exige_remito BOOLEAN DEFAULT FALSE"))
+            self.session.execute(text("ALTER TABLE clientes_principales ADD COLUMN cadena_frio BOOLEAN DEFAULT FALSE"))
+            self.session.execute(text("ALTER TABLE clientes_principales ADD COLUMN cobro_puerta BOOLEAN DEFAULT FALSE"))
             self.session.commit()
         except:
             self.session.rollback()
@@ -709,8 +715,6 @@ class DBWakeUpThread(QThread):
     finished_signal = pyqtSignal()
     def run(self):
         try: 
-            # FIX DE VELOCIDAD: Ya no revisamos si las tablas existen (eso demoraba la vida). 
-            # Solo mandamos un 'hola' rápido a la BD para despertarla si estaba dormida.
             from database import get_session
             engine, session = get_session()
             session.execute(text("SELECT 1"))
