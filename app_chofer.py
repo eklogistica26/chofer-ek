@@ -46,6 +46,16 @@ def limpiar_telefono_wsp(telefono):
 
 NUMERO_BASE_FINAL = limpiar_telefono_wsp(NUMERO_BASE_RAW)
 
+# 🔥 AUTO-PARCHE INVISIBLE: Le pone fecha a la guardia del sabado 15 que habia quedado huerfana 🔥
+try:
+    _conn = get_db()
+    if _conn:
+        _conn.execute(text("UPDATE operaciones SET fecha_ingreso = DATE(fecha_salida) WHERE fecha_ingreso IS NULL AND tipo_servicio = 'Entrega (Guardia)'"))
+        _conn.commit()
+        _conn.close()
+except:
+    pass
+
 @app.route('/eklogo.png')
 def serve_logo():
     return send_from_directory(BASE_DIR, 'eklogo.png')
@@ -337,7 +347,7 @@ def lista_viajes():
                 </div>
                 <div style="background: #f0f7ff; padding: 10px; border-radius: 6px; font-size: 0.85rem; color: #444; margin-bottom: 15px; border-left: 4px solid #1976D2;">
                     🏢 Cliente: <b>{v[7]}</b><br>
-                    📦 Guía: <b>{v[1]}</b> &nbsp;|&nbsp; Bultos: {v[5]}
+                    📦 Guía: <b>{v[1]}</b>  |  Bultos: {v[5]}
                 </div>
                 <div style="display:flex; gap:10px;">
                     <a href="{mapa_url}" target="_blank" class="btn btn-outline" style="flex:1; margin-top:0;">🗺️ Mapa</a>
@@ -403,18 +413,18 @@ def guardia():
 
         if conn:
             try:
-                # 🔥 GUARDA AUTOMÁTICAMENTE EL tipo_servicio COMO "Entrega (Guardia)" PARA LA FACTURACIÓN 🔥
+                # 🔥 AHORA SÍ GRABA LA FECHA DE INGRESO PARA QUE APAREZCA EN FACTURACIÓN 🔥
                 sql_insert = text("""
                     INSERT INTO operaciones 
-                    (guia_remito, proveedor, destinatario, domicilio, localidad, bultos, tipo_carga, tipo_urgencia, chofer_asignado, estado, fecha_salida, tipo_servicio)
+                    (guia_remito, proveedor, destinatario, domicilio, localidad, bultos, tipo_carga, tipo_urgencia, chofer_asignado, estado, fecha_salida, tipo_servicio, fecha_ingreso)
                     VALUES 
-                    (:g, :p, :d, :dom, :loc, :b, :tc, :tu, :c, 'EN REPARTO', :fs, 'Entrega (Guardia)')
+                    (:g, :p, :d, :dom, :loc, :b, :tc, :tu, :c, 'EN REPARTO', :fs, 'Entrega (Guardia)', :fi)
                     RETURNING id
                 """)
                 res = conn.execute(sql_insert, {
                     "g": guia, "p": proveedor, "d": destinatario, "dom": domicilio,
                     "loc": localidad, "b": bultos, "tc": tipo_carga, "tu": tipo_urgencia,
-                    "c": chofer, "fs": hora_arg()
+                    "c": chofer, "fs": hora_arg(), "fi": hora_arg().date()
                 })
                 new_id = res.fetchone()[0]
                 
@@ -627,7 +637,6 @@ def gestion(id_op):
     
     if conn:
         try:
-            # 🔥 LECTURA OPTIMIZADA CON LEFT JOIN PARA VELOCIDAD EXTREMA 🔥
             sql = text("""
                 SELECT o.guia_remito, o.destinatario, o.domicilio, o.localidad, o.celular, 
                        o.tipo_urgencia, o.tipo_carga, o.es_contra_reembolso, o.monto_recaudacion, 
@@ -639,7 +648,7 @@ def gestion(id_op):
             op = conn.execute(sql, {"i": id_op}).fetchone()
             
             if op:
-                exige_foto = bool(op[12]) # Toma el dato de si exige foto directamente en la misma consulta
+                exige_foto = bool(op[12]) 
         except Exception as e:
             print("Error cargando gestion:", e)
         finally: 
@@ -693,7 +702,6 @@ def gestion(id_op):
                 flash("❌ ERROR: Escribe quién recibió.", "error")
                 return redirect(url_for('gestion', id_op=id_op))
             
-            # 🔥 VALIDACIÓN DE LA FOTO EN EL BACKEND 🔥
             if exige_foto and not tiene_foto:
                 flash("📸 ERROR: Este cliente exige foto del remito de forma obligatoria.", "error")
                 return redirect(url_for('gestion', id_op=id_op))
@@ -778,7 +786,6 @@ def gestion(id_op):
     link_wa = f"https://wa.me/{telefono_limpio}?text={mensaje_wa}" if telefono_limpio else "#"
     btn_wa_style = "opacity:0.5; pointer-events:none;" if not telefono_limpio else ""
 
-    # 🔥 CARTEL DINÁMICO EN LA APP SEGÚN LA EMPRESA 🔥
     texto_foto_lbl = "Fotos del Comprobante / Domicilio (OBLIGATORIO):" if exige_foto else "Fotos del Comprobante / Domicilio (Opcional):"
 
     html = f"""
