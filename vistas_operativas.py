@@ -187,9 +187,10 @@ class TabIngreso(QWidget):
         p_datos.setStyleSheet(ESTILO_GRUPO)
         fl = QFormLayout()
         self.in_serv = QComboBox(); self.in_serv.addItems(["Entrega (Reparto)", "Retiro (Solicitud Cliente)"]); self.in_serv.currentTextChanged.connect(self.actualizar_interfaz_retiro)
-        self.in_fecha = QDateEdit(QDate.currentDate())
         
-        # 🔥 ACA LE QUITAMOS EL CANDADO A LA FECHA SI SOS ADMIN 🔥
+        self.in_fecha = QDateEdit(QDate.currentDate())
+        # 🔥 CALENDARIO Y DESBLOQUEO ADMIN PARA FECHA DE INGRESO 🔥
+        self.in_fecha.setCalendarPopup(True)
         self.in_fecha.setEnabled(getattr(self.main.usuario, 'es_admin_total', False))
         
         self.lbl_guia = QLabel("Guía / Remito:"); self.in_guia = QLineEdit()
@@ -506,7 +507,14 @@ class TabIngreso(QWidget):
         try:
             self.tabla_ingresos.setRowCount(0)
             estados_deposito = [Estados.EN_DEPOSITO, 'EN DEPOSITO', 'En Depósito', 'En Deposito', 'EN DEPÓSITO']
-            ops = self.main.session.query(Operacion).filter(Operacion.estado.in_(estados_deposito), Operacion.sucursal == self.main.sucursal_actual).order_by(Operacion.id.desc()).all()
+            
+            # 🔥 FIX INVISIBILIDAD 🔥 Filtramos para que no muestre los que tienen fecha de salida para el futuro
+            ops = self.main.session.query(Operacion).filter(
+                Operacion.estado.in_(estados_deposito), 
+                Operacion.sucursal == self.main.sucursal_actual,
+                text("DATE(COALESCE(fecha_salida, fecha_ingreso)) <= CURRENT_DATE")
+            ).order_by(Operacion.id.desc()).all()
+            
             for row, op in enumerate(ops):
                 self.tabla_ingresos.insertRow(row); self.tabla_ingresos.setItem(row, 0, QTableWidgetItem(str(op.id)))
                 icon_srv = "🚚" if "Entrega" in op.tipo_servicio else "🔄"; srv_txt = "Entrega" if "Entrega" in op.tipo_servicio else "Retiro"
@@ -700,10 +708,25 @@ class TabRendicion(QWidget):
         if not ids: return
         try:
             ops = self.main.session.query(Operacion).filter(Operacion.id.in_(ids)).all()
-            for op in ops: antiguo = op.estado; op.estado = Estados.EN_DEPOSITO; op.chofer_asignado = None; self.main.log_movimiento(op, "DESHACER (ADMIN)", f"Restaurado a En Deposito")
-            self.main.session.commit(); self.cargar_rendicion()
-            if hasattr(self.main, 'cargar_monitor_global'): self.main.cargar_monitor_global()
-        except Exception: self.main.session.rollback()
+            for op in ops:
+                op.estado = Estados.EN_DEPOSITO
+                op.chofer_asignado = None
+                self.main.log_movimiento(op, "DESHACER (ADMIN)", f"Restaurado a En Deposito")
+            
+            self.main.session.commit()
+            self.cargar_rendicion()
+            
+            if hasattr(self.main, 'cargar_monitor_global'): 
+                self.main.cargar_monitor_global()
+                
+            # 🔥 FIX INVISIBILIDAD: Actualizamos también la tabla de Ingreso y Ruta para que vuelvan a aparecer
+            if hasattr(self.main, 'tab_ingreso'):
+                self.main.tab_ingreso.cargar_movimientos_dia()
+            if hasattr(self.main, 'cargar_ruta'):
+                self.main.cargar_ruta()
+                
+        except Exception: 
+            self.main.session.rollback()
 
 class TabFacturacion(QWidget):
     def __init__(self, main_window):

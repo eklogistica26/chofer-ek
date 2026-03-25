@@ -98,7 +98,20 @@ class PlataformaLogistica(QMainWindow):
 
         _, self.session = get_session()
         
-        # 🔥 ELIMINAMOS EL PARCHE AUTOMÁTICO PARA QUE LA PC NO SE CONGELE NUNCA MÁS 🔥
+        parches = [
+            "ALTER TABLE choferes ADD COLUMN celular VARCHAR(50)",
+            "ALTER TABLE clientes_principales ADD COLUMN es_facturable BOOLEAN DEFAULT TRUE",
+            "ALTER TABLE clientes_principales ADD COLUMN enviar_mail BOOLEAN DEFAULT FALSE",
+            "ALTER TABLE clientes_principales ADD COLUMN exige_remito BOOLEAN DEFAULT FALSE",
+            "ALTER TABLE clientes_principales ADD COLUMN cadena_frio BOOLEAN DEFAULT FALSE",
+            "ALTER TABLE clientes_principales ADD COLUMN cobro_puerta BOOLEAN DEFAULT FALSE"
+        ]
+        for p in parches:
+            try:
+                self.session.execute(text(p))
+                self.session.commit()
+            except:
+                self.session.rollback()
 
         self.lista_proveedores = []; self.toast = ToastNotification(self); self.filtro_monitor = None
         self.init_ui()
@@ -187,24 +200,149 @@ class PlataformaLogistica(QMainWindow):
         idx = self.tabs.currentIndex()
         tab_name = self.tabs.tabText(idx)
         diccionario_ayuda = {
-            "📊 MONITOR GLOBAL": """<b>MÓDULO: Monitor Global</b><br><br><b>PASO A PASO:</b><br><b>Paso 1:</b> Observá la pantalla principal...""",
-            "1. INGRESO": """<b>MÓDULO: Ingreso al Depósito</b><br><br><b>PASO A PASO:</b><br><b>Paso 1:</b> Seleccioná el Proveedor...""",
-            "2. Hoja de Ruta": """<b>MÓDULO: Asignación y Despacho</b><br><br><b>PASO A PASO:</b><br><b>Paso 1:</b> Tildá la casilla...""",
-            "3. Rendición": """<b>MÓDULO: Rendición</b><br><br><b>PASO A PASO:</b><br><b>Paso 1:</b> Seleccioná al chofer...""",
-            "4. Reportes": """<b>MÓDULO: Reportes</b><br><br><b>PASO A PASO:</b><br><b>Paso 1:</b> Seleccioná Fechas...""",
-            "5. Facturación": """<b>MÓDULO: Facturación</b><br><br><b>PASO A PASO:</b><br><b>Paso 1:</b> Seleccioná Mes y Año...""",
-            "💬 CRM / Contacto": """<b>MÓDULO: CRM</b><br><br><b>PASO A PASO:</b><br><b>Paso 1:</b> Tocá Cargar Entregas...""",
-            "📈 Estadísticas": """<b>MÓDULO: Estadísticas</b><br><br><b>PASO A PASO:</b><br><b>Paso 1:</b> Tocá Actualizar Gráficos...""",
-            "⚙️ Configuración": """<b>MÓDULO: Configuración</b><br><br><b>PASO A PASO:</b><br><b>Paso 1:</b> Entrá a la pestaña..."""
+            "📊 MONITOR GLOBAL": """
+            <h2 style='color:#0d6efd;'>MÓDULO: Monitor Global</h2>
+            <p>Es la pantalla de control principal para ver el estado de la calle en tiempo real.</p>
+            <b>PASO A PASO:</b><br>
+            <b>1.</b> Al abrir, verás todas las guías del día actual de tu sucursal.<br>
+            <b>2.</b> Si querés ver dónde está un paquete, buscá el enlace rojo [📍 MAPA] en la columna Domicilio.<br><br>
+            <b>¿QUÉ HACEN LOS BOTONES?</b><br>
+            - <b>[Fecha] (Calendario):</b> Arriba a la izquierda, te permite viajar en el tiempo y ver qué pasó un día anterior.<br>
+            - <b>[Chofer] (Desplegable):</b> Filtra la tabla para ver solo los paquetes que tiene un empleado específico.<br>
+            - <b>[🔄 Actualizar Ahora]:</b> Refresca la pantalla para ver las últimas entregas que acaban de hacer los choferes en la calle.<br>
+            - <b>[Botones de Colores (Abajo)]:</b> Sirven como filtros rápidos. Tocá '🟢 ENTREGADO' para ocultar todo y ver solo los éxitos.<br><br>
+            <i>Pestaña 'Últimas Novedades y Auditoría': Funciona como una caja negra. Registra qué usuario, a qué hora y qué modificó en cada paquete.</i>
+            """,
+            
+            "1. INGRESO": """
+            <h2 style='color:#0d6efd;'>MÓDULO: Ingreso al Depósito</h2>
+            <p>Se utiliza para cargar la mercadería física al sistema antes de despacharla.</p>
+            <b>PASO A PASO PARA INGRESAR PAQUETES:</b><br>
+            <b>1.</b> Seleccioná el Proveedor, completá el Destinatario y el Domicilio.<br>
+            <b>2.</b> En Zona, seleccioná la localidad (Esto es vital porque define el precio a cobrar).<br>
+            <b>3.</b> Ingresá los Bultos (y el peso si es DHL).<br>
+            <b>4.</b> Tocá <b>GUARDAR EN DEPOSITO</b>. El paquete se sumará a la tabla de la derecha.<br><br>
+            <b>¿QUÉ HACEN LOS BOTONES?</b><br>
+            - <b>[Tipo] (Entrega/Retiro):</b> Si lo cambiás a Retiro, desaparece la Guía y el sistema la autogenera para ir a buscar algo a un cliente.<br>
+            - <b>[📍 Destinos Fijos]:</b> Si elegís una empresa que ya tiene clientes guardados, abrí esta lista, tocá un nombre y los datos de domicilio se llenarán solos por arte de magia.<br>
+            - <b>[📥 IMPORTAR TXT DHL]:</b> Sirve para San Juan. Tocás, elegís el archivo del sistema de DHL y te carga 100 paquetes en 2 segundos.<br>
+            - <b>[✏️ EDITAR]:</b> Si te equivocaste al tipear un nombre, seleccioná la fila en la tabla derecha y tocá Editar.<br>
+            - <b>[🗑️ ELIMINAR]:</b> Borra permanentemente una guía mal ingresada.
+            """,
+            
+            "2. Hoja de Ruta": """
+            <h2 style='color:#0d6efd;'>MÓDULO: Asignación y Despacho</h2>
+            <p>Se usa para asignarle los paquetes (que están en el depósito) a un chofer para que salgan a la calle.</p>
+            <b>PASO A PASO PARA DESPACHAR:</b><br>
+            <b>1.</b> En la tabla, tildá la casilla en la columna 'Sel.' de todos los paquetes que se llevará un chofer.<br>
+            <b>2.</b> Arriba, seleccioná el nombre del Chofer.<br>
+            <b>3.</b> Hacé clic en el botón <b>ASIGNAR GUÍAS</b>.<br><br>
+            <b>¿QUÉ HACEN LOS BOTONES?</b><br>
+            - <b>[☑️ Seleccionar Todo]:</b> Tilda de un solo clic todas las filas de la tabla para despachar rápido.<br>
+            - <b>[ASIGNAR GUÍAS]:</b> Pasa los paquetes al estado 'EN REPARTO'. Le manda los datos a la App del chofer y te ofrece imprimir el PDF.<br>
+            - <b>[🚚 TERCERIZADOS]:</b> Si la carga se la lleva una empresa externa, tocá este botón. Te pedirá el nombre del transporte y generará un Remito especial.<br>
+            - <b>[📅 CAMBIAR FECHA]:</b> Si un paquete no va a salir hoy, podés tildar VARIOS y tocar este botón para esconderlos y pasarlos para otro día. Desaparecerán hasta que llegue esa fecha.<br>
+            - <b>[📜 HISTORIAL]:</b> Abre un buscador para reimprimir Hojas de Ruta viejas o ver qué llevó un chofer hace 1 mes.
+            """,
+            
+            "3. Rendición": """
+            <h2 style='color:#0d6efd;'>MÓDULO: Rendición de Choferes</h2>
+            <p>Se usa cuando el chofer vuelve de la calle para controlar el dinero y los paquetes rebotados.</p>
+            
+            <div style='background-color:#ffeeba; padding:10px; border-left:4px solid #ffc107; margin-bottom:10px;'>
+            <b>¿QUÉ HACER SI NO ENTREGAMOS HOY POR CULPA NUESTRA (Y NO COBRARLE AL CLIENTE)?</b><br>
+            <b>Paso 1:</b> Seleccioná la guía en la tabla.<br>
+            <b>Paso 2:</b> Tocá <b>↩️ DESHACER (Admin)</b>. Esto anula la salida, el paquete vuelve a depósito y el sistema NO suma visitas extra (no se cobra recargo a fin de mes).<br>
+            <b>Paso 3:</b> Andá a la pestaña '2. Hoja de Ruta', buscá el paquete, tocá <b>📅 CAMBIAR FECHA</b> y pasalo para mañana.
+            </div>
+
+            <b>¿QUÉ HACEN LOS BOTONES?</b><br>
+            - <b>[✅ CONFIRMAR ENTREGAS]:</b> Si a un chofer se le rompió el celular en la calle, seleccioná sus guías y tocá acá para darlas como entregadas manualmente desde la PC.<br>
+            - <b>[📅 REPROGRAMAR]:</b> Usalo cuando el chofer fue pero el cliente no estaba o no tenía plata. Esto baja el paquete del chofer, vuelve a depósito, PERO el sistema anota que se gastó una visita (se cobrará demora en facturación).<br>
+            - <b>[↩️ DESHACER (Admin)]:</b> Usalo cuando fue CULPA NUESTRA (ej: no hicimos a tiempo). Anula la salida sin cobrar recargos.<br>
+            - <b>[🔍 Buscar Resumen] (Pestaña 2):</b> Muestra todo lo que el chofer marcó en el celular como entregado o fallido en el día.<br>
+            - <b>[Imprimir PDF] (Pestaña 2):</b> Imprime el comprobante final para que el chofer lo firme y rinda el dinero.
+            """,
+            
+            "4. Reportes": """
+            <h2 style='color:#0d6efd;'>MÓDULO: Búsquedas Históricas</h2>
+            <p>El buscador general para encontrar información vieja o armar planillas.</p>
+            <b>PASO A PASO:</b><br>
+            <b>1.</b> Seleccioná la Fecha 'Desde' y 'Hasta'.<br>
+            <b>2.</b> (Opcional) Usá los desplegables para filtrar por un solo Cliente o un solo Chofer.<br>
+            <b>3.</b> Tocá <b>🔍 Generar</b>.<br><br>
+            <b>¿QUÉ HACEN LOS BOTONES?</b><br>
+            - <b>[🔍 Generar]:</b> Busca en la base de datos y llena la tabla.<br>
+            - <b>[Excel]:</b> Descarga un archivo editable (ideal para mandarle un reporte en crudo al contador).<br>
+            - <b>[PDF]:</b> Genera un documento formal, sellado e inmodificable, ideal para enviarle a los clientes como comprobante de gestión.
+            """,
+            
+            "5. Facturación": """
+            <h2 style='color:#0d6efd;'>MÓDULO: Liquidación a Clientes</h2>
+            <p>Se utiliza a fin de mes (o por quincena) para calcular cuánto le debemos cobrar a cada empresa.</p>
+            
+            <b>¿CÓMO SE CALCULA EL PRECIO MÁGICAMENTE?</b><br>
+            - El sistema lee la 'Zona' del paquete y busca su valor en la Configuración de Tarifas.<br>
+            - <b>Paquetes Comunes:</b> Agrupa los bultos, los divide por 3 (redondeando hacia arriba) y multiplica por el 'Precio Base Común'.<br>
+            - <b>Paquetes de Frío:</b> Agrupa los bultos, los divide por 3, y multiplica por el 'Precio Base Frío'.<br>
+            - Si hay bultos mixtos en la misma guía, cobra todo con la tarifa más cara (Frío).<br>
+            - JetPaq no se cobra (Uso interno).<br><br>
+
+            <b>¿QUÉ HACEN LOS BOTONES?</b><br>
+            - <b>[Calcular Listado]:</b> Trae todas las guías del mes que aún no se cobraron. Si hay filas Amarillas, significa que se visitó más de 1 vez esa casa.<br>
+            - <b>[✏️ Editar] (En la grilla):</b> Permite modificar el precio final a mano o tildar la casilla para cobrarle un recargo por demora/visita extra.<br>
+            - <b>[➕ Agregar Cargo Fijo]:</b> Permite sumar un concepto manual (Ej: "Alquiler de Depósito: $50.000").<br>
+            - <b>[Rendición PDF]:</b> Cierra la facturación. Te pregunta si querés marcarlas como "Facturadas" (para que no vuelvan a salir el mes que viene) y te guarda el PDF.<br>
+            - <b>[💰 Registrar Pago] (Pestaña Cuentas Corrientes):</b> Descuenta plata de la deuda que tiene el cliente con nosotros.
+            """,
+            
+            "💬 CRM / Contacto": """
+            <h2 style='color:#0d6efd;'>MÓDULO: Atención Post-Venta (CRM)</h2>
+            <p>Se utiliza para medir la calidad del servicio y fidelizar a los clientes finales.</p>
+            <b>¿QUÉ HACEN LOS BOTONES?</b><br>
+            - <b>[🔄 Cargar Entregas Recientes]:</b> Busca las últimas 100 entregas exitosas que tengan un número de celular anotado.<br>
+            - <b>[💬 Enviar WhatsApp]:</b> Abre automáticamente WhatsApp Web con un mensaje escrito saludando al destinatario por su nombre y preguntándole qué le pareció el servicio de entrega de E.K. Logística.
+            """,
+            
+            "📈 Estadísticas": """
+            <h2 style='color:#0d6efd;'>MÓDULO: Panel Gerencial</h2>
+            <p>Un pantallazo de la salud operativa de tu sucursal.</p>
+            <b>¿QUÉ HACEN LOS BOTONES?</b><br>
+            - <b>[🔄 Actualizar Gráficos]:</b> Recalcula la matemática del día.<br>
+            - <b>Cuadros Superiores:</b> Te muestran cuántos paquetes salieron hoy, cuántos ya fueron entregados exitosamente, y cuántos siguen en la calle dando vueltas.<br>
+            - <b>Ranking de Clientes:</b> Te ordena de mayor a menor qué empresa te derivó más trabajo en el mes.<br>
+            - <b>Top 5 Choferes:</b> El ranking de productividad de tus empleados.
+            """,
+            
+            "⚙️ Configuración": """
+            <h2 style='color:#0d6efd;'>MÓDULO: Motor del Sistema</h2>
+            <p>Solo accesible para Administradores. Controla el cerebro de la plataforma.</p>
+            <b>¿CÓMO USAR CADA PANEL?</b><br>
+            - <b>💲 Tarifas:</b> Tocá "Editar" en una zona para cambiar su precio. El sistema te preguntará si querés aplicarle el aumento a todas las zonas similares de un solo golpe.<br>
+            - <b>🚛 Choferes:</b> Para agregar uno nuevo, completá sus datos. Su DNI será su contraseña para entrar a la App del celular. Su celular servirá para mandarle alertas automáticas de WhatsApp.<br>
+            - <b>🏢 Proveedores (Poderes):</b> Acá podés crear empresas y tildarle "Poderes" (Ej: Si tildás 'Siempre Frío', todos sus paquetes se cargarán automáticamente como refrigerados).<br>
+            - <b>👥 Usuarios:</b> Acá le creás la cuenta a los empleados de oficina. Con las 9 casillas (Tildes) elegís exactamente qué pestañas puede ver y cuáles se le bloquean.
+            """
         }
-        texto = diccionario_ayuda.get(tab_name, "Selecciona una pestaña específica para ver su manual.")
-        d = QDialog(self); d.setWindowTitle(f"📖 Manual de Usuario"); d.setGeometry(300, 150, 800, 550)
-        l = QVBoxLayout(d); t = QTextBrowser(); t.setOpenExternalLinks(True); t.setHtml(f"<html><body style='font-family: Arial; font-size: 14px;'>{texto}</body></html>")
-        btn = QPushButton("CERRAR"); btn.setStyleSheet("background-color: #198754; color: white; padding: 12px; font-weight: bold;")
-        btn.clicked.connect(d.accept); l.addWidget(t); l.addWidget(btn); d.exec()
+        texto = diccionario_ayuda.get(tab_name, "Selecciona una pestaña específica para ver su manual de uso detallado paso a paso.")
+        
+        d = QDialog(self)
+        d.setWindowTitle(f"📖 Manual de Usuario - {tab_name.replace('📊', '').replace('⚙️', '').strip()}")
+        d.setGeometry(300, 150, 850, 600)
+        l = QVBoxLayout(d)
+        t = QTextBrowser()
+        t.setOpenExternalLinks(True)
+        t.setHtml(f"<html><body style='font-family: Arial; font-size: 15px; color: #333; line-height: 1.4;'>{texto}</body></html>")
+        
+        btn = QPushButton("ENTENDIDO / CERRAR")
+        btn.setStyleSheet("background-color: #198754; color: white; padding: 12px; font-weight: bold; border-radius: 5px;")
+        btn.clicked.connect(d.accept)
+        
+        l.addWidget(t)
+        l.addWidget(btn)
+        d.exec()
     
     def abrir_tracking(self): 
-        from dialogos import TrackingDialog
         d = TrackingDialog(self.session, getattr(self, 'usuario', None)); d.exec()
     
     def cambiar_sucursal(self, suc):
@@ -222,45 +360,29 @@ class PlataformaLogistica(QMainWindow):
 
     def actualizar_combos_dinamicos(self):
         try:
-            zs = [z[0] for z in self.session.query(Tarifa.localidad).filter(Tarifa.sucursal == self.sucursal_actual).distinct().all()]
-            if hasattr(self, 'tab_ingreso'):
-                self.tab_ingreso.in_loc_combo.clear()
-                self.tab_ingreso.in_loc_combo.addItems(sorted(zs))
-        except: self.session.rollback()
-
-        try:
-            chs = [c[0] for c in self.session.query(Chofer.nombre).filter(Chofer.sucursal == self.sucursal_actual).order_by(Chofer.nombre).all()]
-            if hasattr(self, 'combo_masivo_chofer'): 
-                self.combo_masivo_chofer.clear(); self.combo_masivo_chofer.addItems(chs)
-            if hasattr(self, 'mon_chofer_combo'): 
-                self.mon_chofer_combo.clear(); self.mon_chofer_combo.addItem("Todos"); self.mon_chofer_combo.addItems(chs)
-            if hasattr(self, 'tab_rendicion'): 
-                self.tab_rendicion.resumen_chofer.clear(); self.tab_rendicion.resumen_chofer.addItems(chs)
-        except: self.session.rollback()
-
-        try:
+            zs = self.session.query(Tarifa.localidad).filter(Tarifa.sucursal == self.sucursal_actual).distinct().all()
+            chs = self.session.query(Chofer.nombre).filter(Chofer.sucursal == self.sucursal_actual).all()
+            nombres_choferes = [c[0] for c in chs]
             clis = self.session.query(ClienteRetiro).filter(ClienteRetiro.sucursal == self.sucursal_actual).order_by(ClienteRetiro.nombre).all()
-            if hasattr(self, 'tab_ingreso'):
-                self.tab_ingreso.in_cliente_retiro.clear(); self.tab_ingreso.in_cliente_retiro.addItem("--- Buscar Cliente ---")
-                for c in clis: self.tab_ingreso.in_cliente_retiro.addItem(f"{c.id} - {c.nombre}", c.id)
-        except: self.session.rollback()
-
-        try:
+            chs_todos = self.session.query(Chofer.nombre).all()
             clientes_db = self.session.query(ClientePrincipal).order_by(ClientePrincipal.nombre.asc()).all()
             self.lista_proveedores = [c.nombre for c in clientes_db] if clientes_db else ["Andreani", "DHL", "Directo", "JetPaq", "MercadoLibre", "Otro"]
+            
             if hasattr(self, 'tab_ingreso'):
+                self.tab_ingreso.in_loc_combo.clear(); self.tab_ingreso.in_loc_combo.addItems(sorted([z[0] for z in zs]))
+                self.tab_ingreso.in_cliente_retiro.clear(); self.tab_ingreso.in_cliente_retiro.addItem("--- Buscar Cliente ---")
+                for c in clis: self.tab_ingreso.in_cliente_retiro.addItem(f"{c.id} - {c.nombre}", c.id)
                 self.tab_ingreso.in_prov.clear(); self.tab_ingreso.in_prov.addItems(self.lista_proveedores)
-            if hasattr(self, 'rep_cliente'):
+
+            if hasattr(self, 'combo_masivo_chofer'): self.combo_masivo_chofer.clear(); self.combo_masivo_chofer.addItems(nombres_choferes)
+            if hasattr(self, 'mon_chofer_combo'): self.mon_chofer_combo.clear(); self.mon_chofer_combo.addItem("Todos"); self.mon_chofer_combo.addItems(nombres_choferes)
+            if hasattr(self, 'tab_rendicion'): self.tab_rendicion.resumen_chofer.clear(); self.tab_rendicion.resumen_chofer.addItems(nombres_choferes)
+            if hasattr(self, 'rep_chofer'): 
+                self.rep_chofer.clear(); self.rep_chofer.addItem("Todos"); self.rep_chofer.addItems(sorted(list(set([c[0] for c in chs_todos]))))
                 self.rep_cliente.clear(); self.rep_cliente.addItem("Todos"); self.rep_cliente.addItems(self.lista_proveedores)
             if hasattr(self, 'tab_cierre'):
                 self.tab_cierre.cierre_prov.clear(); self.tab_cierre.cierre_prov.addItem("Todos"); self.tab_cierre.cierre_prov.addItems([p for p in self.lista_proveedores if p.lower() != "jetpaq"])
-        except: self.session.rollback()
-
-        try:
-            chs_todos = [c[0] for c in self.session.query(Chofer.nombre).all()]
-            if hasattr(self, 'rep_chofer'):
-                self.rep_chofer.clear(); self.rep_chofer.addItem("Todos"); self.rep_chofer.addItems(sorted(list(set(chs_todos))))
-        except: self.session.rollback()
+        except Exception: self.session.rollback()
             
     def obtener_precio(self, loc, cant_comun, cant_frio, suc_forzada=None, proveedor="", peso=0.0, bultos_totales=1):
         suc = suc_forzada if suc_forzada else self.sucursal_actual
@@ -473,7 +595,13 @@ class PlataformaLogistica(QMainWindow):
                 if self.tabla_ruta.item(r, 1).checkState() == Qt.CheckState.Checked: seleccionados.add(self.tabla_ruta.item(r, 0).text())
             self.tabla_ruta.blockSignals(True); self.tabla_ruta.setRowCount(0); 
             estados_deposito = [Estados.EN_DEPOSITO, 'EN DEPOSITO', 'En Depósito', 'En Deposito', 'EN DEPÓSITO']
-            ops = self.session.query(Operacion).filter(Operacion.estado.in_(estados_deposito), Operacion.sucursal == self.sucursal_actual).order_by(Operacion.domicilio.asc()).all()
+            
+            ops = self.session.query(Operacion).filter(
+                Operacion.estado.in_(estados_deposito), 
+                Operacion.sucursal == self.sucursal_actual,
+                text("DATE(COALESCE(fecha_salida, fecha_ingreso)) <= CURRENT_DATE")
+            ).order_by(Operacion.domicilio.asc()).all()
+            
             op_ids = [op.id for op in ops]; last_hists = {}
             if op_ids:
                 h_records = self.session.query(Historial).filter(Historial.operacion_id.in_(op_ids)).order_by(Historial.id.asc()).all()
@@ -518,20 +646,40 @@ class PlataformaLogistica(QMainWindow):
         finally: self.tabla_ruta.blockSignals(False)
 
     def cambiar_fecha_ruta(self):
-        r = self.tabla_ruta.currentRow(); id_op = None
-        if r >= 0: id_op = int(self.tabla_ruta.item(r, 0).text())
-        else:
-            for i in range(self.tabla_ruta.rowCount()):
-                if self.tabla_ruta.item(i, 1).checkState() == Qt.CheckState.Checked: id_op = int(self.tabla_ruta.item(i, 0).text()); break
-        if not id_op: QMessageBox.warning(self, "Atención", "Seleccione al menos un envío."); return
+        ids = []
+        for r in range(self.tabla_ruta.rowCount()):
+            if self.tabla_ruta.item(r, 1).checkState() == Qt.CheckState.Checked: 
+                ids.append(int(self.tabla_ruta.item(r, 0).text()))
+        
+        if not ids: 
+            QMessageBox.warning(self, "Atención", "Seleccione al menos un envío para cambiar la fecha.")
+            return
+            
         try:
-            op = self.session.query(Operacion).get(id_op)
-            dlg = CambiarFechaDialog(op.guia_remito or f"ID {op.id}", self)
+            if len(ids) == 1:
+                op = self.session.query(Operacion).get(ids[0])
+                titulo_dlg = op.guia_remito or f"ID {op.id}"
+            else:
+                titulo_dlg = f"{len(ids)} guías seleccionadas"
+                
+            dlg = CambiarFechaDialog(titulo_dlg, self)
             if dlg.exec() == QDialog.DialogCode.Accepted:
                 detalle = f"Reprogramado para el {dlg.fecha_str}. Motivo: {dlg.motivo}"
-                op.fecha_salida = datetime.combine(dlg.in_fecha.date().toPyDate(), datetime.min.time())
-                self.log_movimiento(op, "REPROGRAMADO (OFICINA)", detalle); self.session.commit(); self.toast.mostrar("✅ Fecha actualizada"); self.cargar_ruta(); self.cargar_monitor_global()
-        except Exception: self.session.rollback()
+                nueva_fecha = datetime.combine(dlg.in_fecha.date().toPyDate(), datetime.min.time())
+                
+                ops = self.session.query(Operacion).filter(Operacion.id.in_(ids)).all()
+                for op in ops:
+                    op.fecha_salida = nueva_fecha
+                    self.log_movimiento(op, "REPROGRAMADO (OFICINA)", detalle)
+                
+                self.session.commit()
+                self.toast.mostrar(f"✅ {len(ids)} guía(s) reprogramada(s)")
+                self.cargar_ruta()
+                if hasattr(self, 'tab_ingreso'):
+                    self.tab_ingreso.cargar_movimientos_dia()
+                self.cargar_monitor_global()
+        except Exception: 
+            self.session.rollback()
 
     def asignar_chofer_masivo(self):
         chofer = self.combo_masivo_chofer.currentText()
