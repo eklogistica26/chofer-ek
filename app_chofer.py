@@ -358,7 +358,6 @@ def lista_viajes():
         <div class="container">
             {mensajes_html}
             
-            <!-- 🔥 BOTÓN DE GUARDIA EN ROJO 🔥 -->
             <div style="margin-bottom: 15px;">
                 <a href="/guardia" class="btn btn-red" style="display:flex; align-items:center; justify-content:center; gap:10px;">
                     <span style="font-size:1.2rem;">🚨</span> CARGAR GUÍA DE GUARDIA
@@ -624,12 +623,27 @@ def gestion(id_op):
     
     conn = get_db()
     op = None
+    exige_foto = False  
+    
     if conn:
         try:
-            sql = text("SELECT guia_remito, destinatario, domicilio, localidad, celular, tipo_urgencia, tipo_carga, es_contra_reembolso, monto_recaudacion, info_intercambio, proveedor, tipo_servicio FROM operaciones WHERE id = :i")
+            # 🔥 LECTURA OPTIMIZADA CON LEFT JOIN PARA VELOCIDAD EXTREMA 🔥
+            sql = text("""
+                SELECT o.guia_remito, o.destinatario, o.domicilio, o.localidad, o.celular, 
+                       o.tipo_urgencia, o.tipo_carga, o.es_contra_reembolso, o.monto_recaudacion, 
+                       o.info_intercambio, o.proveedor, o.tipo_servicio, c.exige_remito 
+                FROM operaciones o 
+                LEFT JOIN clientes_principales c ON UPPER(TRIM(o.proveedor)) = UPPER(TRIM(c.nombre))
+                WHERE o.id = :i
+            """)
             op = conn.execute(sql, {"i": id_op}).fetchone()
-        except: pass
-        finally: conn.close()
+            
+            if op:
+                exige_foto = bool(op[12]) # Toma el dato de si exige foto directamente en la misma consulta
+        except Exception as e:
+            print("Error cargando gestion:", e)
+        finally: 
+            conn.close()
         
     if not op: return "Error: Viaje no encontrado"
 
@@ -648,7 +662,6 @@ def gestion(id_op):
         enlace_gps = f"https://maps.google.com/?q={lat},{lng}" if lat and lng else ""
         texto_gps_historial = f" | GPS: {enlace_gps}" if enlace_gps else ""
         
-        # PROCESAR MÚLTIPLES FOTOS DINÁMICAS (CON COMPRESOR PILLOW)
         rutas_fotos = []
         tiene_foto = False
         archivos = request.files.getlist('fotos')
@@ -658,19 +671,15 @@ def gestion(id_op):
                 ruta = os.path.join(app.config['UPLOAD_FOLDER'], filename)
                 archivo.save(ruta)
                 
-                # 🔥 COMPRESOR AUTOMÁTICO DE IMÁGENES 🔥
                 try:
                     from PIL import Image
                     img = Image.open(ruta)
                     if img.mode in ("RGBA", "P"): 
                         img = img.convert("RGB")
-                    # Achicamos la foto a un máximo de 800x800 manteniendo proporción
                     img.thumbnail((800, 800))
-                    # Guardamos la versión liviana (quality 70) pisando la pesada
                     img.save(ruta, "JPEG", quality=70, optimize=True)
                 except Exception as e:
                     print(f"Error comprimiendo imagen: {e}")
-                # ----------------------------------------
                 
                 rutas_fotos.append(ruta)
                 tiene_foto = True
@@ -684,8 +693,9 @@ def gestion(id_op):
                 flash("❌ ERROR: Escribe quién recibió.", "error")
                 return redirect(url_for('gestion', id_op=id_op))
             
-            if "jetpaq" not in op[10].lower() and not tiene_foto:
-                flash("📸 ERROR: Faltó la foto (Obligatoria).", "error")
+            # 🔥 VALIDACIÓN DE LA FOTO EN EL BACKEND 🔥
+            if exige_foto and not tiene_foto:
+                flash("📸 ERROR: Este cliente exige foto del remito de forma obligatoria.", "error")
                 return redirect(url_for('gestion', id_op=id_op))
                 
         if estado_btn in ["Pendiente", "Reprogramado"]:
@@ -768,6 +778,9 @@ def gestion(id_op):
     link_wa = f"https://wa.me/{telefono_limpio}?text={mensaje_wa}" if telefono_limpio else "#"
     btn_wa_style = "opacity:0.5; pointer-events:none;" if not telefono_limpio else ""
 
+    # 🔥 CARTEL DINÁMICO EN LA APP SEGÚN LA EMPRESA 🔥
+    texto_foto_lbl = "Fotos del Comprobante / Domicilio (OBLIGATORIO):" if exige_foto else "Fotos del Comprobante / Domicilio (Opcional):"
+
     html = f"""
     <!DOCTYPE html>
     <html>
@@ -805,7 +818,7 @@ def gestion(id_op):
                         <label>Quien Recibe:</label>
                         <input type="text" name="recibe" placeholder="Nombre y Apellido...">
                         
-                        <label style="margin-top:20px;">Fotos del Comprobante / Domicilio:</label>
+                        <label style="margin-top:20px; font-weight: bold; color: {'#d32f2f' if exige_foto else '#444'};">{texto_foto_lbl}</label>
                         <div id="contenedor_fotos"></div>
                         <button type="button" onclick="agregarFoto()" class="camera-btn">➕ AGREGAR OTRA FOTO</button>
                     </div>
