@@ -98,32 +98,7 @@ class PlataformaLogistica(QMainWindow):
 
         _, self.session = get_session()
         
-        # 🔥 AUTO-PARCHE BLINDADO: Le agregamos DNI y un Timeout de 5 segundos 🔥
-        parches = [
-            "ALTER TABLE choferes ADD COLUMN celular VARCHAR(50)",
-            "ALTER TABLE choferes ADD COLUMN dni VARCHAR(50)",
-            "ALTER TABLE clientes_principales ADD COLUMN es_facturable BOOLEAN DEFAULT TRUE",
-            "ALTER TABLE clientes_principales ADD COLUMN enviar_mail BOOLEAN DEFAULT FALSE",
-            "ALTER TABLE clientes_principales ADD COLUMN exige_remito BOOLEAN DEFAULT FALSE",
-            "ALTER TABLE clientes_principales ADD COLUMN cadena_frio BOOLEAN DEFAULT FALSE",
-            "ALTER TABLE clientes_principales ADD COLUMN cobro_puerta BOOLEAN DEFAULT FALSE"
-        ]
-        
-        try:
-            # Fijamos 5 segundos máximos de espera. Si la BD está trabada por la App, la PC se salta esto.
-            self.session.execute(text("SET statement_timeout = '5s'"))
-        except: pass
-
-        for p in parches:
-            try:
-                self.session.execute(text(p))
-                self.session.commit()
-            except:
-                self.session.rollback()
-                
-        try:
-            self.session.execute(text("RESET statement_timeout"))
-        except: pass
+        # 🔥 ELIMINAMOS EL PARCHE AUTOMÁTICO PARA QUE LA PC NO SE CONGELE NUNCA MÁS 🔥
 
         self.lista_proveedores = []; self.toast = ToastNotification(self); self.filtro_monitor = None
         self.init_ui()
@@ -245,7 +220,6 @@ class PlataformaLogistica(QMainWindow):
         except Exception as e: self.session.rollback()
         self.combo_sucursal.blockSignals(True); self.combo_sucursal.setCurrentText(suc); self.combo_sucursal.blockSignals(False)
 
-    # 🔥 FIX BLINDADO: Ahora cada lista carga de forma independiente y segura 🔥
     def actualizar_combos_dinamicos(self):
         try:
             zs = [z[0] for z in self.session.query(Tarifa.localidad).filter(Tarifa.sucursal == self.sucursal_actual).distinct().all()]
