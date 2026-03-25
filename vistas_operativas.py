@@ -189,9 +189,11 @@ class TabIngreso(QWidget):
         self.in_serv = QComboBox(); self.in_serv.addItems(["Entrega (Reparto)", "Retiro (Solicitud Cliente)"]); self.in_serv.currentTextChanged.connect(self.actualizar_interfaz_retiro)
         
         self.in_fecha = QDateEdit(QDate.currentDate())
-        # 🔥 CALENDARIO Y DESBLOQUEO ADMIN PARA FECHA DE INGRESO 🔥
         self.in_fecha.setCalendarPopup(True)
         self.in_fecha.setEnabled(getattr(self.main.usuario, 'es_admin_total', False))
+        
+        # 🔥 LA MÁQUINA DEL TIEMPO: Al cambiar la fecha, actualizamos la tabla 🔥
+        self.in_fecha.dateChanged.connect(self.cargar_movimientos_dia)
         
         self.lbl_guia = QLabel("Guía / Remito:"); self.in_guia = QLineEdit()
         self.lbl_cli_ret = QLabel("Buscar Cliente:"); self.in_cliente_retiro = QComboBox(); self.in_cliente_retiro.setEditable(True); self.in_cliente_retiro.completer().setFilterMode(Qt.MatchFlag.MatchContains); self.in_cliente_retiro.currentIndexChanged.connect(self.cargar_datos_cliente); self.lbl_cli_ret.hide(); self.in_cliente_retiro.hide()
@@ -206,7 +208,7 @@ class TabIngreso(QWidget):
         
         fl.addRow("Tipo:", self.in_serv)
         fl.addRow(self.lbl_cli_ret, self.in_cliente_retiro)
-        fl.addRow("Fecha:", self.in_fecha)
+        fl.addRow("Fecha (Máquina de Tiempo):", self.in_fecha)
         fl.addRow(self.lbl_guia, self.in_guia)
         fl.addRow("Proveedor:", self.in_prov)
         fl.addRow("📍 Destinos Fijos:", dest_layout)
@@ -298,7 +300,7 @@ class TabIngreso(QWidget):
         layout_izquierdo.addWidget(btn_add)         
         layout_izquierdo.addWidget(self.btn_dhl)    
         
-        col_der = QVBoxLayout(); h_header_ingreso = QHBoxLayout(); h_header_ingreso.addWidget(QLabel("<b>EN DEPOSITO (Pendientes de Salida):</b>"))
+        col_der = QVBoxLayout(); h_header_ingreso = QHBoxLayout(); h_header_ingreso.addWidget(QLabel("<b>EN DEPOSITO (Mostrando hasta la Fecha Seleccionada):</b>"))
         btn_ref_ingreso = QPushButton("🔄 Actualizar")
         btn_ref_ingreso.setToolTip("Actualizar Tabla")
         btn_ref_ingreso.clicked.connect(self.cargar_movimientos_dia)
@@ -508,11 +510,13 @@ class TabIngreso(QWidget):
             self.tabla_ingresos.setRowCount(0)
             estados_deposito = [Estados.EN_DEPOSITO, 'EN DEPOSITO', 'En Depósito', 'En Deposito', 'EN DEPÓSITO']
             
-            # 🔥 FIX INVISIBILIDAD 🔥 Filtramos para que no muestre los que tienen fecha de salida para el futuro
+            # 🔥 LA MÁQUINA DEL TIEMPO EN ACCIÓN 🔥 Filtramos hasta la fecha que diga el calendario.
+            fecha_filtro = self.in_fecha.date().toPyDate()
+            
             ops = self.main.session.query(Operacion).filter(
                 Operacion.estado.in_(estados_deposito), 
                 Operacion.sucursal == self.main.sucursal_actual,
-                text("DATE(COALESCE(fecha_salida, fecha_ingreso)) <= CURRENT_DATE")
+                text("DATE(COALESCE(fecha_salida, fecha_ingreso)) <= :f").bindparams(f=fecha_filtro)
             ).order_by(Operacion.id.desc()).all()
             
             for row, op in enumerate(ops):
@@ -719,7 +723,6 @@ class TabRendicion(QWidget):
             if hasattr(self.main, 'cargar_monitor_global'): 
                 self.main.cargar_monitor_global()
                 
-            # 🔥 FIX INVISIBILIDAD: Actualizamos también la tabla de Ingreso y Ruta para que vuelvan a aparecer
             if hasattr(self.main, 'tab_ingreso'):
                 self.main.tab_ingreso.cargar_movimientos_dia()
             if hasattr(self.main, 'cargar_ruta'):

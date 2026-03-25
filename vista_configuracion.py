@@ -12,7 +12,6 @@ from database import (ClientePrincipal, DestinoFrecuente, Tarifa, TarifaDHL,
                       HistorialTarifas, Chofer, ClienteRetiro, Usuario)
 from dialogos import EditarDestinoDialog, EditarTarifaDialog, HistorialTarifasDialog
 
-# 🔥 NUEVO DIALOGO INTEGRADO PARA EDITAR EMPRESAS CON SUS PODERES 🔥
 class EditarEmpresaDialogLocal(QDialog):
     def __init__(self, prov, parent=None):
         super().__init__(parent)
@@ -181,7 +180,6 @@ class TabConfiguracion(QWidget):
     def cambiar_panel_config(self, index): 
         self.stack_config.setCurrentIndex(index)
     
-    # --- PANEL PROVEEDORES Y DESTINOS (NUEVOS PODERES) ---
     def setup_panel_proveedores(self):
         layout = QVBoxLayout(self.page_proveedores)
         self.tabs_prov = QTabWidget()
@@ -290,6 +288,9 @@ class TabConfiguracion(QWidget):
         self.tabs_prov.addTab(tab_dest, "📍 Destinos Frecuentes")
         layout.addWidget(self.tabs_prov)
 
+        # 🔥 FIX: Encender las luces de la tabla al entrar a la pestaña 🔥
+        self.cargar_proveedores_tabla()
+
     def guardar_proveedor(self):
         n = self.cfg_prov_nombre.text().strip()
         e = self.cfg_prov_email.text().strip()
@@ -306,7 +307,6 @@ class TabConfiguracion(QWidget):
                 self.main.session.add(nuevo); self.main.session.commit()
                 self.cfg_prov_nombre.clear(); self.cfg_prov_email.clear()
                 
-                # Restaurar a valores por defecto
                 self.chk_prov_facturable.setChecked(True)
                 self.chk_prov_mail.setChecked(False)
                 self.chk_prov_remito.setChecked(False)
@@ -404,7 +404,6 @@ class TabConfiguracion(QWidget):
                     self.cargar_destinos_de_proveedor_combo(self.prov_seleccionado)
         except Exception: self.main.session.rollback()
 
-    # --- PANEL TARIFAS ---
     def setup_panel_tarifas(self):
         l = QVBoxLayout(self.page_tarifas); self.tabs_tarifas = QTabWidget(); l.addWidget(self.tabs_tarifas)
         tab_gen = QWidget(); l_gen = QVBoxLayout(tab_gen)
@@ -522,7 +521,6 @@ class TabConfiguracion(QWidget):
             else: self.lbl_alerta_tarifa.setText(f"🟢 Tarifas actualizadas (último cambio hace {dias} días).")
         except: self.main.session.rollback()
 
-    # --- PANEL CHOFERES CON CELULAR ---
     def setup_panel_choferes(self):
         l = QVBoxLayout(self.page_choferes); gb = QGroupBox("Gestión de Choferes"); f = QFormLayout()
         
@@ -556,6 +554,8 @@ class TabConfiguracion(QWidget):
         btn_d = QPushButton("🗑️ Eliminar Chofer"); btn_d.clicked.connect(lambda: self.main.eliminar_fila(self.tabla_choferes, Chofer))
         h_btns.addWidget(btn_edit); h_btns.addWidget(btn_d)
         l.addLayout(h_btns)
+        
+        self.cargar_choferes_tabla()
         
     def guardar_chofer(self):
         n = self.cfg_chofer_nombre.text().strip()
@@ -621,8 +621,9 @@ class TabConfiguracion(QWidget):
         self.tabla_clientes = QTableWidget(); self.tabla_clientes.setColumnCount(3); self.tabla_clientes.hideColumn(0); self.tabla_clientes.setHorizontalHeaderLabels(["ID", "Cliente", "Domicilio"]); self.tabla_clientes.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         self.tabla_clientes.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows); self.tabla_clientes.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         l.addWidget(self.tabla_clientes); btn_d = QPushButton("Eliminar Cliente"); btn_d.clicked.connect(lambda: self.main.eliminar_fila(self.tabla_clientes, ClienteRetiro)); l.addWidget(btn_d)
+        
+        self.cargar_clientes_tabla()
     
-    # --- PANEL USUARIOS (LA GRILLA DE 9 PERMISOS) ---
     def setup_panel_usuarios(self):
         l = QVBoxLayout(self.page_usuarios); gb = QGroupBox("Crear Nuevo Usuario"); f = QFormLayout()
         self.u_user = QLineEdit(); self.u_pass = QLineEdit(); self.u_suc = QComboBox(); self.u_suc.addItems(["Mendoza", "San Juan"]); 

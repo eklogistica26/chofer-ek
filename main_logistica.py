@@ -90,29 +90,14 @@ class PlataformaLogistica(QMainWindow):
         from vistas_operativas import TabIngreso, TabRendicion, TabFacturacion
         from vista_configuracion import TabConfiguracion
         
-        global ToastNotification, ConfirmarEntregaDialog, ReprogramarAdminDialog, HistorialHojasRutaDialog, EditarOperacionDialog, CambiarFechaDialog
-        from dialogos import ToastNotification, ConfirmarEntregaDialog, ReprogramarAdminDialog, HistorialHojasRutaDialog, EditarOperacionDialog, CambiarFechaDialog
+        global ToastNotification, ConfirmarEntregaDialog, ReprogramarAdminDialog, HistorialHojasRutaDialog, EditarOperacionDialog, CambiarFechaDialog, TrackingDialog
+        from dialogos import ToastNotification, ConfirmarEntregaDialog, ReprogramarAdminDialog, HistorialHojasRutaDialog, EditarOperacionDialog, CambiarFechaDialog, TrackingDialog
         
         global crear_pdf_ruta, crear_pdf_tercerizados, crear_pdf_reporte
         from utilidades import crear_pdf_ruta, crear_pdf_tercerizados, crear_pdf_reporte
 
         _, self.session = get_session()
         
-        parches = [
-            "ALTER TABLE choferes ADD COLUMN celular VARCHAR(50)",
-            "ALTER TABLE clientes_principales ADD COLUMN es_facturable BOOLEAN DEFAULT TRUE",
-            "ALTER TABLE clientes_principales ADD COLUMN enviar_mail BOOLEAN DEFAULT FALSE",
-            "ALTER TABLE clientes_principales ADD COLUMN exige_remito BOOLEAN DEFAULT FALSE",
-            "ALTER TABLE clientes_principales ADD COLUMN cadena_frio BOOLEAN DEFAULT FALSE",
-            "ALTER TABLE clientes_principales ADD COLUMN cobro_puerta BOOLEAN DEFAULT FALSE"
-        ]
-        for p in parches:
-            try:
-                self.session.execute(text(p))
-                self.session.commit()
-            except:
-                self.session.rollback()
-
         self.lista_proveedores = []; self.toast = ToastNotification(self); self.filtro_monitor = None
         self.init_ui()
         self.tabs.currentChanged.connect(self.al_cambiar_pestana)
