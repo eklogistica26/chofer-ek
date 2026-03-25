@@ -90,8 +90,8 @@ class PlataformaLogistica(QMainWindow):
         from vistas_operativas import TabIngreso, TabRendicion, TabFacturacion
         from vista_configuracion import TabConfiguracion
         
-        global ToastNotification, ConfirmarEntregaDialog, ReprogramarAdminDialog, HistorialHojasRutaDialog, EditarOperacionDialog, CambiarFechaDialog
-        from dialogos import ToastNotification, ConfirmarEntregaDialog, ReprogramarAdminDialog, HistorialHojasRutaDialog, EditarOperacionDialog, CambiarFechaDialog
+        global ToastNotification, ConfirmarEntregaDialog, ReprogramarAdminDialog, HistorialHojasRutaDialog, EditarOperacionDialog, CambiarFechaDialog, TrackingDialog
+        from dialogos import ToastNotification, ConfirmarEntregaDialog, ReprogramarAdminDialog, HistorialHojasRutaDialog, EditarOperacionDialog, CambiarFechaDialog, TrackingDialog
         
         global crear_pdf_ruta, crear_pdf_tercerizados, crear_pdf_reporte
         from utilidades import crear_pdf_ruta, crear_pdf_tercerizados, crear_pdf_reporte
@@ -381,7 +381,9 @@ class PlataformaLogistica(QMainWindow):
                 costo_exc = excedente_kg * t.excedente
                 return base + costo_exc
             else:
-                t = self.session.query(Tarifa).filter(Tarifa.localidad == loc, Tarifa.sucursal == suc).first()
+                # 🔥 LA MAGIA DE ILIKE: Busca la zona ignorando mayúsculas y minúsculas 🔥
+                loc_limpia = loc.strip()
+                t = self.session.query(Tarifa).filter(Tarifa.localidad.ilike(loc_limpia), Tarifa.sucursal == suc).first()
                 if not t: return 0.0
                 if cant_comun > 0 and cant_frio > 0:
                     bultos_tot = cant_comun + cant_frio
@@ -471,7 +473,7 @@ class PlataformaLogistica(QMainWindow):
     def cargar_novedades(self):
         try:
             self.lista_novedades.clear()
-            sql = text("SELECT h.fecha_hora, h.detalle, o.guia_remito, h.usuario FROM historial_movimientos h JOIN operaciones o ON h.operacion_id = o.id WHERE o.sucursal = :s ORDER BY h.fecha_hora DESC LIMIT 100")
+            sql = text("SELECT h.fecha_hora, h.detalle, o.guia_remito, h.usuario FROM historial_movimientos h JOIN operations o ON h.operacion_id = o.id WHERE o.sucursal = :s ORDER BY h.fecha_hora DESC LIMIT 100")
             logs = self.session.execute(sql, {"s": self.sucursal_actual}).fetchall()
             for log in logs:
                 hora = log[0].strftime("%d/%m %H:%M") if log[0] else ""

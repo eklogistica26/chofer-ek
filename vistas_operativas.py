@@ -715,7 +715,7 @@ class TabRendicion(QWidget):
         lay_res.addLayout(top_res); lay_res.addWidget(self.lbl_res_exitos); lay_res.addWidget(self.tabla_res_exitos); lay_res.addWidget(self.lbl_res_fallos); lay_res.addWidget(self.tabla_res_fallos)
         self.tabs_rendicion.addTab(tab_res, "2. Resumen Diario por Chofer")
 
-    # 🔥 NUEVA LÓGICA DE BÚSQUEDA PARA EL RESUMEN DEL CHOFER 🔥
+    # 🔥 LÓGICA REPARADA DE BÚSQUEDA PARA EL RESUMEN DEL CHOFER 🔥
     def cargar_resumen_chofer_vista(self):
         chofer = self.resumen_chofer.currentText(); fecha = self.resumen_fecha.date().toPyDate()
         if not chofer or chofer == "Todos": return
@@ -723,7 +723,6 @@ class TabRendicion(QWidget):
             sql_entregados = text("SELECT DISTINCT o.id, o.guia_remito, o.destinatario, o.domicilio, o.tipo_servicio FROM operaciones o JOIN historial_movimientos h ON o.id = h.operacion_id WHERE o.chofer_asignado = :c AND o.estado = 'ENTREGADO' AND DATE(h.fecha_hora) = :f AND (h.accion LIKE '%ENTREGA%' OR h.accion = 'APP')")
             entregados = self.main.session.execute(sql_entregados, {"c": chofer, "f": fecha}).fetchall()
             
-            # Ahora busca los que fallaron HOY + los que siguen vivos "EN REPARTO" en la calle para ese chofer
             sql_no_ent = text("""
                 SELECT o.guia_remito, o.destinatario, h.detalle, o.tipo_servicio 
                 FROM historial_movimientos h 
@@ -981,7 +980,7 @@ class TabFacturacion(QWidget):
     def cargar_ctas_ctes(self):
         try:
             self.tabla_ctacte.setRowCount(0)
-            sql_fac = text("SELECT proveedor, SUM(monto_servicio) FROM operations WHERE facturado = TRUE AND proveedor NOT ILIKE 'JetPaq' GROUP BY proveedor")
+            sql_fac = text("SELECT proveedor, SUM(monto_servicio) FROM operaciones WHERE facturado = TRUE AND proveedor NOT ILIKE 'JetPaq' GROUP BY proveedor")
             facturados = self.main.session.execute(sql_fac).fetchall()
             dict_saldos = {f[0]: {"fac": f[1] or 0.0, "pag": 0.0} for f in facturados}
             sql_pag = text("SELECT proveedor, SUM(monto) FROM recibos_pago GROUP BY proveedor")
