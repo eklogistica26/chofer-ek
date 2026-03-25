@@ -206,7 +206,9 @@ class TabIngreso(QWidget):
         
         dest_layout = QHBoxLayout(); self.in_destinos_frecuentes = QComboBox(); self.in_destinos_frecuentes.addItem("--- Destinos Guardados ---"); self.in_destinos_frecuentes.setEnabled(False); self.in_destinos_frecuentes.setEditable(True); self.in_destinos_frecuentes.completer().setFilterMode(Qt.MatchFlag.MatchContains); self.in_destinos_frecuentes.currentIndexChanged.connect(self.llenar_datos_destino); self.in_codigo_rapido = QLineEdit(); self.in_codigo_rapido.setPlaceholderText("Buscar ID..."); self.in_codigo_rapido.setFixedWidth(80); self.in_codigo_rapido.returnPressed.connect(self.buscar_destino_por_codigo)
         dest_layout.addWidget(self.in_destinos_frecuentes); dest_layout.addWidget(self.in_codigo_rapido)
-        self.in_dest = QLineEdit(); self.in_cel = QLineEdit(); self.in_cel.setPlaceholderText("Ej: 261-155..."); self.in_dom = QLineEdit(); self.in_loc_combo = QComboBox(); self.in_loc_combo.setEditable(True)
+        
+        # 🔥 ACÁ BLOQUEAMOS LA ZONA PARA QUE NO SE PUEDA ESCRIBIR A MANO 🔥
+        self.in_dest = QLineEdit(); self.in_cel = QLineEdit(); self.in_cel.setPlaceholderText("Ej: 261-155..."); self.in_dom = QLineEdit(); self.in_loc_combo = QComboBox()
         
         fl.addRow("Tipo:", self.in_serv)
         fl.addRow(self.lbl_cli_ret, self.in_cliente_retiro)
@@ -715,7 +717,6 @@ class TabRendicion(QWidget):
         lay_res.addLayout(top_res); lay_res.addWidget(self.lbl_res_exitos); lay_res.addWidget(self.tabla_res_exitos); lay_res.addWidget(self.lbl_res_fallos); lay_res.addWidget(self.tabla_res_fallos)
         self.tabs_rendicion.addTab(tab_res, "2. Resumen Diario por Chofer")
 
-    # 🔥 LÓGICA REPARADA DE BÚSQUEDA PARA EL RESUMEN DEL CHOFER 🔥
     def cargar_resumen_chofer_vista(self):
         chofer = self.resumen_chofer.currentText(); fecha = self.resumen_fecha.date().toPyDate()
         if not chofer or chofer == "Todos": return
@@ -980,7 +981,7 @@ class TabFacturacion(QWidget):
     def cargar_ctas_ctes(self):
         try:
             self.tabla_ctacte.setRowCount(0)
-            sql_fac = text("SELECT proveedor, SUM(monto_servicio) FROM operaciones WHERE facturado = TRUE AND proveedor NOT ILIKE 'JetPaq' GROUP BY proveedor")
+            sql_fac = text("SELECT proveedor, SUM(monto_servicio) FROM operaciones WHERE (facturado = TRUE) AND UPPER(TRIM(proveedor)) != 'JETPAQ' GROUP BY proveedor")
             facturados = self.main.session.execute(sql_fac).fetchall()
             dict_saldos = {f[0]: {"fac": f[1] or 0.0, "pag": 0.0} for f in facturados}
             sql_pag = text("SELECT proveedor, SUM(monto) FROM recibos_pago GROUP BY proveedor")
@@ -1009,10 +1010,11 @@ class TabFacturacion(QWidget):
             if dlg.exec() == QDialog.DialogCode.Accepted: op.monto_servicio = dlg.precio_final; self.main.session.commit(); self.calcular_cierre(); self.main.toast.mostrar("✅ Precio actualizado")
         except Exception: self.main.session.rollback()
 
+    # 🔥 MOTOR DE BÚSQUEDA BLINDADO CON ILIKE (Ignora mayúsculas/minúsculas) 🔥
     def calcular_cierre(self):
         mes = self.cierre_mes.currentIndex() + 1
         anio = self.cierre_anio.value()
-        prov = self.cierre_prov.currentText()
+        prov = self.cierre_prov.currentText().strip()
         sucursal = self.cierre_sucursal.currentText()
         
         self.tabla_cierre.setRowCount(0)
@@ -1024,17 +1026,18 @@ class TabFacturacion(QWidget):
             start_date = date(anio, mes, 1)
             end_date = date(anio, mes, last_day)
 
+            # Usamos SQLAlchemy nativo que es más seguro que el texto crudo
             query = self.main.session.query(Operacion).filter(
                 Operacion.fecha_ingreso >= start_date, 
                 Operacion.fecha_ingreso <= end_date,
-                Operacion.facturado == False,
-                Operacion.estado == Estados.ENTREGADO
+                (Operacion.facturado == False) | (Operacion.facturado == None),
+                Operacion.estado.ilike('ENTREGADO')
             )
             
             if prov != "Todos": 
-                query = query.filter(Operacion.proveedor == prov)
+                query = query.filter(Operacion.proveedor.ilike(prov))
             else:
-                query = query.filter(Operacion.proveedor != 'JetPaq')
+                query = query.filter(~Operacion.proveedor.ilike('JetPaq'))
                 
             if sucursal != "Todas": 
                 query = query.filter(Operacion.sucursal == sucursal)
