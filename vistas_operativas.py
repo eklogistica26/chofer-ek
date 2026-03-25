@@ -186,7 +186,11 @@ class TabIngreso(QWidget):
         p_datos = QGroupBox("Datos Principales")
         p_datos.setStyleSheet(ESTILO_GRUPO)
         fl = QFormLayout()
-        self.in_serv = QComboBox(); self.in_serv.addItems(["Entrega (Reparto)", "Retiro (Solicitud Cliente)"]); self.in_serv.currentTextChanged.connect(self.actualizar_interfaz_retiro)
+        
+        # 🔥 SE AGREGA FLETE ESPECIAL 🔥
+        self.in_serv = QComboBox()
+        self.in_serv.addItems(["Entrega (Reparto)", "Retiro (Solicitud Cliente)", "Flete Especial (Por Hora/Viaje)"])
+        self.in_serv.currentTextChanged.connect(self.actualizar_interfaz_retiro)
         
         self.in_fecha = QDateEdit(QDate.currentDate())
         self.in_fecha.setCalendarPopup(True)
@@ -223,6 +227,8 @@ class TabIngreso(QWidget):
         self.radio_comun = QRadioButton("📦 COMÚN"); self.radio_frio = QRadioButton("❄️ REFRIGERADO"); self.radio_comb = QRadioButton("🔄 COMBINADO"); self.bg_tipo = QButtonGroup(); self.bg_tipo.addButton(self.radio_comun); self.bg_tipo.addButton(self.radio_frio); self.bg_tipo.addButton(self.radio_comb); self.radio_comun.setChecked(True)
         ly_radios = QHBoxLayout(); ly_radios.addWidget(self.radio_comun); ly_radios.addWidget(self.radio_frio); ly_radios.addWidget(self.radio_comb)
         self.widget_simple = QWidget(); ly_simple = QHBoxLayout(self.widget_simple); ly_simple.setContentsMargins(0,0,0,0)
+        
+        self.lbl_bultos_simple = QLabel("Bultos:")
         self.in_bultos_simple = QSpinBox(); self.in_bultos_simple.setRange(1, 999); self.in_bultos_simple.setValue(1)
         
         self.lbl_peso = QLabel("Peso:")
@@ -230,8 +236,17 @@ class TabIngreso(QWidget):
         self.in_peso_manual.setRange(0, 9999)
         self.in_peso_manual.setSuffix(" Kg")
         
-        ly_simple.addWidget(QLabel("Bultos:")); ly_simple.addWidget(self.in_bultos_simple)
+        # 🔥 CAJA DE PRECIO MANUAL PARA FLETE 🔥
+        self.lbl_precio_flete = QLabel("Precio Pactado:")
+        self.lbl_precio_flete.setStyleSheet("color: #d32f2f; font-weight: bold;")
+        self.in_precio_flete = QDoubleSpinBox()
+        self.in_precio_flete.setRange(0, 10000000)
+        self.in_precio_flete.setPrefix("$ ")
+        self.lbl_precio_flete.hide(); self.in_precio_flete.hide()
+        
+        ly_simple.addWidget(self.lbl_bultos_simple); ly_simple.addWidget(self.in_bultos_simple)
         ly_simple.addWidget(self.lbl_peso); ly_simple.addWidget(self.in_peso_manual)
+        ly_simple.addWidget(self.lbl_precio_flete); ly_simple.addWidget(self.in_precio_flete)
         
         self.widget_comb = QWidget(); ly_comb = QFormLayout(self.widget_comb); ly_comb.setContentsMargins(0,0,0,0); self.in_cant_comun = QSpinBox(); self.in_cant_comun.setRange(1, 999); self.in_cant_comun.setPrefix("📦 "); self.in_cant_frio = QSpinBox(); self.in_cant_frio.setRange(1, 999); self.in_cant_frio.setPrefix("❄️ "); ly_comb.addRow("Cant. Común:", self.in_cant_comun); ly_comb.addRow("Cant. Refrigerado:", self.in_cant_frio); self.widget_comb.hide()
         
@@ -306,7 +321,7 @@ class TabIngreso(QWidget):
         h_header_ingreso.addWidget(btn_ref_ingreso); h_header_ingreso.addStretch()
         
         self.tabla_ingresos = QTableWidget(); self.tabla_ingresos.setColumnCount(8); 
-        self.tabla_ingresos.setHorizontalHeaderLabels(["ID", "Serv", "Guía", "Proveedor", "Destino", "Domicilio", "Zona", "Bultos"]); self.tabla_ingresos.hideColumn(0); 
+        self.tabla_ingresos.setHorizontalHeaderLabels(["ID", "Serv", "Guía", "Proveedor", "Destino", "Domicilio", "Zona", "Bultos/Hs"]); self.tabla_ingresos.hideColumn(0); 
         self.tabla_ingresos.setStyleSheet(ESTILO_TABLAS_BLANCAS)
         self.pintor_ingreso = PintorCeldasDelegate(self.tabla_ingresos)
         self.tabla_ingresos.setItemDelegate(self.pintor_ingreso)
@@ -317,8 +332,8 @@ class TabIngreso(QWidget):
         self.tabla_ingresos.setColumnWidth(1, 140)
         self.tabla_ingresos.setColumnWidth(2, 140)
         self.tabla_ingresos.setColumnWidth(3, 160)
-        self.tabla_ingresos.setColumnWidth(4, 200)
-        self.tabla_ingresos.setColumnWidth(5, 300)
+        self.tabla_ingresos.setColumnWidth(4, 250)
+        self.tabla_ingresos.setColumnWidth(5, 350)
         self.tabla_ingresos.setColumnWidth(6, 160)
         self.tabla_ingresos.setColumnWidth(7, 90)
         header_ing.setStretchLastSection(True)
@@ -355,8 +370,23 @@ class TabIngreso(QWidget):
                 self.chk_contingencia.setChecked(False)
 
     def actualizar_interfaz_retiro(self, texto):
-        if texto.startswith("Retiro"): self.lbl_guia.hide(); self.in_guia.hide(); self.lbl_cli_ret.show(); self.in_cliente_retiro.show(); self.in_guia.clear()
-        else: self.lbl_guia.show(); self.in_guia.show(); self.lbl_cli_ret.hide(); self.in_cliente_retiro.hide()
+        if texto.startswith("Retiro"): 
+            self.lbl_guia.hide(); self.in_guia.hide()
+            self.lbl_cli_ret.show(); self.in_cliente_retiro.show()
+            self.lbl_bultos_simple.setText("Bultos:")
+            self.lbl_precio_flete.hide(); self.in_precio_flete.hide()
+            self.in_guia.clear()
+        elif texto.startswith("Flete"):
+            self.lbl_guia.hide(); self.in_guia.hide()
+            self.lbl_cli_ret.hide(); self.in_cliente_retiro.hide()
+            self.lbl_bultos_simple.setText("Horas / Viajes:")
+            self.lbl_precio_flete.show(); self.in_precio_flete.show()
+            self.in_guia.clear()
+        else: 
+            self.lbl_guia.show(); self.in_guia.show()
+            self.lbl_cli_ret.hide(); self.in_cliente_retiro.hide()
+            self.lbl_bultos_simple.setText("Bultos:")
+            self.lbl_precio_flete.hide(); self.in_precio_flete.hide()
 
     def cargar_datos_cliente(self):
         try:
@@ -419,24 +449,31 @@ class TabIngreso(QWidget):
                 bultos_total = self.in_bultos_simple.value()
                 if self.radio_frio.isChecked(): c_frio = bultos_total; tipo_carga_txt = "REFRIGERADO"
                 else: c_frio = 0; tipo_carga_txt = "COMUN"
-            if bultos_total == 0: QMessageBox.warning(self, "Error", "Debe ingresar al menos 1 bulto."); return
+            if bultos_total == 0: QMessageBox.warning(self, "Error", "Debe ingresar al menos 1 bulto/hora."); return
             
             precio = 0.0; guia_final = self.in_guia.text(); prov = self.in_prov.currentText()
-            if "Retiro" in servicio and not guia_final: 
+            
+            # 🔥 GENERADOR AUTO DE GUÍAS (FLETE O RETIRO) 🔥
+            if ("Retiro" in servicio or "Flete" in servicio) and not guia_final: 
                 now = datetime.now(); c_year = now.strftime('%Y'); c_month = now.strftime('%m')
-                ops_retiro = self.main.session.query(Operacion.guia_remito).filter(Operacion.guia_remito.like(f"Retiro {c_year}-%")).all()
+                prefijo = "Retiro" if "Retiro" in servicio else "FLETE"
+                ops_auto = self.main.session.query(Operacion.guia_remito).filter(Operacion.guia_remito.like(f"{prefijo} {c_year}-%")).all()
                 max_seq = 0
-                for r_op in ops_retiro:
+                for r_op in ops_auto:
                     if r_op[0]:
                         try: seq = int(r_op[0].split('-')[-1]); max_seq = max(max_seq, seq)
                         except: pass
-                guia_final = f"Retiro {c_year}-{c_month}-{max_seq + 1:03d}"
+                guia_final = f"{prefijo} {c_year}-{c_month}-{max_seq + 1:03d}"
             
-            precio = self.main.obtener_precio(loc, c_comun, c_frio, proveedor=prov, peso=peso_manual, bultos_totales=bultos_total)
-            
-            if self.chk_contingencia.isChecked():
-                precio += self.in_monto_contingencia.value()
-                tipo_carga_txt += " (+Contingencia)"
+            # 🔥 LÓGICA DE PRECIO (FLETE TOMA EL MANUAL, EL RESTO TOMA ZONA) 🔥
+            if "Flete" in servicio:
+                precio = self.in_precio_flete.value()
+                tipo_carga_txt = "FLETE ESPECIAL"
+            else:
+                precio = self.main.obtener_precio(loc, c_comun, c_frio, proveedor=prov, peso=peso_manual, bultos_totales=bultos_total)
+                if self.chk_contingencia.isChecked():
+                    precio += self.in_monto_contingencia.value()
+                    tipo_carga_txt += " (+Contingencia)"
             
             tiene_cr = self.chk_cr.isChecked(); monto_cr = self.in_monto_recaudar.value() if tiene_cr else 0.0; info_cr = self.in_info_intercambio.text() if tiene_cr else ""
             
@@ -475,6 +512,7 @@ class TabIngreso(QWidget):
             self.in_cliente_retiro.setCurrentIndex(0)
             self.in_bultos_simple.setValue(1)
             self.in_peso_manual.setValue(0)
+            self.in_precio_flete.setValue(0)
             self.in_cant_comun.setValue(1)
             self.in_cant_frio.setValue(1)
             self.radio_comun.setChecked(True)
@@ -527,7 +565,8 @@ class TabIngreso(QWidget):
             
             for row, op in enumerate(ops):
                 self.tabla_ingresos.insertRow(row); self.tabla_ingresos.setItem(row, 0, QTableWidgetItem(str(op.id)))
-                icon_srv = "🚚" if "Entrega" in op.tipo_servicio else "🔄"; srv_txt = "Entrega" if "Entrega" in op.tipo_servicio else "Retiro"
+                icon_srv = "🚚" if "Entrega" in op.tipo_servicio else ("🔄" if "Retiro" in op.tipo_servicio else "⏱️")
+                srv_txt = "Flete" if "Flete" in op.tipo_servicio else ("Retiro" if "Retiro" in op.tipo_servicio else "Entrega")
                 self.tabla_ingresos.setItem(row, 1, QTableWidgetItem(f"{icon_srv} {srv_txt}")); self.tabla_ingresos.setItem(row, 2, QTableWidgetItem(op.guia_remito)); self.tabla_ingresos.setItem(row, 3, QTableWidgetItem(op.proveedor)); self.tabla_ingresos.setItem(row, 4, QTableWidgetItem(op.destinatario)); self.tabla_ingresos.setItem(row, 5, QTableWidgetItem(op.domicilio)); self.tabla_ingresos.setItem(row, 6, QTableWidgetItem(op.localidad))
                 det_b = str(op.bultos)
                 if op.bultos_frio and op.bultos_frio > 0 and op.bultos_frio < op.bultos: det_b += f" ({op.bultos-op.bultos_frio}C/{op.bultos_frio}R)"
@@ -563,7 +602,7 @@ class TabRendicion(QWidget):
         top.insertWidget(2, self.txt_filtro_rendir)
         
         self.tabla_rendicion = QTableWidget(); self.tabla_rendicion.setColumnCount(10); 
-        self.tabla_rendicion.setHorizontalHeaderLabels(["ID", "Sel.", "Chofer", "Guía / Remito", "Destinatario", "Domicilio", "Localidad", "Bultos", "Estado", "Salida"]); self.tabla_rendicion.hideColumn(0); 
+        self.tabla_rendicion.setHorizontalHeaderLabels(["ID", "Sel.", "Chofer", "Guía / Remito", "Destinatario", "Domicilio", "Localidad", "Bultos/Hs", "Estado", "Salida"]); self.tabla_rendicion.hideColumn(0); 
         self.tabla_rendicion.setStyleSheet(ESTILO_TABLAS_BLANCAS)
         self.pintor_rend = PintorCeldasDelegate(self.tabla_rendicion)
         self.tabla_rendicion.setItemDelegate(self.pintor_rend)
@@ -574,11 +613,11 @@ class TabRendicion(QWidget):
         self.tabla_rendicion.setColumnWidth(1, 60)
         self.tabla_rendicion.setColumnWidth(2, 160)
         self.tabla_rendicion.setColumnWidth(3, 140)
-        self.tabla_rendicion.setColumnWidth(4, 200)
-        self.tabla_rendicion.setColumnWidth(5, 300)
+        self.tabla_rendicion.setColumnWidth(4, 250)
+        self.tabla_rendicion.setColumnWidth(5, 350)
         self.tabla_rendicion.setColumnWidth(6, 160)
-        self.tabla_rendicion.setColumnWidth(7, 90)
-        self.tabla_rendicion.setColumnWidth(8, 150)
+        self.tabla_rendicion.setColumnWidth(7, 100)
+        self.tabla_rendicion.setColumnWidth(8, 180)
         header_rend.setStretchLastSection(True)
         
         self.tabla_rendicion.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows); self.tabla_rendicion.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
@@ -600,7 +639,6 @@ class TabRendicion(QWidget):
         
         self.tabla_res_exitos = QTableWidget(); self.tabla_res_exitos.setColumnCount(3); self.tabla_res_exitos.setHorizontalHeaderLabels(["Guía", "Destinatario", "Domicilio"])
         
-        # 🔥 MODO EXCEL PARA RESUMEN DE CHOFER (ÉXITOS) 🔥
         self.tabla_res_exitos.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
         self.tabla_res_exitos.setColumnWidth(0, 150)
         self.tabla_res_exitos.setColumnWidth(1, 250)
@@ -611,7 +649,6 @@ class TabRendicion(QWidget):
         
         self.tabla_res_fallos = QTableWidget(); self.tabla_res_fallos.setColumnCount(3); self.tabla_res_fallos.setHorizontalHeaderLabels(["Guía", "Destinatario", "Motivo del Chofer"])
         
-        # 🔥 MODO EXCEL PARA RESUMEN DE CHOFER (FALLOS) 🔥
         self.tabla_res_fallos.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
         self.tabla_res_fallos.setColumnWidth(0, 150)
         self.tabla_res_fallos.setColumnWidth(1, 250)
@@ -642,6 +679,8 @@ class TabRendicion(QWidget):
                 guia_str = row_data[1] or "-"
                 if row_data[4] and "Retiro" in row_data[4]:
                     guia_str = f"🔄 [RETIRO] {guia_str}"
+                elif row_data[4] and "Flete" in row_data[4]:
+                    guia_str = f"⏱️ {guia_str}"
                 
                 self.tabla_res_exitos.setItem(r, 0, QTableWidgetItem(guia_str))
                 self.tabla_res_exitos.setItem(r, 1, QTableWidgetItem(row_data[2]))
@@ -677,7 +716,10 @@ class TabRendicion(QWidget):
             for row, op in enumerate(ops):
                 self.tabla_rendicion.insertRow(row); self.tabla_rendicion.setItem(row, 0, QTableWidgetItem(str(op.id)))
                 chk = QTableWidgetItem(); chk.setFlags(Qt.ItemFlag.ItemIsUserCheckable | Qt.ItemFlag.ItemIsEnabled); chk.setCheckState(Qt.CheckState.Unchecked); self.tabla_rendicion.setItem(row, 1, chk)
-                guia_texto = f"🔄 [RETIRO] {op.guia_remito}" if "Retiro" in (op.tipo_servicio or "") else (op.guia_remito or "-")
+                guia_texto = op.guia_remito or "-"
+                if op.tipo_servicio and "Retiro" in op.tipo_servicio: guia_texto = f"🔄 [RETIRO] {guia_texto}"
+                elif op.tipo_servicio and "Flete" in op.tipo_servicio: guia_texto = f"⏱️ {guia_texto}"
+                
                 self.tabla_rendicion.setItem(row, 2, QTableWidgetItem(op.chofer_asignado or "SIN ASIGNAR")); self.tabla_rendicion.setItem(row, 3, QTableWidgetItem(guia_texto)); self.tabla_rendicion.setItem(row, 4, QTableWidgetItem(op.destinatario)); self.tabla_rendicion.setItem(row, 5, QTableWidgetItem(op.domicilio)); self.tabla_rendicion.setItem(row, 6, QTableWidgetItem(op.localidad)); self.tabla_rendicion.setItem(row, 7, QTableWidgetItem(str(op.bultos)))
                 estado_calle = op.estado
                 h_pend = self.main.session.query(Historial).filter(Historial.operacion_id == op.id, Historial.accion == 'APP').order_by(Historial.id.desc()).first()
@@ -791,7 +833,7 @@ class TabFacturacion(QWidget):
         self.tabla_cierre = QTableWidget()
         self.tabla_cierre.setColumnCount(10) 
         
-        self.tabla_cierre.setHorizontalHeaderLabels(["Fecha", "Sucursal", "Guía / Remito", "Zona", "Bultos", "Estado", "Base ($)", "Extras ($)", "Total ($)", "Ajuste"])
+        self.tabla_cierre.setHorizontalHeaderLabels(["Fecha", "Sucursal", "Guía / Remito", "Zona", "Bultos/Hs", "Estado", "Base ($)", "Extras ($)", "Total ($)", "Ajuste"])
         self.tabla_cierre.setStyleSheet(ESTILO_TABLAS_BLANCAS)
         self.pintor_cierre = PintorCeldasDelegate(self.tabla_cierre)
         self.tabla_cierre.setItemDelegate(self.pintor_cierre)
@@ -808,7 +850,6 @@ class TabFacturacion(QWidget):
         self.tabla_cierre.setColumnWidth(6, 100)
         self.tabla_cierre.setColumnWidth(7, 100)
         self.tabla_cierre.setColumnWidth(8, 100)
-        self.tabla_cierre.setColumnWidth(9, 90)
         header.setStretchLastSection(True)
         
         self.tabla_cierre.verticalHeader().setFixedWidth(30)
@@ -987,7 +1028,8 @@ class TabFacturacion(QWidget):
                 
                 monto_serv = op.monto_servicio or 0.0
                 
-                if op.guia_remito == "CARGO-FIJO": 
+                # 🔥 Aca el Flete Especial ignora la matematica de zonas y pasa directo con el precio pactado
+                if op.guia_remito == "CARGO-FIJO" or (op.tipo_servicio and "Flete" in op.tipo_servicio): 
                     precio_base_actual = monto_serv
                 else:
                     cant_comun = bultos_tot - bultos_fr

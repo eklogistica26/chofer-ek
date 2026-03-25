@@ -208,8 +208,8 @@ class PlataformaLogistica(QMainWindow):
             <b>3.</b> Ingresá los Bultos (y el peso si es DHL).<br>
             <b>4.</b> Tocá <b>GUARDAR EN DEPOSITO</b>. El paquete se sumará a la tabla de la derecha.<br><br>
             <b>¿QUÉ HACEN LOS BOTONES?</b><br>
-            - <b>[Tipo] (Entrega/Retiro):</b> Si lo cambiás a Retiro, desaparece la Guía y el sistema la autogenera para ir a buscar algo a un cliente.<br>
-            - <b>[📍 Destinos Fijos]:</b> Si elegís una empresa que ya tiene clientes guardados, abrí esta lista, tocá un nombre y los datos de domicilio se llenarán solos por arte de magia.<br>
+            - <b>[Tipo] (Entrega/Retiro/Flete):</b> Si lo cambiás a Retiro o Flete, la Guía se autogenera sola. Si elegís flete, se cobra por precio pactado.<br>
+            - <b>[📍 Destinos Fijos]:</b> Si elegís una empresa que ya tiene clientes guardados, abrí esta lista, tocá un nombre y los datos de domicilio se llenarán solos.<br>
             - <b>[📥 IMPORTAR TXT DHL]:</b> Sirve para San Juan. Tocás, elegís el archivo del sistema de DHL y te carga 100 paquetes en 2 segundos.<br>
             - <b>[✏️ EDITAR]:</b> Si te equivocaste al tipear un nombre, seleccioná la fila en la tabla derecha y tocá Editar.<br>
             - <b>[🗑️ ELIMINAR]:</b> Borra permanentemente una guía mal ingresada.
@@ -217,17 +217,17 @@ class PlataformaLogistica(QMainWindow):
             
             "2. Hoja de Ruta": """
             <h2 style='color:#0d6efd;'>MÓDULO: Asignación y Despacho</h2>
-            <p>Se usa para asignarle los paquetes (que están en el depósito) a un chofer para que salgan a la calle.</p>
+            <p>Se usa para asignarle los paquetes a un chofer para que salgan a la calle.</p>
             <b>PASO A PASO PARA DESPACHAR:</b><br>
             <b>1.</b> En la tabla, tildá la casilla en la columna 'Sel.' de todos los paquetes que se llevará un chofer.<br>
             <b>2.</b> Arriba, seleccioná el nombre del Chofer.<br>
             <b>3.</b> Hacé clic en el botón <b>ASIGNAR GUÍAS</b>.<br><br>
             <b>¿QUÉ HACEN LOS BOTONES?</b><br>
-            - <b>[☑️ Seleccionar Todo]:</b> Tilda de un solo clic todas las filas de la tabla para despachar rápido.<br>
-            - <b>[ASIGNAR GUÍAS]:</b> Pasa los paquetes al estado 'EN REPARTO'. Le manda los datos a la App del chofer y te ofrece imprimir el PDF.<br>
+            - <b>[☑️ Seleccionar Todo]:</b> Tilda de un solo clic todas las filas de la tabla.<br>
+            - <b>[ASIGNAR GUÍAS]:</b> Pasa los paquetes a 'EN REPARTO'. Le manda los datos a la App del chofer y te ofrece imprimir el PDF.<br>
             - <b>[🚚 TERCERIZADOS]:</b> Si la carga se la lleva una empresa externa, tocá este botón. Te pedirá el nombre del transporte y generará un Remito especial.<br>
-            - <b>[📅 CAMBIAR FECHA]:</b> Si un paquete no va a salir hoy, podés tildar VARIOS y tocar este botón para esconderlos y pasarlos para otro día. Desaparecerán hasta que llegue esa fecha.<br>
-            - <b>[📜 HISTORIAL]:</b> Abre un buscador para reimprimir Hojas de Ruta viejas o ver qué llevó un chofer hace 1 mes.
+            - <b>[📅 CAMBIAR FECHA]:</b> Podés tildar VARIOS envíos y tocar este botón para esconderlos y pasarlos para otro día. Desaparecerán hasta que llegue esa fecha.<br>
+            - <b>[📜 HISTORIAL]:</b> Abre un buscador para reimprimir Hojas de Ruta viejas.
             """,
             
             "3. Rendición": """
@@ -235,18 +235,17 @@ class PlataformaLogistica(QMainWindow):
             <p>Se usa cuando el chofer vuelve de la calle para controlar el dinero y los paquetes rebotados.</p>
             
             <div style='background-color:#ffeeba; padding:10px; border-left:4px solid #ffc107; margin-bottom:10px;'>
-            <b>¿QUÉ HACER SI NO ENTREGAMOS HOY POR CULPA NUESTRA (Y NO COBRARLE AL CLIENTE)?</b><br>
-            <b>Paso 1:</b> Seleccioná la guía en la tabla.<br>
-            <b>Paso 2:</b> Tocá <b>↩️ DESHACER (Admin)</b>. Esto anula la salida, el paquete vuelve a depósito y el sistema NO suma visitas extra (no se cobra recargo a fin de mes).<br>
-            <b>Paso 3:</b> Andá a la pestaña '2. Hoja de Ruta', buscá el paquete, tocá <b>📅 CAMBIAR FECHA</b> y pasalo para mañana.
+            <b>¿QUÉ HACER SI NO ENTREGAMOS HOY POR CULPA NUESTRA?</b><br>
+            <b>Paso 1:</b> Seleccioná la guía en la tabla y tocá <b>↩️ DESHACER (Admin)</b>. Esto anula la salida sin cobrarle demoras al cliente.<br>
+            <b>Paso 2:</b> Andá a la pestaña '2. Hoja de Ruta', buscá el paquete, tocá <b>📅 CAMBIAR FECHA</b> y pasalo para mañana.
             </div>
 
             <b>¿QUÉ HACEN LOS BOTONES?</b><br>
-            - <b>[✅ CONFIRMAR ENTREGAS]:</b> Si a un chofer se le rompió el celular en la calle, seleccioná sus guías y tocá acá para darlas como entregadas manualmente desde la PC.<br>
-            - <b>[📅 REPROGRAMAR]:</b> Usalo cuando el chofer fue pero el cliente no estaba o no tenía plata. Esto baja el paquete del chofer, vuelve a depósito, PERO el sistema anota que se gastó una visita (se cobrará demora en facturación).<br>
+            - <b>[✅ CONFIRMAR ENTREGAS]:</b> Dar por entregado manualmente desde la PC.<br>
+            - <b>[📅 REPROGRAMAR]:</b> Usalo cuando el cliente no estaba o no tenía plata. Vuelve a depósito, PERO el sistema anota que se gastó una visita.<br>
             - <b>[↩️ DESHACER (Admin)]:</b> Usalo cuando fue CULPA NUESTRA (ej: no hicimos a tiempo). Anula la salida sin cobrar recargos.<br>
-            - <b>[🔍 Buscar Resumen] (Pestaña 2):</b> Muestra todo lo que el chofer marcó en el celular como entregado o fallido en el día.<br>
-            - <b>[Imprimir PDF] (Pestaña 2):</b> Imprime el comprobante final para que el chofer lo firme y rinda el dinero.
+            - <b>[🔍 Buscar Resumen] (Pestaña 2):</b> Muestra lo que el chofer marcó como entregado o fallido hoy.<br>
+            - <b>[Imprimir PDF] (Pestaña 2):</b> Imprime el comprobante final de rendición.
             """,
             
             "4. Reportes": """
@@ -254,59 +253,55 @@ class PlataformaLogistica(QMainWindow):
             <p>El buscador general para encontrar información vieja o armar planillas.</p>
             <b>PASO A PASO:</b><br>
             <b>1.</b> Seleccioná la Fecha 'Desde' y 'Hasta'.<br>
-            <b>2.</b> (Opcional) Usá los desplegables para filtrar por un solo Cliente o un solo Chofer.<br>
+            <b>2.</b> Usá los desplegables para filtrar si necesitás algo en particular.<br>
             <b>3.</b> Tocá <b>🔍 Generar</b>.<br><br>
             <b>¿QUÉ HACEN LOS BOTONES?</b><br>
-            - <b>[🔍 Generar]:</b> Busca en la base de datos y llena la tabla.<br>
-            - <b>[Excel]:</b> Descarga un archivo editable (ideal para mandarle un reporte en crudo al contador).<br>
-            - <b>[PDF]:</b> Genera un documento formal, sellado e inmodificable, ideal para enviarle a los clientes como comprobante de gestión.
+            - <b>[Excel]:</b> Descarga un archivo editable.<br>
+            - <b>[PDF]:</b> Genera un documento formal, sellado e inmodificable.
             """,
             
             "5. Facturación": """
             <h2 style='color:#0d6efd;'>MÓDULO: Liquidación a Clientes</h2>
-            <p>Se utiliza a fin de mes (o por quincena) para calcular cuánto le debemos cobrar a cada empresa.</p>
+            <p>Se utiliza a fin de mes para calcular cuánto cobrar a cada empresa.</p>
             
-            <b>¿CÓMO SE CALCULA EL PRECIO MÁGICAMENTE?</b><br>
-            - El sistema lee la 'Zona' del paquete y busca su valor en la Configuración de Tarifas.<br>
-            - <b>Paquetes Comunes:</b> Agrupa los bultos, los divide por 3 (redondeando hacia arriba) y multiplica por el 'Precio Base Común'.<br>
-            - <b>Paquetes de Frío:</b> Agrupa los bultos, los divide por 3, y multiplica por el 'Precio Base Frío'.<br>
-            - Si hay bultos mixtos en la misma guía, cobra todo con la tarifa más cara (Frío).<br>
+            <b>¿CÓMO SE CALCULA EL PRECIO?</b><br>
+            - <b>Paquetes:</b> Agrupa los bultos, divide por 3 y multiplica por la tarifa de la zona.<br>
+            - <b>Fletes Especiales:</b> Usa el "Precio Pactado" que le ingresaste en la pestaña Ingreso.<br>
             - JetPaq no se cobra (Uso interno).<br><br>
 
             <b>¿QUÉ HACEN LOS BOTONES?</b><br>
-            - <b>[Calcular Listado]:</b> Trae todas las guías del mes que aún no se cobraron. Si hay filas Amarillas, significa que se visitó más de 1 vez esa casa.<br>
-            - <b>[✏️ Editar] (En la grilla):</b> Permite modificar el precio final a mano o tildar la casilla para cobrarle un recargo por demora/visita extra.<br>
-            - <b>[➕ Agregar Cargo Fijo]:</b> Permite sumar un concepto manual (Ej: "Alquiler de Depósito: $50.000").<br>
-            - <b>[Rendición PDF]:</b> Cierra la facturación. Te pregunta si querés marcarlas como "Facturadas" (para que no vuelvan a salir el mes que viene) y te guarda el PDF.<br>
-            - <b>[💰 Registrar Pago] (Pestaña Cuentas Corrientes):</b> Descuenta plata de la deuda que tiene el cliente con nosotros.
+            - <b>[Calcular Listado]:</b> Trae todas las guías. Si hay filas Amarillas, se visitó más de 1 vez a esa casa.<br>
+            - <b>[✏️ Editar] (En la grilla):</b> Permite modificar el precio final a mano o cobrar recargos.<br>
+            - <b>[➕ Agregar Cargo Fijo]:</b> Permite sumar un concepto extra manual.<br>
+            - <b>[Rendición PDF]:</b> Cierra la facturación y la da por cobrada en el sistema.<br>
+            - <b>[💰 Registrar Pago] (Pestaña 2):</b> Descuenta plata de la deuda que tiene el cliente.
             """,
             
             "💬 CRM / Contacto": """
             <h2 style='color:#0d6efd;'>MÓDULO: Atención Post-Venta (CRM)</h2>
-            <p>Se utiliza para medir la calidad del servicio y fidelizar a los clientes finales.</p>
+            <p>Se utiliza para medir la calidad del servicio y fidelizar clientes.</p>
             <b>¿QUÉ HACEN LOS BOTONES?</b><br>
-            - <b>[🔄 Cargar Entregas Recientes]:</b> Busca las últimas 100 entregas exitosas que tengan un número de celular anotado.<br>
-            - <b>[💬 Enviar WhatsApp]:</b> Abre automáticamente WhatsApp Web con un mensaje escrito saludando al destinatario por su nombre y preguntándole qué le pareció el servicio de entrega de E.K. Logística.
+            - <b>[🔄 Cargar Entregas Recientes]:</b> Busca las últimas entregas que tengan celular.<br>
+            - <b>[💬 Enviar WhatsApp]:</b> Abre WhatsApp Web con un mensaje saludando al destinatario y preguntándole qué le pareció el servicio.
             """,
             
             "📈 Estadísticas": """
             <h2 style='color:#0d6efd;'>MÓDULO: Panel Gerencial</h2>
             <p>Un pantallazo de la salud operativa de tu sucursal.</p>
-            <b>¿QUÉ HACEN LOS BOTONES?</b><br>
-            - <b>[🔄 Actualizar Gráficos]:</b> Recalcula la matemática del día.<br>
-            - <b>Cuadros Superiores:</b> Te muestran cuántos paquetes salieron hoy, cuántos ya fueron entregados exitosamente, y cuántos siguen en la calle dando vueltas.<br>
-            - <b>Ranking de Clientes:</b> Te ordena de mayor a menor qué empresa te derivó más trabajo en el mes.<br>
-            - <b>Top 5 Choferes:</b> El ranking de productividad de tus empleados.
+            <b>¿QUÉ MUESTRA?</b><br>
+            - Cuántos paquetes salieron hoy, cuántos se entregaron y cuántos siguen en la calle.<br>
+            - El ranking de las empresas que más trabajo derivaron en el mes.<br>
+            - El ranking de los choferes que más paquetes entregaron en el mes.
             """,
             
             "⚙️ Configuración": """
             <h2 style='color:#0d6efd;'>MÓDULO: Motor del Sistema</h2>
             <p>Solo accesible para Administradores. Controla el cerebro de la plataforma.</p>
             <b>¿CÓMO USAR CADA PANEL?</b><br>
-            - <b>💲 Tarifas:</b> Tocá "Editar" en una zona para cambiar su precio. El sistema te preguntará si querés aplicarle el aumento a todas las zonas similares de un solo golpe.<br>
-            - <b>🚛 Choferes:</b> Para agregar uno nuevo, completá sus datos. Su DNI será su contraseña para entrar a la App del celular. Su celular servirá para mandarle alertas automáticas de WhatsApp.<br>
-            - <b>🏢 Proveedores (Poderes):</b> Acá podés crear empresas y tildarle "Poderes" (Ej: Si tildás 'Siempre Frío', todos sus paquetes se cargarán automáticamente como refrigerados).<br>
-            - <b>👥 Usuarios:</b> Acá le creás la cuenta a los empleados de oficina. Con las 9 casillas (Tildes) elegís exactamente qué pestañas puede ver y cuáles se le bloquean.
+            - <b>💲 Tarifas:</b> Cambiá el precio de una zona y aplicalo al resto de forma masiva.<br>
+            - <b>🚛 Choferes:</b> Agregá el DNI (Contraseña App) y el Celular (Para avisos por WhatsApp).<br>
+            - <b>🏢 Proveedores (Poderes):</b> Creá empresas y activales poderes (Ej: "Siempre Frío", "Es Facturable", etc).<br>
+            - <b>👥 Usuarios:</b> Creale la cuenta a los empleados de oficina y tildá a qué pestañas pueden entrar.
             """
         }
         texto = diccionario_ayuda.get(tab_name, "Selecciona una pestaña específica para ver su manual de uso detallado paso a paso.")
@@ -445,17 +440,16 @@ class PlataformaLogistica(QMainWindow):
         self.tabla_monitor.setHorizontalHeaderLabels(["Estado", "Guía", "Cliente", "Destinatario", "Domicilio / Novedad", "Zona", "Bultos", "Chofer"])
         self.pintor = PintorCeldasDelegate(self.tabla_monitor); self.tabla_monitor.setItemDelegate(self.pintor)
         
-        # 🔥 TAMAÑOS MÁS ANCHOS Y CÓMODOS POR DEFECTO PARA EL MONITOR 🔥
         header = self.tabla_monitor.horizontalHeader()
         header.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
-        self.tabla_monitor.setColumnWidth(0, 130)  # Estado
-        self.tabla_monitor.setColumnWidth(1, 140)  # Guía
-        self.tabla_monitor.setColumnWidth(2, 180)  # Cliente
-        self.tabla_monitor.setColumnWidth(3, 200)  # Destinatario
-        self.tabla_monitor.setColumnWidth(4, 300)  # Domicilio
-        self.tabla_monitor.setColumnWidth(5, 150)  # Zona
-        self.tabla_monitor.setColumnWidth(6, 80)   # Bultos
-        header.setStretchLastSection(True)         # Chofer estira al final
+        self.tabla_monitor.setColumnWidth(0, 130)  
+        self.tabla_monitor.setColumnWidth(1, 140)  
+        self.tabla_monitor.setColumnWidth(2, 180)  
+        self.tabla_monitor.setColumnWidth(3, 250)  
+        self.tabla_monitor.setColumnWidth(4, 350)  
+        self.tabla_monitor.setColumnWidth(5, 150)  
+        self.tabla_monitor.setColumnWidth(6, 80)   
+        header.setStretchLastSection(True)         
         
         self.tabla_monitor.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows); self.tabla_monitor.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         legend = QHBoxLayout()
@@ -569,18 +563,17 @@ class PlataformaLogistica(QMainWindow):
         top_row2.addWidget(self.txt_filtro_ruta); top_row2.addWidget(btn_reprog); top_row2.addWidget(btn_editar); top_row2.addWidget(btn_historial); top_row2.addWidget(btn_ref)
         self.tabla_ruta = QTableWidget(); self.tabla_ruta.setColumnCount(10); self.tabla_ruta.setHorizontalHeaderLabels(["ID", "Sel.", "Guía", "Proveedor", "Destinatario", "Domicilio", "Localidad", "Bultos", "Cobro / Obs", "Estado"]); self.tabla_ruta.hideColumn(0); 
         
-        # 🔥 TAMAÑOS MÁS ANCHOS Y CÓMODOS POR DEFECTO PARA LA RUTA 🔥
         header_ruta = self.tabla_ruta.horizontalHeader()
         header_ruta.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
-        self.tabla_ruta.setColumnWidth(1, 40)   # Sel.
-        self.tabla_ruta.setColumnWidth(2, 140)  # Guía
-        self.tabla_ruta.setColumnWidth(3, 180)  # Proveedor
-        self.tabla_ruta.setColumnWidth(4, 200)  # Destinatario
-        self.tabla_ruta.setColumnWidth(5, 250)  # Domicilio
-        self.tabla_ruta.setColumnWidth(6, 150)  # Localidad
-        self.tabla_ruta.setColumnWidth(7, 90)   # Bultos
-        self.tabla_ruta.setColumnWidth(8, 150)  # Cobro/Obs
-        header_ruta.setStretchLastSection(True) # Estado estira al final
+        self.tabla_ruta.setColumnWidth(1, 40)   
+        self.tabla_ruta.setColumnWidth(2, 140)  
+        self.tabla_ruta.setColumnWidth(3, 180)  
+        self.tabla_ruta.setColumnWidth(4, 250)  
+        self.tabla_ruta.setColumnWidth(5, 350)  
+        self.tabla_ruta.setColumnWidth(6, 150)  
+        self.tabla_ruta.setColumnWidth(7, 90)   
+        self.tabla_ruta.setColumnWidth(8, 150)  
+        header_ruta.setStretchLastSection(True) 
         
         self.tabla_ruta.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows); self.tabla_ruta.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         l.addLayout(top_row1); l.addLayout(top_row2); l.addWidget(self.tabla_ruta)
@@ -767,7 +760,6 @@ class PlataformaLogistica(QMainWindow):
             crear_pdf_tercerizados(nombre, ops, self.sucursal_actual, transporte, self.usuario.username, datetime.now().strftime('%d/%m/%Y %H:%M'))
         except Exception: self.session.rollback()
 
-    # 🔥 RESTAURAMOS FUNCIONES COMPLETAS DE REPORTES, CRM Y ESTADISTICAS 🔥
     def setup_reportes(self):
         layout = QVBoxLayout(self.tab_reportes); filtros = QGroupBox("Filtros"); flayout = QHBoxLayout()
         self.rep_fecha_desde = QDateEdit(QDate.currentDate().addDays(-30)); self.rep_fecha_hasta = QDateEdit(QDate.currentDate()); self.rep_fecha_desde.setCalendarPopup(True); self.rep_fecha_hasta.setCalendarPopup(True)
@@ -787,15 +779,15 @@ class PlataformaLogistica(QMainWindow):
         header_rep = self.tabla_reportes.horizontalHeader(); 
         header_rep.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
         self.tabla_reportes.setColumnWidth(0, 90)
-        self.tabla_reportes.setColumnWidth(1, 90)
+        self.tabla_reportes.setColumnWidth(1, 120)
         self.tabla_reportes.setColumnWidth(2, 140)
         self.tabla_reportes.setColumnWidth(3, 140)
         self.tabla_reportes.setColumnWidth(4, 140)
-        self.tabla_reportes.setColumnWidth(5, 200)
+        self.tabla_reportes.setColumnWidth(5, 250)
         self.tabla_reportes.setColumnWidth(6, 140)
-        self.tabla_reportes.setColumnWidth(7, 130)
-        self.tabla_reportes.setColumnWidth(8, 60)
-        self.tabla_reportes.setColumnWidth(9, 60)
+        self.tabla_reportes.setColumnWidth(7, 150)
+        self.tabla_reportes.setColumnWidth(8, 90)
+        self.tabla_reportes.setColumnWidth(9, 90)
         header_rep.setStretchLastSection(True)
         
         self.tabla_reportes.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows); self.tabla_reportes.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
