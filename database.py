@@ -10,12 +10,14 @@ DATABASE_URL = os.getenv("DB_URL")
 if not DATABASE_URL:
     raise ValueError("❌ ERROR CRÍTICO: No se encontró la variable DB_URL en el archivo .env")
 
+# 🔥 FIX: Le agregamos límite de tiempo para que no se quede 30 minutos trabado nunca más 🔥
 engine = create_engine(
     DATABASE_URL, 
     pool_size=10, 
     max_overflow=600, 
     pool_pre_ping=True,
-    pool_recycle=300
+    pool_recycle=300,
+    connect_args={'connect_timeout': 10}
 )
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
@@ -85,6 +87,8 @@ class Chofer(Base):
     id = Column(Integer, primary_key=True, index=True)
     sucursal = Column(String(50))
     nombre = Column(String(100))
+    dni = Column(String(50), nullable=True)
+    celular = Column(String(50), nullable=True)
 
 class ClienteRetiro(Base):
     __tablename__ = "clientes_retiro"
@@ -100,8 +104,6 @@ class ClientePrincipal(Base):
     id = Column(Integer, primary_key=True, index=True)
     nombre = Column(String(100), unique=True)
     email_reportes = Column(String(150), nullable=True)
-    
-    # 🔥 LOS NUEVOS 5 PODERES PARA CADA EMPRESA 🔥
     es_facturable = Column(Boolean, default=True)
     enviar_mail = Column(Boolean, default=False)
     exige_remito = Column(Boolean, default=False)
