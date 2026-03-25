@@ -90,7 +90,6 @@ class PlataformaLogistica(QMainWindow):
         from vistas_operativas import TabIngreso, TabRendicion, TabFacturacion
         from vista_configuracion import TabConfiguracion
         
-        # 🔥 FIX IMPORTANTE: Le sacamos el TrackingDialog a esta lista para que use el tuyo propio y NO el viejo
         global ToastNotification, ConfirmarEntregaDialog, ReprogramarAdminDialog, HistorialHojasRutaDialog, EditarOperacionDialog, CambiarFechaDialog
         from dialogos import ToastNotification, ConfirmarEntregaDialog, ReprogramarAdminDialog, HistorialHojasRutaDialog, EditarOperacionDialog, CambiarFechaDialog
         
@@ -99,9 +98,10 @@ class PlataformaLogistica(QMainWindow):
 
         _, self.session = get_session()
         
-        # 🔥 AUTO-PARCHE BLINDADO: Se ejecutan de a uno. Así, si uno choca, los otros igual se instalan 🔥
+        # 🔥 AUTO-PARCHE BLINDADO: Le agregamos DNI y un Timeout de 5 segundos 🔥
         parches = [
             "ALTER TABLE choferes ADD COLUMN celular VARCHAR(50)",
+            "ALTER TABLE choferes ADD COLUMN dni VARCHAR(50)",
             "ALTER TABLE clientes_principales ADD COLUMN es_facturable BOOLEAN DEFAULT TRUE",
             "ALTER TABLE clientes_principales ADD COLUMN enviar_mail BOOLEAN DEFAULT FALSE",
             "ALTER TABLE clientes_principales ADD COLUMN exige_remito BOOLEAN DEFAULT FALSE",
@@ -109,12 +109,21 @@ class PlataformaLogistica(QMainWindow):
             "ALTER TABLE clientes_principales ADD COLUMN cobro_puerta BOOLEAN DEFAULT FALSE"
         ]
         
+        try:
+            # Fijamos 5 segundos máximos de espera. Si la BD está trabada por la App, la PC se salta esto.
+            self.session.execute(text("SET statement_timeout = '5s'"))
+        except: pass
+
         for p in parches:
             try:
                 self.session.execute(text(p))
                 self.session.commit()
             except:
                 self.session.rollback()
+                
+        try:
+            self.session.execute(text("RESET statement_timeout"))
+        except: pass
 
         self.lista_proveedores = []; self.toast = ToastNotification(self); self.filtro_monitor = None
         self.init_ui()
@@ -220,6 +229,7 @@ class PlataformaLogistica(QMainWindow):
         btn.clicked.connect(d.accept); l.addWidget(t); l.addWidget(btn); d.exec()
     
     def abrir_tracking(self): 
+        from dialogos import TrackingDialog
         d = TrackingDialog(self.session, getattr(self, 'usuario', None)); d.exec()
     
     def cambiar_sucursal(self, suc):
@@ -235,31 +245,48 @@ class PlataformaLogistica(QMainWindow):
         except Exception as e: self.session.rollback()
         self.combo_sucursal.blockSignals(True); self.combo_sucursal.setCurrentText(suc); self.combo_sucursal.blockSignals(False)
 
+    # 🔥 FIX BLINDADO: Ahora cada lista carga de forma independiente y segura 🔥
     def actualizar_combos_dinamicos(self):
         try:
-            zs = self.session.query(Tarifa.localidad).filter(Tarifa.sucursal == self.sucursal_actual).distinct().all()
-            chs = self.session.query(Chofer.nombre).filter(Chofer.sucursal == self.sucursal_actual).all()
-            nombres_choferes = [c[0] for c in chs]
-            clis = self.session.query(ClienteRetiro).filter(ClienteRetiro.sucursal == self.sucursal_actual).order_by(ClienteRetiro.nombre).all()
-            chs_todos = self.session.query(Chofer.nombre).all()
-            clientes_db = self.session.query(ClientePrincipal).order_by(ClientePrincipal.nombre.asc()).all()
-            self.lista_proveedores = [c.nombre for c in clientes_db] if clientes_db else ["Andreani", "DHL", "Directo", "JetPaq", "MercadoLibre", "Otro"]
-            
+            zs = [z[0] for z in self.session.query(Tarifa.localidad).filter(Tarifa.sucursal == self.sucursal_actual).distinct().all()]
             if hasattr(self, 'tab_ingreso'):
-                self.tab_ingreso.in_loc_combo.clear(); self.tab_ingreso.in_loc_combo.addItems(sorted([z[0] for z in zs]))
+                self.tab_ingreso.in_loc_combo.clear()
+                self.tab_ingreso.in_loc_combo.addItems(sorted(zs))
+        except: self.session.rollback()
+
+        try:
+            chs = [c[0] for c in self.session.query(Chofer.nombre).filter(Chofer.sucursal == self.sucursal_actual).order_by(Chofer.nombre).all()]
+            if hasattr(self, 'combo_masivo_chofer'): 
+                self.combo_masivo_chofer.clear(); self.combo_masivo_chofer.addItems(chs)
+            if hasattr(self, 'mon_chofer_combo'): 
+                self.mon_chofer_combo.clear(); self.mon_chofer_combo.addItem("Todos"); self.mon_chofer_combo.addItems(chs)
+            if hasattr(self, 'tab_rendicion'): 
+                self.tab_rendicion.resumen_chofer.clear(); self.tab_rendicion.resumen_chofer.addItems(chs)
+        except: self.session.rollback()
+
+        try:
+            clis = self.session.query(ClienteRetiro).filter(ClienteRetiro.sucursal == self.sucursal_actual).order_by(ClienteRetiro.nombre).all()
+            if hasattr(self, 'tab_ingreso'):
                 self.tab_ingreso.in_cliente_retiro.clear(); self.tab_ingreso.in_cliente_retiro.addItem("--- Buscar Cliente ---")
                 for c in clis: self.tab_ingreso.in_cliente_retiro.addItem(f"{c.id} - {c.nombre}", c.id)
-                self.tab_ingreso.in_prov.clear(); self.tab_ingreso.in_prov.addItems(self.lista_proveedores)
+        except: self.session.rollback()
 
-            if hasattr(self, 'combo_masivo_chofer'): self.combo_masivo_chofer.clear(); self.combo_masivo_chofer.addItems(nombres_choferes)
-            if hasattr(self, 'mon_chofer_combo'): self.mon_chofer_combo.clear(); self.mon_chofer_combo.addItem("Todos"); self.mon_chofer_combo.addItems(nombres_choferes)
-            if hasattr(self, 'tab_rendicion'): self.tab_rendicion.resumen_chofer.clear(); self.tab_rendicion.resumen_chofer.addItems(nombres_choferes)
-            if hasattr(self, 'rep_chofer'): 
-                self.rep_chofer.clear(); self.rep_chofer.addItem("Todos"); self.rep_chofer.addItems(sorted(list(set([c[0] for c in chs_todos]))))
+        try:
+            clientes_db = self.session.query(ClientePrincipal).order_by(ClientePrincipal.nombre.asc()).all()
+            self.lista_proveedores = [c.nombre for c in clientes_db] if clientes_db else ["Andreani", "DHL", "Directo", "JetPaq", "MercadoLibre", "Otro"]
+            if hasattr(self, 'tab_ingreso'):
+                self.tab_ingreso.in_prov.clear(); self.tab_ingreso.in_prov.addItems(self.lista_proveedores)
+            if hasattr(self, 'rep_cliente'):
                 self.rep_cliente.clear(); self.rep_cliente.addItem("Todos"); self.rep_cliente.addItems(self.lista_proveedores)
             if hasattr(self, 'tab_cierre'):
                 self.tab_cierre.cierre_prov.clear(); self.tab_cierre.cierre_prov.addItem("Todos"); self.tab_cierre.cierre_prov.addItems([p for p in self.lista_proveedores if p.lower() != "jetpaq"])
-        except Exception: self.session.rollback()
+        except: self.session.rollback()
+
+        try:
+            chs_todos = [c[0] for c in self.session.query(Chofer.nombre).all()]
+            if hasattr(self, 'rep_chofer'):
+                self.rep_chofer.clear(); self.rep_chofer.addItem("Todos"); self.rep_chofer.addItems(sorted(list(set(chs_todos))))
+        except: self.session.rollback()
             
     def obtener_precio(self, loc, cant_comun, cant_frio, suc_forzada=None, proveedor="", peso=0.0, bultos_totales=1):
         suc = suc_forzada if suc_forzada else self.sucursal_actual
@@ -746,10 +773,7 @@ class PantallaCargaMinimalista(QDialog):
         if not pixmap.isNull(): self.lbl_logo.setPixmap(pixmap.scaled(120, 120, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
         else: self.lbl_logo.setText("📦 E.K."); self.lbl_logo.setStyleSheet("font-size: 40px; color: #1565c0; font-weight: bold;")
         self.lbl_logo.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        
-        # 🔥 EL TEXTO ORIGINAL DE CARGA QUE ME PEDISTE 🔥
         self.lbl_texto = QLabel("Entrando a plataforma espere...")
-        
         self.lbl_texto.setAlignment(Qt.AlignmentFlag.AlignCenter)
         lay_cont.addWidget(self.lbl_logo); lay_cont.addWidget(self.lbl_texto)
         shadow = QGraphicsDropShadowEffect(); shadow.setBlurRadius(20); shadow.setColor(QColor(0, 0, 0, 80)); shadow.setOffset(0, 0)
@@ -859,7 +883,6 @@ class TrackingDialog(QDialog):
                     entregado_info = f"<br><b>ENTREGADO A:</b> <span style='color:#198754;'>{recibe}</span> <b>EL:</b> {fecha_ent}"
                     break
                     
-        # 🔥 ACA ESTÁ LA LÓGICA DE BULTOS PARA EL TRACKING 🔥
         bultos_tot = op.bultos or 1
         bultos_fr = getattr(op, 'bultos_frio', 0) or 0
         bultos_com = bultos_tot - bultos_fr
