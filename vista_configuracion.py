@@ -215,7 +215,14 @@ class TabConfiguracion(QWidget):
         
         self.tabla_proveedores = QTableWidget(); self.tabla_proveedores.setColumnCount(4); self.tabla_proveedores.hideColumn(0)
         self.tabla_proveedores.setHorizontalHeaderLabels(["ID", "Empresa / Proveedor", "Email de Reportes", "Poderes Activos"])
-        self.tabla_proveedores.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        
+        # 🔥 MODO EXCEL PARA TABLA DE PROVEEDORES 🔥
+        header_prov = self.tabla_proveedores.horizontalHeader()
+        header_prov.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
+        self.tabla_proveedores.setColumnWidth(1, 200)
+        self.tabla_proveedores.setColumnWidth(2, 200)
+        header_prov.setStretchLastSection(True)
+        
         self.tabla_proveedores.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.tabla_proveedores.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         
@@ -264,13 +271,16 @@ class TabConfiguracion(QWidget):
         self.tabla_destinos = QTableWidget(); self.tabla_destinos.setColumnCount(6)
         self.tabla_destinos.setHorizontalHeaderLabels(["ID", "SUC", "DESTINATARIO", "DOMICILIO", "CELULAR", "ZONA"])
         self.tabla_destinos.verticalHeader().setVisible(False)
+        
+        # 🔥 MODO EXCEL PARA TABLA DE DESTINOS FIJOS 🔥
         header = self.tabla_destinos.horizontalHeader()
         header.setSectionResizeMode(0, QHeaderView.ResizeMode.Fixed); self.tabla_destinos.setColumnWidth(0, 50)
         header.setSectionResizeMode(1, QHeaderView.ResizeMode.Fixed); self.tabla_destinos.setColumnWidth(1, 50)
-        header.setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
-        header.setSectionResizeMode(3, QHeaderView.ResizeMode.Stretch) 
-        header.setSectionResizeMode(4, QHeaderView.ResizeMode.Fixed); self.tabla_destinos.setColumnWidth(4, 120)
-        header.setSectionResizeMode(5, QHeaderView.ResizeMode.Fixed); self.tabla_destinos.setColumnWidth(5, 120) 
+        header.setSectionResizeMode(2, QHeaderView.ResizeMode.Interactive); self.tabla_destinos.setColumnWidth(2, 150)
+        header.setSectionResizeMode(3, QHeaderView.ResizeMode.Interactive); self.tabla_destinos.setColumnWidth(3, 200)
+        header.setSectionResizeMode(4, QHeaderView.ResizeMode.Interactive); self.tabla_destinos.setColumnWidth(4, 120)
+        header.setStretchLastSection(True)
+        
         self.tabla_destinos.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.tabla_destinos.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         
@@ -288,7 +298,6 @@ class TabConfiguracion(QWidget):
         self.tabs_prov.addTab(tab_dest, "📍 Destinos Frecuentes")
         layout.addWidget(self.tabs_prov)
 
-        # 🔥 FIX: Encender las luces de la tabla al entrar a la pestaña 🔥
         self.cargar_proveedores_tabla()
 
     def guardar_proveedor(self):
@@ -414,7 +423,15 @@ class TabConfiguracion(QWidget):
         f.addRow("Sucursal:", self.cfg_tarifa_sucursal); f.addRow("Zona / Localidad:", self.cfg_zona); f.addRow("Común:", self.cfg_cc); f.addRow("Refrigerado:", self.cfg_rc)
         h_btn_t = QHBoxLayout(); btn = QPushButton("➕ AGREGAR TARIFA"); btn.clicked.connect(self.guardar_tarifa); btn_hist_t = QPushButton("📜 VER HISTORIAL"); btn_hist_t.clicked.connect(self.ver_historial_tarifas)
         h_btn_t.addWidget(btn); h_btn_t.addWidget(btn_hist_t); gb.setLayout(f); l_gen.addWidget(gb); l_gen.addLayout(h_btn_t)
-        self.tabla_tarifas = QTableWidget(); self.tabla_tarifas.setColumnCount(4); self.tabla_tarifas.hideColumn(0); self.tabla_tarifas.setHorizontalHeaderLabels(["ID", "Zona", "Común", "Refrigerado"]); self.tabla_tarifas.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch); self.tabla_tarifas.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows); self.tabla_tarifas.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.tabla_tarifas = QTableWidget(); self.tabla_tarifas.setColumnCount(4); self.tabla_tarifas.hideColumn(0); self.tabla_tarifas.setHorizontalHeaderLabels(["ID", "Zona", "Común", "Refrigerado"]); 
+        
+        # 🔥 MODO EXCEL PARA TABLA DE TARIFAS 🔥
+        self.tabla_tarifas.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
+        self.tabla_tarifas.setColumnWidth(1, 200)
+        self.tabla_tarifas.setColumnWidth(2, 100)
+        self.tabla_tarifas.horizontalHeader().setStretchLastSection(True)
+        
+        self.tabla_tarifas.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows); self.tabla_tarifas.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         l_gen.addWidget(self.tabla_tarifas)
         h_btn_d = QHBoxLayout(); btn_edit = QPushButton("✏️ Editar Seleccionada"); btn_edit.clicked.connect(self.editar_tarifa); btn_d = QPushButton("🗑️ Eliminar Tarifa"); btn_d.clicked.connect(lambda: self.main.eliminar_fila(self.tabla_tarifas, Tarifa))
         h_btn_d.addWidget(btn_edit); h_btn_d.addWidget(btn_d); l_gen.addLayout(h_btn_d); self.tabs_tarifas.addTab(tab_gen, "Generales (Zonas)")
@@ -544,7 +561,14 @@ class TabConfiguracion(QWidget):
         
         self.tabla_choferes = QTableWidget(); self.tabla_choferes.setColumnCount(5); self.tabla_choferes.hideColumn(0)
         self.tabla_choferes.setHorizontalHeaderLabels(["ID", "Nombre", "Sucursal", "DNI (Clave)", "Celular (WSP)"])
-        self.tabla_choferes.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        
+        # 🔥 MODO EXCEL PARA TABLA DE CHOFERES 🔥
+        self.tabla_choferes.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
+        self.tabla_choferes.setColumnWidth(1, 150)
+        self.tabla_choferes.setColumnWidth(2, 100)
+        self.tabla_choferes.setColumnWidth(3, 120)
+        self.tabla_choferes.horizontalHeader().setStretchLastSection(True)
+        
         self.tabla_choferes.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.tabla_choferes.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         l.addWidget(self.tabla_choferes)
@@ -618,7 +642,13 @@ class TabConfiguracion(QWidget):
         f.addRow("Nombre:", self.cfg_cli_nom); f.addRow("Dirección:", self.cfg_cli_dom); f.addRow("Celular:", self.cfg_cli_cel); f.addRow("Zona:", self.cfg_cli_loc)
         btn = QPushButton("➕ AGREGAR CLIENTE"); btn.clicked.connect(self.guardar_cliente)
         gb.setLayout(f); l.addWidget(gb); l.addWidget(btn)
-        self.tabla_clientes = QTableWidget(); self.tabla_clientes.setColumnCount(3); self.tabla_clientes.hideColumn(0); self.tabla_clientes.setHorizontalHeaderLabels(["ID", "Cliente", "Domicilio"]); self.tabla_clientes.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        self.tabla_clientes = QTableWidget(); self.tabla_clientes.setColumnCount(3); self.tabla_clientes.hideColumn(0); self.tabla_clientes.setHorizontalHeaderLabels(["ID", "Cliente", "Domicilio"]); 
+        
+        # 🔥 MODO EXCEL PARA TABLA DE CLIENTES RETIRO 🔥
+        self.tabla_clientes.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
+        self.tabla_clientes.setColumnWidth(1, 200)
+        self.tabla_clientes.horizontalHeader().setStretchLastSection(True)
+        
         self.tabla_clientes.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows); self.tabla_clientes.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         l.addWidget(self.tabla_clientes); btn_d = QPushButton("Eliminar Cliente"); btn_d.clicked.connect(lambda: self.main.eliminar_fila(self.tabla_clientes, ClienteRetiro)); l.addWidget(btn_d)
         
@@ -654,7 +684,14 @@ class TabConfiguracion(QWidget):
         
         self.tabla_usuarios = QTableWidget(); self.tabla_usuarios.setColumnCount(5); self.tabla_usuarios.hideColumn(0)
         self.tabla_usuarios.setHorizontalHeaderLabels(["ID", "Usuario", "Sucursal", "Admin?", "Permisos Habilitados"])
-        self.tabla_usuarios.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        
+        # 🔥 MODO EXCEL PARA TABLA DE USUARIOS 🔥
+        self.tabla_usuarios.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
+        self.tabla_usuarios.setColumnWidth(1, 150)
+        self.tabla_usuarios.setColumnWidth(2, 100)
+        self.tabla_usuarios.setColumnWidth(3, 80)
+        self.tabla_usuarios.horizontalHeader().setStretchLastSection(True)
+        
         self.tabla_usuarios.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.tabla_usuarios.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         l.addWidget(self.tabla_usuarios)

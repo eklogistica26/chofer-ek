@@ -192,7 +192,6 @@ class TabIngreso(QWidget):
         self.in_fecha.setCalendarPopup(True)
         self.in_fecha.setEnabled(getattr(self.main.usuario, 'es_admin_total', False))
         
-        # 🔥 LA MÁQUINA DEL TIEMPO: Al cambiar la fecha, actualizamos la tabla 🔥
         self.in_fecha.dateChanged.connect(self.cargar_movimientos_dia)
         
         self.lbl_guia = QLabel("Guía / Remito:"); self.in_guia = QLineEdit()
@@ -312,9 +311,17 @@ class TabIngreso(QWidget):
         self.pintor_ingreso = PintorCeldasDelegate(self.tabla_ingresos)
         self.tabla_ingresos.setItemDelegate(self.pintor_ingreso)
 
+        # 🔥 MODO EXCEL PARA TABLA INGRESO 🔥
         header_ing = self.tabla_ingresos.horizontalHeader()
-        self.tabla_ingresos.setColumnWidth(1, 140); self.tabla_ingresos.setColumnWidth(2, 160); self.tabla_ingresos.setColumnWidth(3, 160); self.tabla_ingresos.setColumnWidth(6, 160); self.tabla_ingresos.setColumnWidth(7, 90)  
-        header_ing.setSectionResizeMode(4, QHeaderView.ResizeMode.Stretch); header_ing.setSectionResizeMode(5, QHeaderView.ResizeMode.Stretch) 
+        header_ing.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
+        self.tabla_ingresos.setColumnWidth(1, 140)
+        self.tabla_ingresos.setColumnWidth(2, 160)
+        self.tabla_ingresos.setColumnWidth(3, 160)
+        self.tabla_ingresos.setColumnWidth(4, 200)
+        self.tabla_ingresos.setColumnWidth(5, 250)
+        self.tabla_ingresos.setColumnWidth(6, 160)
+        self.tabla_ingresos.setColumnWidth(7, 90)
+        header_ing.setStretchLastSection(True)
         
         self.tabla_ingresos.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows); self.tabla_ingresos.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         lay_botones_tabla = QHBoxLayout(); btn_del = QPushButton("🗑️ ELIMINAR"); btn_del.clicked.connect(lambda: self.main.eliminar_fila(self.tabla_ingresos, Operacion)); btn_edit_ingreso = QPushButton("✏️ EDITAR"); btn_edit_ingreso.clicked.connect(lambda: self.main.abrir_edicion(self.tabla_ingresos)); lay_botones_tabla.addWidget(btn_edit_ingreso); lay_botones_tabla.addWidget(btn_del); col_der.addLayout(h_header_ingreso); col_der.addWidget(self.tabla_ingresos); col_der.addLayout(lay_botones_tabla)
@@ -510,7 +517,6 @@ class TabIngreso(QWidget):
             self.tabla_ingresos.setRowCount(0)
             estados_deposito = [Estados.EN_DEPOSITO, 'EN DEPOSITO', 'En Depósito', 'En Deposito', 'EN DEPÓSITO']
             
-            # 🔥 LA MÁQUINA DEL TIEMPO EN ACCIÓN 🔥 Filtramos hasta la fecha que diga el calendario.
             fecha_filtro = self.in_fecha.date().toPyDate()
             
             ops = self.main.session.query(Operacion).filter(
@@ -558,14 +564,23 @@ class TabRendicion(QWidget):
         
         self.tabla_rendicion = QTableWidget(); self.tabla_rendicion.setColumnCount(10); 
         self.tabla_rendicion.setHorizontalHeaderLabels(["ID", "Sel.", "Chofer", "Guía / Remito", "Destinatario", "Domicilio", "Localidad", "Bultos", "Estado", "Salida"]); self.tabla_rendicion.hideColumn(0); 
-        
         self.tabla_rendicion.setStyleSheet(ESTILO_TABLAS_BLANCAS)
         self.pintor_rend = PintorCeldasDelegate(self.tabla_rendicion)
         self.tabla_rendicion.setItemDelegate(self.pintor_rend)
 
+        # 🔥 MODO EXCEL PARA TABLA RENDICIÓN 🔥
         header_rend = self.tabla_rendicion.horizontalHeader()
-        self.tabla_rendicion.setColumnWidth(1, 60); self.tabla_rendicion.setColumnWidth(2, 180); self.tabla_rendicion.setColumnWidth(3, 160); self.tabla_rendicion.setColumnWidth(6, 160); self.tabla_rendicion.setColumnWidth(7, 100); self.tabla_rendicion.setColumnWidth(8, 180); self.tabla_rendicion.setColumnWidth(9, 120)
-        header_rend.setSectionResizeMode(4, QHeaderView.ResizeMode.Stretch); header_rend.setSectionResizeMode(5, QHeaderView.ResizeMode.Stretch)
+        header_rend.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
+        self.tabla_rendicion.setColumnWidth(1, 60)
+        self.tabla_rendicion.setColumnWidth(2, 180)
+        self.tabla_rendicion.setColumnWidth(3, 160)
+        self.tabla_rendicion.setColumnWidth(4, 180)
+        self.tabla_rendicion.setColumnWidth(5, 250)
+        self.tabla_rendicion.setColumnWidth(6, 160)
+        self.tabla_rendicion.setColumnWidth(7, 100)
+        self.tabla_rendicion.setColumnWidth(8, 180)
+        self.tabla_rendicion.setColumnWidth(9, 120)
+        header_rend.setStretchLastSection(True)
         
         self.tabla_rendicion.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows); self.tabla_rendicion.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         lay_reparto.addLayout(top); lay_reparto.addWidget(self.tabla_rendicion); lay_reparto.addLayout(admin_bar)
@@ -583,9 +598,22 @@ class TabRendicion(QWidget):
         
         top_res.addWidget(QLabel("Seleccionar Chofer:")); top_res.addWidget(self.resumen_chofer); top_res.addWidget(QLabel("Fecha:")); top_res.addWidget(self.resumen_fecha); top_res.addWidget(btn_buscar_res); top_res.addStretch(); top_res.addWidget(btn_pdf_res)
         self.lbl_res_exitos = QLabel("✅ ENTREGAS / RETIROS EXITOSOS (0)"); self.lbl_res_exitos.setStyleSheet("font-size: 14px; font-weight: bold; color: #2e7d32; margin-top: 10px;")
-        self.tabla_res_exitos = QTableWidget(); self.tabla_res_exitos.setColumnCount(3); self.tabla_res_exitos.setHorizontalHeaderLabels(["Guía", "Destinatario", "Domicilio"]); self.tabla_res_exitos.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch); self.tabla_res_exitos.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        
+        self.tabla_res_exitos = QTableWidget(); self.tabla_res_exitos.setColumnCount(3); self.tabla_res_exitos.setHorizontalHeaderLabels(["Guía", "Destinatario", "Domicilio"])
+        self.tabla_res_exitos.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
+        self.tabla_res_exitos.setColumnWidth(0, 150)
+        self.tabla_res_exitos.setColumnWidth(1, 200)
+        self.tabla_res_exitos.horizontalHeader().setStretchLastSection(True)
+        self.tabla_res_exitos.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        
         self.lbl_res_fallos = QLabel("⚠️ NO ENTREGADOS / PENDIENTES (0)"); self.lbl_res_fallos.setStyleSheet("font-size: 14px; font-weight: bold; color: #c62828; margin-top: 10px;")
-        self.tabla_res_fallos = QTableWidget(); self.tabla_res_fallos.setColumnCount(3); self.tabla_res_fallos.setHorizontalHeaderLabels(["Guía", "Destinatario", "Motivo del Chofer"]); self.tabla_res_fallos.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch); self.tabla_res_fallos.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        
+        self.tabla_res_fallos = QTableWidget(); self.tabla_res_fallos.setColumnCount(3); self.tabla_res_fallos.setHorizontalHeaderLabels(["Guía", "Destinatario", "Motivo del Chofer"])
+        self.tabla_res_fallos.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
+        self.tabla_res_fallos.setColumnWidth(0, 150)
+        self.tabla_res_fallos.setColumnWidth(1, 200)
+        self.tabla_res_fallos.horizontalHeader().setStretchLastSection(True)
+        self.tabla_res_fallos.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         
         self.tabla_res_exitos.setStyleSheet(ESTILO_TABLAS_BLANCAS)
         self.tabla_res_fallos.setStyleSheet(ESTILO_TABLAS_BLANCAS)
@@ -761,32 +789,29 @@ class TabFacturacion(QWidget):
         self.tabla_cierre.setColumnCount(10) 
         
         self.tabla_cierre.setHorizontalHeaderLabels(["Fecha", "Sucursal", "Guía / Remito", "Zona", "Bultos", "Estado", "Base ($)", "Extras ($)", "Total ($)", "Ajuste"])
-        
+        self.tabla_cierre.setStyleSheet(ESTILO_TABLAS_BLANCAS)
+        self.pintor_cierre = PintorCeldasDelegate(self.tabla_cierre)
+        self.tabla_cierre.setItemDelegate(self.pintor_cierre)
+
+        # 🔥 MODO EXCEL PARA TABLA DE CIERRE DE FACTURACIÓN 🔥
         header = self.tabla_cierre.horizontalHeader()
-        header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents) 
-        header.setSectionResizeMode(1, QHeaderView.ResizeMode.Fixed) 
-        self.tabla_cierre.setColumnWidth(1, 160) 
-        header.setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch) 
-        header.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents) 
-        header.setSectionResizeMode(4, QHeaderView.ResizeMode.Fixed) 
-        self.tabla_cierre.setColumnWidth(4, 110) 
-        header.setSectionResizeMode(5, QHeaderView.ResizeMode.ResizeToContents) 
-        header.setSectionResizeMode(6, QHeaderView.ResizeMode.ResizeToContents) 
-        header.setSectionResizeMode(7, QHeaderView.ResizeMode.Fixed) 
-        self.tabla_cierre.setColumnWidth(7, 140) 
-        header.setSectionResizeMode(8, QHeaderView.ResizeMode.Fixed) 
-        self.tabla_cierre.setColumnWidth(8, 140) 
-        header.setSectionResizeMode(9, QHeaderView.ResizeMode.Fixed) 
-        self.tabla_cierre.setColumnWidth(9, 100)
+        header.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
+        self.tabla_cierre.setColumnWidth(0, 90)
+        self.tabla_cierre.setColumnWidth(1, 120)
+        self.tabla_cierre.setColumnWidth(2, 140)
+        self.tabla_cierre.setColumnWidth(3, 130)
+        self.tabla_cierre.setColumnWidth(4, 110)
+        self.tabla_cierre.setColumnWidth(5, 140)
+        self.tabla_cierre.setColumnWidth(6, 100)
+        self.tabla_cierre.setColumnWidth(7, 100)
+        self.tabla_cierre.setColumnWidth(8, 110)
+        self.tabla_cierre.setColumnWidth(9, 90)
+        header.setStretchLastSection(True)
         
         self.tabla_cierre.verticalHeader().setFixedWidth(30)
         self.tabla_cierre.verticalHeader().setDefaultSectionSize(45)
         
         self.tabla_cierre.setAlternatingRowColors(False)
-        self.tabla_cierre.setStyleSheet(ESTILO_TABLAS_BLANCAS)
-        self.pintor_cierre = PintorCeldasDelegate(self.tabla_cierre)
-        self.tabla_cierre.setItemDelegate(self.pintor_cierre)
-        
         self.tabla_cierre.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows); self.tabla_cierre.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers); self.tabla_cierre.cellDoubleClicked.connect(self.doble_clic_ajuste_precio)
         
         self.lbl_resumen = QLabel("Total Base: $0  |  Total Extras: $0  |  TOTAL A FACTURAR: $0"); self.lbl_resumen.setStyleSheet("font-size: 16px; font-weight: bold; margin: 15px; padding: 10px; border: 1px solid #ccc;")
@@ -797,7 +822,16 @@ class TabFacturacion(QWidget):
         btn_pago = QPushButton("💰 Registrar Pago Recibido"); btn_pago.clicked.connect(self.registrar_pago_ctacte)
         top_cta.addWidget(btn_ref_cta); top_cta.addStretch(); top_cta.addWidget(btn_pago)
         
-        self.tabla_ctacte = QTableWidget(); self.tabla_ctacte.setColumnCount(4); self.tabla_ctacte.setHorizontalHeaderLabels(["Proveedor", "Total Facturado Histórico ($)", "Pagos Recibidos ($)", "SALDO A COBRAR ($)"]); self.tabla_ctacte.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch); self.tabla_ctacte.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows); self.tabla_ctacte.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.tabla_ctacte = QTableWidget(); self.tabla_ctacte.setColumnCount(4); self.tabla_ctacte.setHorizontalHeaderLabels(["Proveedor", "Total Facturado Histórico ($)", "Pagos Recibidos ($)", "SALDO A COBRAR ($)"])
+        
+        # 🔥 MODO EXCEL PARA TABLA DE CUENTAS CORRIENTES 🔥
+        self.tabla_ctacte.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
+        self.tabla_ctacte.setColumnWidth(0, 200)
+        self.tabla_ctacte.setColumnWidth(1, 150)
+        self.tabla_ctacte.setColumnWidth(2, 150)
+        self.tabla_ctacte.horizontalHeader().setStretchLastSection(True)
+        
+        self.tabla_ctacte.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows); self.tabla_ctacte.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         
         self.tabla_ctacte.setStyleSheet(ESTILO_TABLAS_BLANCAS)
         self.pintor_cta = PintorCeldasDelegate(self.tabla_ctacte)
