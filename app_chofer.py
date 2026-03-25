@@ -13,9 +13,6 @@ app.secret_key = "secreto_super_seguro_choferes_ek"
 # 🔥 CONFIGURACIÓN DE MEMORIA PERMANENTE (30 DÍAS SIN DESLOGUEARSE) 🔥
 app.permanent_session_lifetime = timedelta(days=30)
 
-# 🦸‍♂️ LISTA VIP DE CHOFERES ADMINISTRADORES 🦸‍♂️
-CHOFERES_ADMIN = ["Karim Carbajo"]
-
 # --- CONFIGURACIÓN DE SEGURIDAD ---
 DATABASE_URL = os.environ.get("DB_URL") 
 if not DATABASE_URL:
@@ -125,20 +122,29 @@ def enviar_email(destinatario, guia, rutas_fotos, proveedor, link_mapa=""):
     headers = {"accept": "application/json", "api-key": BREVO_API_KEY, "content-type": "application/json"}
     
     try: 
+        # INTENTO 1: Mandar el correo con las fotos adjuntas
         r = requests.post(url, json=payload, headers=headers)
+        
+        # Si Brevo rebota el correo
         if r.status_code not in [200, 201, 202]:
             print(f"Error Brevo (Intento 1 con fotos): {r.text}")
+            
+            # INTENTO 2: Le sacamos las fotos pesadas y lo mandamos de nuevo con un aviso
             if "attachment" in payload:
                 del payload["attachment"]
+                
                 payload["htmlContent"] = html_content.replace(
                     "<b>Adjuntamos la foto del remito/guía conformado.</b>",
                     "<b style='color:#D32F2F;'>⚠️ La foto se guardó en nuestro sistema, pero era demasiado pesada para adjuntarse en este correo.</b>"
                 )
+                
                 r2 = requests.post(url, json=payload, headers=headers)
+                
                 if r2.status_code not in [200, 201, 202]:
                     payload["to"] = [{"email": EMAIL_REMITENTE}]
                     if "bcc" in payload: del payload["bcc"]
                     requests.post(url, json=payload, headers=headers)
+                    
     except Exception as e: 
         print("Error crítico en Brevo:", e)
 
@@ -290,7 +296,7 @@ def lista_viajes():
     viajes = []
     if conn:
         try:
-            sql = text("SELECT id, guia_remito, destinatario, domicilio, localidad, bultos, estado, proveedor, tipo_servicio, fecha_salida FROM operaciones WHERE chofer_asignado = :c AND UPPER(estado) IN ('EN REPARTO', 'PENDIENTE') ORDER BY id ASC")
+            sql = text("SELECT id, guia_remito, destinatario, domicilio, localidad, bultos, estado, proveedor, tipo_servicio FROM operaciones WHERE chofer_asignado = :c AND UPPER(estado) IN ('EN REPARTO', 'PENDIENTE') ORDER BY id ASC")
             viajes = conn.execute(sql, {"c": chofer}).fetchall()
         except Exception as e: 
             print("Error cargando viajes:", e)
@@ -302,8 +308,8 @@ def lista_viajes():
     else:
         for v in viajes:
             tipo_srv = v[8] if v[8] else ""
-            fecha_salida = v[9]
             
+            # 🔥 DETECCIÓN DE GUARDIA Y RETIROS PARA MARCAR CON ROJO/MORADO 🔥
             es_retiro = "Retiro" in tipo_srv
             es_guardia = "Guardia" in tipo_srv
             
@@ -319,30 +325,6 @@ def lista_viajes():
                 
             q = f"{v[3]}, {v[4]}"
             mapa_url = f"https://www.google.com/maps/search/?api=1&query={q}"
-            
-            es_guardia_reciente = False
-            if es_guardia and fecha_salida:
-                tiempo_transcurrido = hora_arg() - fecha_salida
-                if tiempo_transcurrido.total_seconds() < 3600:
-                    es_guardia_reciente = True
-
-            btn_eliminar_html = ""
-            if chofer in CHOFERES_ADMIN:
-                btn_eliminar_html = f"""
-                <div style="text-align: right; margin-top: 10px;">
-                    <form method="POST" action="/eliminar_guia_admin/{v[0]}" onsubmit="return confirm('⚠️ ATENCIÓN ADMIN: ¿Estás seguro de eliminar esta guía de forma permanente?');" style="display:inline;">
-                        <button type="submit" style="background-color: #D32F2F; color: white; border: none; padding: 6px 12px; border-radius: 5px; font-size: 0.85rem; font-weight: bold; cursor: pointer;">🗑️ ELIMINAR</button>
-                    </form>
-                </div>
-                """
-            elif es_guardia_reciente:
-                btn_eliminar_html = f"""
-                <div style="text-align: right; margin-top: 10px;">
-                    <form method="POST" action="/eliminar_guia_propia/{v[0]}" onsubmit="return confirm('⚠️ ¿Cargaste esta guardia por error? Se borrará de tu lista.');" style="display:inline;">
-                        <button type="submit" style="background-color: #D32F2F; color: white; border: none; padding: 6px 12px; border-radius: 5px; font-size: 0.85rem; font-weight: bold; cursor: pointer;">🗑️ ELIMINAR</button>
-                    </form>
-                </div>
-                """
             
             cards_html += f"""
             <div class="card">
@@ -361,7 +343,6 @@ def lista_viajes():
                     <a href="{mapa_url}" target="_blank" class="btn btn-outline" style="flex:1; margin-top:0;">🗺️ Mapa</a>
                     <a href="/gestion/{v[0]}" class="btn btn-blue" style="flex:2; margin-top:0;">Gestionar</a>
                 </div>
-                {btn_eliminar_html}
             </div>
             """
             
@@ -377,6 +358,7 @@ def lista_viajes():
         <div class="container">
             {mensajes_html}
             
+            <!-- 🔥 BOTÓN DE GUARDIA EN ROJO 🔥 -->
             <div style="margin-bottom: 15px;">
                 <a href="/guardia" class="btn btn-red" style="display:flex; align-items:center; justify-content:center; gap:10px;">
                     <span style="font-size:1.2rem;">🚨</span> CARGAR GUÍA DE GUARDIA
@@ -403,56 +385,6 @@ def lista_viajes():
     """
     return render_template_string(html)
 
-@app.route('/eliminar_guia_admin/<int:id_op>', methods=['POST'])
-def eliminar_guia_admin(id_op):
-    chofer = session.get('chofer')
-    if chofer not in CHOFERES_ADMIN:
-        return "Acceso denegado.", 403
-        
-    conn = get_db()
-    if conn:
-        try:
-            conn.execute(text("DELETE FROM historial_movimientos WHERE operacion_id = :id"), {"id": id_op})
-            conn.execute(text("DELETE FROM operaciones WHERE id = :id"), {"id": id_op})
-            conn.commit()
-            flash("🗑️ Guía eliminada permanentemente.", "success")
-        except Exception as e:
-            conn.rollback()
-            flash(f"❌ Error al intentar eliminar: {e}", "error")
-        finally:
-            conn.close()
-            
-    return redirect(url_for('lista_viajes'))
-
-@app.route('/eliminar_guia_propia/<int:id_op>', methods=['POST'])
-def eliminar_guia_propia(id_op):
-    chofer = session.get('chofer')
-    if not chofer: return redirect(url_for('index'))
-    
-    conn = get_db()
-    if conn:
-        try:
-            sql_check = text("SELECT fecha_salida, tipo_servicio FROM operaciones WHERE id = :id AND chofer_asignado = :c")
-            op_db = conn.execute(sql_check, {"id": id_op, "c": chofer}).fetchone()
-            
-            if op_db and "Guardia" in (op_db[1] or ""):
-                if op_db[0] and (hora_arg() - op_db[0]).total_seconds() < 3600:
-                    conn.execute(text("DELETE FROM historial_movimientos WHERE operacion_id = :id"), {"id": id_op})
-                    conn.execute(text("DELETE FROM operaciones WHERE id = :id"), {"id": id_op})
-                    conn.commit()
-                    flash("🗑️ Error deshecho. Guía borrada correctamente.", "success")
-                else:
-                    flash("❌ Ya pasó más de 1 hora desde que creaste esta guardia. Pide a la base que la anule.", "error")
-            else:
-                flash("❌ Operación de borrado no permitida.", "error")
-        except Exception as e:
-            conn.rollback()
-            flash(f"❌ Error al eliminar: {e}", "error")
-        finally:
-            conn.close()
-            
-    return redirect(url_for('lista_viajes'))
-
 @app.route('/guardia', methods=['GET', 'POST'])
 def guardia():
     chofer = session.get('chofer')
@@ -461,36 +393,26 @@ def guardia():
     conn = get_db()
 
     if request.method == 'POST':
-        guia = request.form.get('guia_remito', '').strip()
-        proveedor = request.form.get('proveedor', '').strip()
-        destinatario = request.form.get('destinatario', '').strip()
-        domicilio = request.form.get('domicilio', '').strip()
-        localidad = request.form.get('localidad', '').strip()
-        
-        try:
-            bultos = int(request.form.get('bultos') or 1)
-        except:
-            bultos = 1
-            
+        guia = request.form.get('guia_remito')
+        proveedor = request.form.get('proveedor')
+        destinatario = request.form.get('destinatario')
+        domicilio = request.form.get('domicilio')
+        localidad = request.form.get('localidad')
+        bultos = request.form.get('bultos', 1)
         tipo_carga = request.form.get('tipo_carga', 'Común')
         tipo_urgencia = request.form.get('tipo_urgencia', 'Normal')
 
         if conn:
             try:
-                res_suc = conn.execute(text("SELECT sucursal FROM choferes WHERE nombre = :n"), {"n": chofer}).fetchone()
-                sucursal_chofer = res_suc[0] if res_suc else "Mendoza"
-
+                # 🔥 GUARDA AUTOMÁTICAMENTE EL tipo_servicio COMO "Entrega (Guardia)" PARA LA FACTURACIÓN 🔥
                 sql_insert = text("""
                     INSERT INTO operaciones 
-                    (fecha_ingreso, sucursal, guia_remito, proveedor, destinatario, domicilio, localidad, bultos, tipo_carga, tipo_urgencia, chofer_asignado, estado, fecha_salida, tipo_servicio, bultos_frio, peso, monto_servicio, es_contra_reembolso, monto_recaudacion, facturado)
+                    (guia_remito, proveedor, destinatario, domicilio, localidad, bultos, tipo_carga, tipo_urgencia, chofer_asignado, estado, fecha_salida, tipo_servicio)
                     VALUES 
-                    (:fi, :suc, :g, :p, :d, :dom, :loc, :b, :tc, :tu, :c, 'EN REPARTO', :fs, 'Entrega (Guardia)', 0, 0.0, 0.0, false, 0.0, false)
+                    (:g, :p, :d, :dom, :loc, :b, :tc, :tu, :c, 'EN REPARTO', :fs, 'Entrega (Guardia)')
                     RETURNING id
                 """)
-                
                 res = conn.execute(sql_insert, {
-                    "fi": hora_arg().date(),
-                    "suc": sucursal_chofer,
                     "g": guia, "p": proveedor, "d": destinatario, "dom": domicilio,
                     "loc": localidad, "b": bultos, "tc": tipo_carga, "tu": tipo_urgencia,
                     "c": chofer, "fs": hora_arg()
@@ -502,11 +424,12 @@ def guardia():
                 flash("✅ Guía de guardia generada e ingresada a tu ruta.", "success")
             except Exception as e:
                 print("Error creando guardia:", e)
-                flash(f"❌ Error de Servidor: {str(e)}", "error")
+                flash("❌ Error al crear la guía.", "error")
             finally:
                 conn.close()
         return redirect(url_for('lista_viajes'))
 
+    # --- OBTENER CLIENTES Y DESTINOS DE LA BASE DE DATOS ---
     clientes_db = []
     destinos_db = []
     if conn:
@@ -522,6 +445,7 @@ def guardia():
     clientes_html = "".join([f'<option value="{c}">{c}</option>' for c in clientes_db])
     destinos_json = json.dumps(destinos_db)
 
+    # 🔥 FORMULARIO ROJO CON LISTAS DESPLEGABLES INTELIGENTES 🔥
     html = f"""
     <!DOCTYPE html>
     <html>
@@ -591,7 +515,7 @@ def guardia():
                 <input type="text" id="in_localidad" name="localidad" required>
                 
                 <label>Cantidad de Bultos:</label>
-                <input type="number" inputmode="numeric" pattern="[0-9]*" name="bultos" value="1" required>
+                <input type="number" name="bultos" value="1" required>
                 
                 <div style="display:flex; gap:10px; margin-top:10px;">
                     <div style="flex:1;">
@@ -617,6 +541,7 @@ def guardia():
         </div>
         
         <script>
+            // Llenar destinos si hay proveedor por defecto
             window.onload = actualizarDestinos;
         </script>
     </body>
@@ -723,6 +648,7 @@ def gestion(id_op):
         enlace_gps = f"https://maps.google.com/?q={lat},{lng}" if lat and lng else ""
         texto_gps_historial = f" | GPS: {enlace_gps}" if enlace_gps else ""
         
+        # PROCESAR MÚLTIPLES FOTOS DINÁMICAS (CON COMPRESOR PILLOW)
         rutas_fotos = []
         tiene_foto = False
         archivos = request.files.getlist('fotos')
@@ -732,15 +658,19 @@ def gestion(id_op):
                 ruta = os.path.join(app.config['UPLOAD_FOLDER'], filename)
                 archivo.save(ruta)
                 
+                # 🔥 COMPRESOR AUTOMÁTICO DE IMÁGENES 🔥
                 try:
                     from PIL import Image
                     img = Image.open(ruta)
                     if img.mode in ("RGBA", "P"): 
                         img = img.convert("RGB")
+                    # Achicamos la foto a un máximo de 800x800 manteniendo proporción
                     img.thumbnail((800, 800))
+                    # Guardamos la versión liviana (quality 70) pisando la pesada
                     img.save(ruta, "JPEG", quality=70, optimize=True)
                 except Exception as e:
                     print(f"Error comprimiendo imagen: {e}")
+                # ----------------------------------------
                 
                 rutas_fotos.append(ruta)
                 tiene_foto = True
@@ -954,6 +884,7 @@ def gestion(id_op):
                     return;
                 }}
                 
+                // Evita que el chofer toque dos veces rápido el botón
                 var btn = document.getElementById("btn_guardar");
                 btn.innerHTML = "ENVIANDO... ⏳";
                 btn.style.opacity = "0.5";
