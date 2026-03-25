@@ -311,14 +311,14 @@ class TabIngreso(QWidget):
         self.pintor_ingreso = PintorCeldasDelegate(self.tabla_ingresos)
         self.tabla_ingresos.setItemDelegate(self.pintor_ingreso)
 
-        # 🔥 MODO EXCEL PARA TABLA INGRESO 🔥
+        # 🔥 MODO EXCEL (ANCHO Y ARRASTRABLE) PARA TABLA INGRESO 🔥
         header_ing = self.tabla_ingresos.horizontalHeader()
         header_ing.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
         self.tabla_ingresos.setColumnWidth(1, 140)
-        self.tabla_ingresos.setColumnWidth(2, 160)
+        self.tabla_ingresos.setColumnWidth(2, 140)
         self.tabla_ingresos.setColumnWidth(3, 160)
         self.tabla_ingresos.setColumnWidth(4, 200)
-        self.tabla_ingresos.setColumnWidth(5, 250)
+        self.tabla_ingresos.setColumnWidth(5, 300)
         self.tabla_ingresos.setColumnWidth(6, 160)
         self.tabla_ingresos.setColumnWidth(7, 90)
         header_ing.setStretchLastSection(True)
@@ -572,14 +572,13 @@ class TabRendicion(QWidget):
         header_rend = self.tabla_rendicion.horizontalHeader()
         header_rend.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
         self.tabla_rendicion.setColumnWidth(1, 60)
-        self.tabla_rendicion.setColumnWidth(2, 180)
-        self.tabla_rendicion.setColumnWidth(3, 160)
-        self.tabla_rendicion.setColumnWidth(4, 180)
-        self.tabla_rendicion.setColumnWidth(5, 250)
+        self.tabla_rendicion.setColumnWidth(2, 160)
+        self.tabla_rendicion.setColumnWidth(3, 140)
+        self.tabla_rendicion.setColumnWidth(4, 200)
+        self.tabla_rendicion.setColumnWidth(5, 300)
         self.tabla_rendicion.setColumnWidth(6, 160)
-        self.tabla_rendicion.setColumnWidth(7, 100)
-        self.tabla_rendicion.setColumnWidth(8, 180)
-        self.tabla_rendicion.setColumnWidth(9, 120)
+        self.tabla_rendicion.setColumnWidth(7, 90)
+        self.tabla_rendicion.setColumnWidth(8, 150)
         header_rend.setStretchLastSection(True)
         
         self.tabla_rendicion.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows); self.tabla_rendicion.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
@@ -600,18 +599,22 @@ class TabRendicion(QWidget):
         self.lbl_res_exitos = QLabel("✅ ENTREGAS / RETIROS EXITOSOS (0)"); self.lbl_res_exitos.setStyleSheet("font-size: 14px; font-weight: bold; color: #2e7d32; margin-top: 10px;")
         
         self.tabla_res_exitos = QTableWidget(); self.tabla_res_exitos.setColumnCount(3); self.tabla_res_exitos.setHorizontalHeaderLabels(["Guía", "Destinatario", "Domicilio"])
+        
+        # 🔥 MODO EXCEL PARA RESUMEN DE CHOFER (ÉXITOS) 🔥
         self.tabla_res_exitos.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
         self.tabla_res_exitos.setColumnWidth(0, 150)
-        self.tabla_res_exitos.setColumnWidth(1, 200)
+        self.tabla_res_exitos.setColumnWidth(1, 250)
         self.tabla_res_exitos.horizontalHeader().setStretchLastSection(True)
         self.tabla_res_exitos.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         
         self.lbl_res_fallos = QLabel("⚠️ NO ENTREGADOS / PENDIENTES (0)"); self.lbl_res_fallos.setStyleSheet("font-size: 14px; font-weight: bold; color: #c62828; margin-top: 10px;")
         
         self.tabla_res_fallos = QTableWidget(); self.tabla_res_fallos.setColumnCount(3); self.tabla_res_fallos.setHorizontalHeaderLabels(["Guía", "Destinatario", "Motivo del Chofer"])
+        
+        # 🔥 MODO EXCEL PARA RESUMEN DE CHOFER (FALLOS) 🔥
         self.tabla_res_fallos.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
         self.tabla_res_fallos.setColumnWidth(0, 150)
-        self.tabla_res_fallos.setColumnWidth(1, 200)
+        self.tabla_res_fallos.setColumnWidth(1, 250)
         self.tabla_res_fallos.horizontalHeader().setStretchLastSection(True)
         self.tabla_res_fallos.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         
@@ -797,14 +800,14 @@ class TabFacturacion(QWidget):
         header = self.tabla_cierre.horizontalHeader()
         header.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
         self.tabla_cierre.setColumnWidth(0, 90)
-        self.tabla_cierre.setColumnWidth(1, 120)
+        self.tabla_cierre.setColumnWidth(1, 100)
         self.tabla_cierre.setColumnWidth(2, 140)
-        self.tabla_cierre.setColumnWidth(3, 130)
-        self.tabla_cierre.setColumnWidth(4, 110)
+        self.tabla_cierre.setColumnWidth(3, 140)
+        self.tabla_cierre.setColumnWidth(4, 90)
         self.tabla_cierre.setColumnWidth(5, 140)
         self.tabla_cierre.setColumnWidth(6, 100)
         self.tabla_cierre.setColumnWidth(7, 100)
-        self.tabla_cierre.setColumnWidth(8, 110)
+        self.tabla_cierre.setColumnWidth(8, 100)
         self.tabla_cierre.setColumnWidth(9, 90)
         header.setStretchLastSection(True)
         
@@ -826,9 +829,9 @@ class TabFacturacion(QWidget):
         
         # 🔥 MODO EXCEL PARA TABLA DE CUENTAS CORRIENTES 🔥
         self.tabla_ctacte.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
-        self.tabla_ctacte.setColumnWidth(0, 200)
-        self.tabla_ctacte.setColumnWidth(1, 150)
-        self.tabla_ctacte.setColumnWidth(2, 150)
+        self.tabla_ctacte.setColumnWidth(0, 250)
+        self.tabla_ctacte.setColumnWidth(1, 180)
+        self.tabla_ctacte.setColumnWidth(2, 180)
         self.tabla_ctacte.horizontalHeader().setStretchLastSection(True)
         
         self.tabla_ctacte.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows); self.tabla_ctacte.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
