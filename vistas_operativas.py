@@ -220,12 +220,10 @@ class TabIngreso(QWidget):
         fl.addRow("Zona:", self.in_loc_combo)
         p_datos.setLayout(fl)
         
-        # 🔥 GRUPO DE CARGA Y CANTIDAD (SE DIVIDE EN NORMAL Y FLETE) 🔥
         gb_tipo = QGroupBox("Configuración de Carga")
         gb_tipo.setStyleSheet(ESTILO_GRUPO)
         ly_tipo_principal = QVBoxLayout()
         
-        # 1. ZONA CARGA NORMAL
         self.widget_carga_normal = QWidget()
         ly_normal = QVBoxLayout(self.widget_carga_normal)
         ly_normal.setContentsMargins(0,0,0,0)
@@ -263,7 +261,6 @@ class TabIngreso(QWidget):
         ly_normal.addWidget(self.widget_comb)
         ly_normal.addLayout(lay_cont)
         
-        # 2. ZONA CARGA FLETE (SOLO PARA VIAJES)
         self.widget_carga_flete = QWidget()
         ly_flete = QVBoxLayout(self.widget_carga_flete)
         ly_flete.setContentsMargins(0,0,0,0)
@@ -301,7 +298,6 @@ class TabIngreso(QWidget):
         ly_tipo_principal.addWidget(self.widget_carga_flete)
         gb_tipo.setLayout(ly_tipo_principal)
         
-        # CONTRA REEMBOLSO
         self.group_cr = QGroupBox("Contra Reembolso / Intercambio")
         self.group_cr.setStyleSheet(ESTILO_GRUPO)
         lay_main_cr = QVBoxLayout(self.group_cr)
@@ -485,7 +481,6 @@ class TabIngreso(QWidget):
             peso_manual = self.in_peso_manual.value()
             prov = self.in_prov.currentText()
             
-            # 🔥 LÓGICA DE FLETE VS NORMAL 🔥
             if "Flete" in servicio:
                 c_comun = 0
                 c_frio = 0
@@ -720,6 +715,7 @@ class TabRendicion(QWidget):
         lay_res.addLayout(top_res); lay_res.addWidget(self.lbl_res_exitos); lay_res.addWidget(self.tabla_res_exitos); lay_res.addWidget(self.lbl_res_fallos); lay_res.addWidget(self.tabla_res_fallos)
         self.tabs_rendicion.addTab(tab_res, "2. Resumen Diario por Chofer")
 
+    # 🔥 NUEVA LÓGICA DE BÚSQUEDA PARA EL RESUMEN DEL CHOFER 🔥
     def cargar_resumen_chofer_vista(self):
         chofer = self.resumen_chofer.currentText(); fecha = self.resumen_fecha.date().toPyDate()
         if not chofer or chofer == "Todos": return
@@ -727,7 +723,20 @@ class TabRendicion(QWidget):
             sql_entregados = text("SELECT DISTINCT o.id, o.guia_remito, o.destinatario, o.domicilio, o.tipo_servicio FROM operaciones o JOIN historial_movimientos h ON o.id = h.operacion_id WHERE o.chofer_asignado = :c AND o.estado = 'ENTREGADO' AND DATE(h.fecha_hora) = :f AND (h.accion LIKE '%ENTREGA%' OR h.accion = 'APP')")
             entregados = self.main.session.execute(sql_entregados, {"c": chofer, "f": fecha}).fetchall()
             
-            sql_no_ent = text("SELECT DISTINCT o.guia_remito, o.destinatario, h.detalle FROM historial_movimientos h JOIN operaciones o ON h.operacion_id = o.id WHERE DATE(h.fecha_hora) = :f AND ((h.usuario = :c AND h.detalle LIKE 'Motivo:%') OR (h.usuario = :c AND h.detalle LIKE 'Pendiente%') OR (o.chofer_asignado = :c AND h.accion LIKE '%REPROGRAMADO%'))")
+            # Ahora busca los que fallaron HOY + los que siguen vivos "EN REPARTO" en la calle para ese chofer
+            sql_no_ent = text("""
+                SELECT o.guia_remito, o.destinatario, h.detalle, o.tipo_servicio 
+                FROM historial_movimientos h 
+                JOIN operaciones o ON h.operacion_id = o.id 
+                WHERE DATE(h.fecha_hora) = :f 
+                  AND ((h.usuario = :c AND h.detalle LIKE 'Motivo:%') 
+                       OR (h.usuario = :c AND h.detalle LIKE 'Pendiente%') 
+                       OR (o.chofer_asignado = :c AND h.accion LIKE '%REPROGRAMADO%'))
+                UNION
+                SELECT guia_remito, destinatario, 'EN CALLE (Aún no gestionado)', tipo_servicio 
+                FROM operaciones 
+                WHERE chofer_asignado = :c AND estado = 'EN REPARTO'
+            """)
             no_entregados = self.main.session.execute(sql_no_ent, {"c": chofer, "f": fecha}).fetchall()
             
             self.datos_resumen_exitos = entregados; self.datos_resumen_fallos = no_entregados
@@ -749,7 +758,17 @@ class TabRendicion(QWidget):
             
             self.tabla_res_fallos.setRowCount(0)
             for r, row_data in enumerate(no_entregados):
-                self.tabla_res_fallos.insertRow(r); self.tabla_res_fallos.setItem(r, 0, QTableWidgetItem(row_data[0] or "-")); self.tabla_res_fallos.setItem(r, 1, QTableWidgetItem(row_data[1])); self.tabla_res_fallos.setItem(r, 2, QTableWidgetItem(row_data[2]))
+                self.tabla_res_fallos.insertRow(r)
+                guia_str = row_data[0] or "-"
+                if row_data[3] and "Retiro" in row_data[3]:
+                    guia_str = f"🔄 [RETIRO] {guia_str}"
+                elif row_data[3] and "Flete" in row_data[3]:
+                    guia_str = f"⏱️ {guia_str}"
+                    
+                self.tabla_res_fallos.setItem(r, 0, QTableWidgetItem(guia_str))
+                self.tabla_res_fallos.setItem(r, 1, QTableWidgetItem(row_data[1]))
+                self.tabla_res_fallos.setItem(r, 2, QTableWidgetItem(row_data[2]))
+                
             self.lbl_res_fallos.setText(f"⚠️ NO ENTREGADOS / PENDIENTES ({len(no_entregados)})")
         except Exception as e: self.main.session.rollback(); QMessageBox.critical(self, "Error", str(e))
 
@@ -775,8 +794,9 @@ class TabRendicion(QWidget):
             for row, op in enumerate(ops):
                 self.tabla_rendicion.insertRow(row); self.tabla_rendicion.setItem(row, 0, QTableWidgetItem(str(op.id)))
                 chk = QTableWidgetItem(); chk.setFlags(Qt.ItemFlag.ItemIsUserCheckable | Qt.ItemFlag.ItemIsEnabled); chk.setCheckState(Qt.CheckState.Unchecked); self.tabla_rendicion.setItem(row, 1, chk)
-                guia_texto = f"🔄 [RETIRO] {op.guia_remito}" if "Retiro" in (op.tipo_servicio or "") else (op.guia_remito or "-")
-                if op.tipo_servicio and "Flete" in op.tipo_servicio: guia_texto = f"⏱️ {op.guia_remito}"
+                guia_texto = op.guia_remito or "-"
+                if op.tipo_servicio and "Retiro" in op.tipo_servicio: guia_texto = f"🔄 [RETIRO] {guia_texto}"
+                elif op.tipo_servicio and "Flete" in op.tipo_servicio: guia_texto = f"⏱️ {op.guia_remito}"
                 
                 self.tabla_rendicion.setItem(row, 2, QTableWidgetItem(op.chofer_asignado or "SIN ASIGNAR")); self.tabla_rendicion.setItem(row, 3, QTableWidgetItem(guia_texto)); self.tabla_rendicion.setItem(row, 4, QTableWidgetItem(op.destinatario)); self.tabla_rendicion.setItem(row, 5, QTableWidgetItem(op.domicilio)); self.tabla_rendicion.setItem(row, 6, QTableWidgetItem(op.localidad)); self.tabla_rendicion.setItem(row, 7, QTableWidgetItem(str(op.bultos)))
                 estado_calle = op.estado
@@ -961,7 +981,7 @@ class TabFacturacion(QWidget):
     def cargar_ctas_ctes(self):
         try:
             self.tabla_ctacte.setRowCount(0)
-            sql_fac = text("SELECT proveedor, SUM(monto_servicio) FROM operaciones WHERE facturado = TRUE AND proveedor NOT ILIKE 'JetPaq' GROUP BY proveedor")
+            sql_fac = text("SELECT proveedor, SUM(monto_servicio) FROM operations WHERE facturado = TRUE AND proveedor NOT ILIKE 'JetPaq' GROUP BY proveedor")
             facturados = self.main.session.execute(sql_fac).fetchall()
             dict_saldos = {f[0]: {"fac": f[1] or 0.0, "pag": 0.0} for f in facturados}
             sql_pag = text("SELECT proveedor, SUM(monto) FROM recibos_pago GROUP BY proveedor")
@@ -1084,7 +1104,6 @@ class TabFacturacion(QWidget):
                 
                 monto_serv = op.monto_servicio or 0.0
                 
-                # 🔥 Aca el Flete Especial ignora la matematica de zonas y pasa directo con el precio pactado
                 if op.guia_remito == "CARGO-FIJO" or (op.tipo_servicio and "Flete" in op.tipo_servicio): 
                     precio_base_actual = monto_serv
                 else:
