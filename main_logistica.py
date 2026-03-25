@@ -90,7 +90,6 @@ class PlataformaLogistica(QMainWindow):
         from vistas_operativas import TabIngreso, TabRendicion, TabFacturacion
         from vista_configuracion import TabConfiguracion
         
-        # 🔥 FIX: Borramos TrackingDialog de esta importación para que use el nuevo que está abajo 🔥
         global ToastNotification, ConfirmarEntregaDialog, ReprogramarAdminDialog, HistorialHojasRutaDialog, EditarOperacionDialog, CambiarFechaDialog
         from dialogos import ToastNotification, ConfirmarEntregaDialog, ReprogramarAdminDialog, HistorialHojasRutaDialog, EditarOperacionDialog, CambiarFechaDialog
         
@@ -768,23 +767,132 @@ class PlataformaLogistica(QMainWindow):
         except Exception: self.session.rollback()
 
     def setup_reportes(self):
-        pass
+        layout = QVBoxLayout(self.tab_reportes); filtros = QGroupBox("Filtros"); flayout = QHBoxLayout()
+        self.rep_fecha_desde = QDateEdit(QDate.currentDate().addDays(-30)); self.rep_fecha_hasta = QDateEdit(QDate.currentDate()); self.rep_fecha_desde.setCalendarPopup(True); self.rep_fecha_hasta.setCalendarPopup(True)
+        self.rep_sucursal = QComboBox(); self.rep_sucursal.addItems(["Todas", "Mendoza", "San Juan"]); self.rep_chofer = QComboBox(); self.rep_chofer.addItem("Todos"); 
+        self.rep_cliente = QComboBox(); self.rep_cliente.addItem("Todos"); self.rep_cliente.addItems(self.lista_proveedores)
+        self.rep_estado = QComboBox(); self.rep_estado.addItem("Todos"); self.rep_estado.addItems(Estados.LISTA_TODOS)
+        self.rep_facturado = QComboBox(); self.rep_facturado.addItems(["Todos", "Facturado", "NO Facturado"]) 
+        btn_buscar = QPushButton("🔍 Generar"); btn_buscar.clicked.connect(self.generar_reporte_avanzado)
+        btn_excel = QPushButton("Excel"); btn_excel.setStyleSheet("background-color: #28a745 !important; color: white !important;"); btn_excel.clicked.connect(self.exportar_reporte_excel)
+        btn_pdf_rep = QPushButton("PDF"); btn_pdf_rep.setStyleSheet("background-color: #dc3545 !important; color: white !important;"); btn_pdf_rep.clicked.connect(self.generar_pdf_rep)
+        flayout.addWidget(QLabel("Desde:")); flayout.addWidget(self.rep_fecha_desde); flayout.addWidget(QLabel("Hasta:")); flayout.addWidget(self.rep_fecha_hasta); flayout.addWidget(QLabel("Suc:")); flayout.addWidget(self.rep_sucursal); flayout.addWidget(QLabel("Cliente:")); flayout.addWidget(self.rep_cliente); flayout.addWidget(QLabel("Chof:")); flayout.addWidget(self.rep_chofer); flayout.addWidget(QLabel("Est:")); flayout.addWidget(self.rep_estado); flayout.addWidget(QLabel("Fac:")); flayout.addWidget(self.rep_facturado)
+        flayout.addWidget(btn_buscar); flayout.addWidget(btn_excel); flayout.addWidget(btn_pdf_rep); filtros.setLayout(flayout)
+        
+        self.tabla_reportes = QTableWidget(); self.tabla_reportes.setAlternatingRowColors(True); self.tabla_reportes.setColumnCount(11); 
+        self.tabla_reportes.setHorizontalHeaderLabels(["Fecha", "Suc", "Cliente", "Guía", "Chofer", "Destinatario", "Zona", "Estado", "Fac?", "Bultos", "Precio"]); 
+        
+        header_rep = self.tabla_reportes.horizontalHeader(); 
+        header_rep.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
+        self.tabla_reportes.setColumnWidth(0, 90)
+        self.tabla_reportes.setColumnWidth(1, 120)
+        self.tabla_reportes.setColumnWidth(2, 140)
+        self.tabla_reportes.setColumnWidth(3, 140)
+        self.tabla_reportes.setColumnWidth(4, 140)
+        self.tabla_reportes.setColumnWidth(5, 250)
+        self.tabla_reportes.setColumnWidth(6, 140)
+        self.tabla_reportes.setColumnWidth(7, 150)
+        self.tabla_reportes.setColumnWidth(8, 90)
+        self.tabla_reportes.setColumnWidth(9, 90)
+        header_rep.setStretchLastSection(True)
+        
+        self.tabla_reportes.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows); self.tabla_reportes.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.lbl_reporte_total = QLabel("Resultados: 0 | Total Dinero: $ 0.00 | Total Guías: 0"); self.lbl_reporte_total.setStyleSheet("font-size: 16px; font-weight: bold; margin: 10px; padding: 10px; border: 1px solid #ccc;"); 
+        layout.addWidget(filtros); layout.addWidget(self.tabla_reportes); layout.addWidget(self.lbl_reporte_total)
+        
+    def construir_query_reportes(self):
+        f_desde = self.rep_fecha_desde.date().toPyDate(); f_hasta = self.rep_fecha_hasta.date().toPyDate()
+        query = self.session.query(Operacion).filter(Operacion.fecha_ingreso >= f_desde, Operacion.fecha_ingreso <= f_hasta)
+        if self.rep_sucursal.currentText() != "Todas": query = query.filter(Operacion.sucursal == self.rep_sucursal.currentText())
+        if self.rep_chofer.currentText() != "Todos": query = query.filter(Operacion.chofer_asignado == self.rep_chofer.currentText())
+        if self.rep_cliente.currentText() != "Todos": query = query.filter(Operacion.proveedor == self.rep_cliente.currentText())
+        if self.rep_estado.currentText() != "Todos": query = query.filter(Operacion.estado == self.rep_estado.currentText())
+        if self.rep_facturado.currentText() == "Facturado": query = query.filter(Operacion.facturado == True)
+        elif self.rep_facturado.currentText() == "NO Facturado": query = query.filter(Operacion.facturado == False)
+        return query.all()
+        
     def generar_reporte_avanzado(self):
-        pass
-    def exportar_reporte_excel(self):
-        pass
+        try:
+            resultados = self.construir_query_reportes(); self.tabla_reportes.setRowCount(0); total_dinero = 0; total_guias = len(resultados)
+            for row, op in enumerate(resultados):
+                self.tabla_reportes.insertRow(row); self.tabla_reportes.setItem(row, 0, QTableWidgetItem(op.fecha_ingreso.strftime("%d/%m/%Y"))); self.tabla_reportes.setItem(row, 1, QTableWidgetItem(op.sucursal)); self.tabla_reportes.setItem(row, 2, QTableWidgetItem(op.proveedor)); self.tabla_reportes.setItem(row, 3, QTableWidgetItem(op.guia_remito or "-")); self.tabla_reportes.setItem(row, 4, QTableWidgetItem(op.chofer_asignado or "-")); self.tabla_reportes.setItem(row, 5, QTableWidgetItem(op.destinatario)); self.tabla_reportes.setItem(row, 6, QTableWidgetItem(op.localidad)); self.tabla_reportes.setItem(row, 7, QTableWidgetItem(op.estado)); 
+                item_fac = QTableWidgetItem("SI" if op.facturado else "NO"); 
+                if op.facturado: item_fac.setForeground(QColor("green")); item_fac.setFont(QFont("Arial", 9, QFont.Weight.Bold))
+                self.tabla_reportes.setItem(row, 8, item_fac); self.tabla_reportes.setItem(row, 9, QTableWidgetItem(str(op.bultos))); self.tabla_reportes.setItem(row, 10, QTableWidgetItem(f"$ {op.monto_servicio}")); total_dinero += op.monto_servicio
+            self.lbl_reporte_total.setText(f"Resultados: {total_guias} | Total Dinero: $ {total_dinero:,.2f}")
+        except Exception: self.session.rollback()
+        
     def generar_pdf_rep(self):
-        pass
+        try:
+            resultados = self.construir_query_reportes(); nombre_archivo = f"Reporte_{datetime.now().strftime('%Y-%m-%d')}_{self.sucursal_actual}.pdf"
+            nombre, _ = QFileDialog.getSaveFileName(self, "Reporte PDF", nombre_archivo, "PDF (*.pdf)"); 
+            if not nombre: return
+            total_dinero = sum([op.monto_servicio for op in resultados]); filtro_info = f"Desde: {self.rep_fecha_desde.text()} Hasta: {self.rep_fecha_hasta.text()}"
+            if self.rep_cliente.currentText() != "Todos": filtro_info += f" | CLIENTE: {self.rep_cliente.currentText()}"
+            crear_pdf_reporte(nombre, resultados, self.sucursal_actual, self.usuario.username, datetime.now().strftime('%d/%m/%Y %H:%M'), filtro_info, total_dinero); os.startfile(nombre)
+        except Exception: self.session.rollback()
+        
+    def exportar_reporte_excel(self):
+        try:
+            import pandas as pd
+            resultados = self.construir_query_reportes(); data = []
+            for op in resultados: data.append({"Fecha": op.fecha_ingreso, "Sucursal": op.sucursal, "Cliente": op.proveedor, "Guia": op.guia_remito, "Destinatario": op.destinatario, "Estado": op.estado, "Facturado": "SI" if op.facturado else "NO", "Monto": op.monto_servicio})
+            df = pd.DataFrame(data); df.to_excel("Reporte_Gestion.xlsx", index=False); os.startfile("Reporte_Gestion.xlsx")
+        except Exception: self.session.rollback()
+
     def setup_crm(self):
-        pass
+        layout = QVBoxLayout(self.tab_crm); lbl_info = QLabel("📲 <b>Contacto con Clientes Recientes</b>"); layout.addWidget(lbl_info)
+        top_bar = QHBoxLayout(); btn_refresh = QPushButton("🔄 Cargar Entregas Recientes"); btn_refresh.clicked.connect(self.cargar_crm)
+        top_bar.addWidget(btn_refresh); top_bar.addStretch(); layout.addLayout(top_bar)
+        
+        self.tabla_crm = QTableWidget(); self.tabla_crm.setColumnCount(5); self.tabla_crm.setHorizontalHeaderLabels(["Fecha Entrega", "Guía", "Cliente (Destinatario)", "Celular", "Acción"])
+        self.tabla_crm.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
+        self.tabla_crm.setColumnWidth(0, 150)
+        self.tabla_crm.setColumnWidth(1, 150)
+        self.tabla_crm.setColumnWidth(2, 250)
+        self.tabla_crm.setColumnWidth(3, 150)
+        self.tabla_crm.horizontalHeader().setStretchLastSection(True)
+        self.tabla_crm.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers); self.tabla_crm.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows); layout.addWidget(self.tabla_crm)
+        
     def cargar_crm(self):
-        pass
+        self.tabla_crm.setRowCount(0)
+        try:
+            ops = self.session.query(Operacion).filter(Operacion.estado == Estados.ENTREGADO, Operacion.celular != "", Operacion.celular != None, Operacion.sucursal == self.sucursal_actual).order_by(Operacion.fecha_salida.desc()).limit(100).all()
+            for r, op in enumerate(ops):
+                self.tabla_crm.insertRow(r); f_str = op.fecha_salida.strftime("%d/%m/%Y") if op.fecha_salida else op.fecha_ingreso.strftime("%d/%m/%Y")
+                self.tabla_crm.setItem(r, 0, QTableWidgetItem(f_str)); self.tabla_crm.setItem(r, 1, QTableWidgetItem(op.guia_remito or "-")); self.tabla_crm.setItem(r, 2, QTableWidgetItem(op.destinatario)); self.tabla_crm.setItem(r, 3, QTableWidgetItem(op.celular))
+                btn_wsp = QPushButton("💬 Enviar WhatsApp"); btn_wsp.clicked.connect(lambda checked, num=op.celular, nom=op.destinatario: self.enviar_whatsapp(num, nom)); self.tabla_crm.setCellWidget(r, 4, btn_wsp)
+        except Exception: self.session.rollback()
+
     def enviar_whatsapp(self, numero, nombre):
-        pass
+        num_limpio = "".join(c for c in numero if c.isdigit())
+        if not num_limpio: QMessageBox.warning(self, "Error", "El número no es válido."); return
+        if not num_limpio.startswith("54"): num_limpio = "549" + num_limpio
+        mensaje = f"Hola {nombre}, somos de EK Logística. Hemos entregado tu envío recientemente y nos encantaría saber qué te pareció el servicio. ¡Gracias por elegirnos!"
+        url = f"https://web.whatsapp.com/send?phone={num_limpio}&text={mensaje}"; QDesktopServices.openUrl(QUrl(url))
+
     def setup_estadisticas(self):
-        pass
+        layout = QVBoxLayout(self.tab_stats); top_bar = QHBoxLayout(); btn_refresh = QPushButton("🔄 Actualizar Gráficos"); btn_refresh.clicked.connect(self.cargar_estadisticas)
+        top_bar.addWidget(btn_refresh); top_bar.addStretch(); self.vista_stats = QTextBrowser(); self.vista_stats.setOpenExternalLinks(False)
+        layout.addLayout(top_bar); layout.addWidget(self.vista_stats)
+
     def cargar_estadisticas(self):
-        pass
+        try:
+            c_month = datetime.now().month; c_year = datetime.now().year
+            res_hoy = self.session.execute(text("SELECT estado, COUNT(*) FROM operaciones WHERE fecha_ingreso = CURRENT_DATE AND sucursal = :s GROUP BY estado"), {"s": self.sucursal_actual}).fetchall()
+            res_prov = self.session.execute(text("SELECT proveedor, COUNT(*) FROM operaciones WHERE EXTRACT(MONTH FROM fecha_ingreso) = :m AND EXTRACT(YEAR FROM fecha_ingreso) = :y AND sucursal = :s GROUP BY proveedor ORDER BY COUNT(*) DESC"), {"m": c_month, "y": c_year, "s": self.sucursal_actual}).fetchall()
+            res_chof = self.session.execute(text("SELECT chofer_asignado, COUNT(*) FROM operaciones WHERE EXTRACT(MONTH FROM fecha_ingreso) = :m AND EXTRACT(YEAR FROM fecha_ingreso) = :y AND sucursal = :s AND estado = 'ENTREGADO' AND chofer_asignado IS NOT NULL GROUP BY chofer_asignado ORDER BY COUNT(*) DESC LIMIT 5"), {"m": c_month, "y": c_year, "s": self.sucursal_actual}).fetchall()
+            html = f"<html><body style='font-family: Arial; padding: 20px;'><h1 style='color: #1565C0; border-bottom: 2px solid #1565C0; padding-bottom: 10px;'>📊 PANEL GERENCIAL - {self.sucursal_actual.upper()}</h1>"
+            total_hoy = sum([r[1] for r in res_hoy]); entregados = sum([r[1] for r in res_hoy if r[0] == Estados.ENTREGADO]); en_calle = sum([r[1] for r in res_hoy if r[0] == Estados.EN_REPARTO])
+            html += f"<h2 style='color: #444;'>📅 Resumen de la Operativa de Hoy</h2><table width='100%' style='text-align:center; font-size:18px; margin-bottom: 30px;'><tr><td style='background:#e7f1ff; padding:25px; border-radius:12px; border: 1px solid #b6d4fe; width: 33%; color: black;'><b>Total Salidas Hoy</b><br><span style='font-size:35px; color:#0d6efd;'><b>{total_hoy}</b></span></td><td width='2%'></td><td style='background:#d1e7dd; padding:25px; border-radius:12px; border: 1px solid #badbcc; width: 33%; color: black;'><b>Entregas Exitosas</b><br><span style='font-size:35px; color:#198754;'><b>{entregados}</b></span></td><td width='2%'></td><td style='background:#fff3cd; padding:25px; border-radius:12px; border: 1px solid #ffecb5; width: 33%; color: black;'><b>Aún en la Calle</b><br><span style='font-size:35px; color:#856404;'><b>{en_calle}</b></span></td></tr></table><hr style='border:1px solid #ddd;'><br>"
+            html += f"<table width='100%'><tr><td width='48%' valign='top' style='padding:20px; border-radius:10px; border:1px solid #ccc;'><h2 style='margin-top:0;'>📦 Volúmen por Cliente (Este Mes)</h2><ul style='list-style-type: none; padding-left: 0;'>"
+            for p in res_prov: html += f"<li style='font-size: 17px; margin-bottom: 12px; padding-bottom:5px; border-bottom:1px dashed #eee;'>📌 <b>{p[0]}</b>: <span style='float:right; color:#1565C0; font-weight:bold;'>{p[1]} envíos</span></li>"
+            html += "</ul></td><td width='4%'></td><td width='48%' valign='top' style='padding:20px; border-radius:10px; border:1px solid #ccc;'><h2 style='margin-top:0;'>🏆 Top 5 Choferes (Este Mes)</h2><ul style='list-style-type: none; padding-left: 0;'>"
+            medallas = ["🥇", "🥈", "🥉", "🏅", "🏅"]
+            for idx, c in enumerate(res_chof): med = medallas[idx] if idx < len(medallas) else "🚛"; html += f"<li style='font-size: 17px; margin-bottom: 12px; padding-bottom:5px; border-bottom:1px dashed #eee;'>{med} <b>{c[0]}</b>: <span style='float:right; color:#198754; font-weight:bold;'>{c[1]} paquetes</span></li>"
+            html += "</ul></td></tr></table></body></html>"
+            self.vista_stats.setHtml(html)
+        except Exception: self.session.rollback()
 
 class DBWakeUpThread(QThread):
     finished_signal = pyqtSignal()
@@ -933,7 +1041,6 @@ class TrackingDialog(QDialog):
                     entregado_info = f"<br><b>ENTREGADO A:</b> <span style='color:#198754;'>{recibe}</span> <b>EL:</b> {fecha_ent}"
                     break
                     
-        # 🔥 EL FIX DEL TRACKING (TIPO DE CARGA Y BULTOS) 🔥
         bultos_tot = op.bultos or 1
         bultos_fr = getattr(op, 'bultos_frio', 0) or 0
         bultos_com = bultos_tot - bultos_fr
