@@ -90,8 +90,9 @@ class PlataformaLogistica(QMainWindow):
         from vistas_operativas import TabIngreso, TabRendicion, TabFacturacion
         from vista_configuracion import TabConfiguracion
         
-        global ToastNotification, ConfirmarEntregaDialog, ReprogramarAdminDialog, HistorialHojasRutaDialog, EditarOperacionDialog, CambiarFechaDialog, TrackingDialog
-        from dialogos import ToastNotification, ConfirmarEntregaDialog, ReprogramarAdminDialog, HistorialHojasRutaDialog, EditarOperacionDialog, CambiarFechaDialog, TrackingDialog
+        # 🔥 FIX: Borramos TrackingDialog de esta importación para que use el nuevo que está abajo 🔥
+        global ToastNotification, ConfirmarEntregaDialog, ReprogramarAdminDialog, HistorialHojasRutaDialog, EditarOperacionDialog, CambiarFechaDialog
+        from dialogos import ToastNotification, ConfirmarEntregaDialog, ReprogramarAdminDialog, HistorialHojasRutaDialog, EditarOperacionDialog, CambiarFechaDialog
         
         global crear_pdf_ruta, crear_pdf_tercerizados, crear_pdf_reporte
         from utilidades import crear_pdf_ruta, crear_pdf_tercerizados, crear_pdf_reporte
@@ -900,7 +901,6 @@ class TrackingDialog(QDialog):
                 self.session.rollback()
                 QMessageBox.critical(self, "Error", f"Fallo al resetear la guía: {str(e)}")
     
-    # 🔥 LÓGICA DE TRACKING CON BULTOS RESALTADOS 🔥
     def buscar_tracking(self):
         guia = self.in_buscar.text().strip(); 
         if not guia: return
@@ -933,16 +933,19 @@ class TrackingDialog(QDialog):
                     entregado_info = f"<br><b>ENTREGADO A:</b> <span style='color:#198754;'>{recibe}</span> <b>EL:</b> {fecha_ent}"
                     break
                     
+        # 🔥 EL FIX DEL TRACKING (TIPO DE CARGA Y BULTOS) 🔥
         bultos_tot = op.bultos or 1
         bultos_fr = getattr(op, 'bultos_frio', 0) or 0
         bultos_com = bultos_tot - bultos_fr
+        tipo_c = op.tipo_carga or "COMÚN"
         
         if "Flete" in (op.tipo_servicio or ""):
-            texto_bultos = f"{bultos_tot} Horas / Viajes"
+            texto_bultos = f"{bultos_tot} Horas / Viajes (FLETE)"
         else:
-            texto_bultos = f"{bultos_tot} (Todos Comunes)"
             if bultos_fr > 0:
-                texto_bultos = f"{bultos_tot} Totales (<b>{bultos_com}</b> Comunes, <b>{bultos_fr}</b> Refrigerados)"
+                texto_bultos = f"{bultos_tot} Totales ({bultos_com} Comunes, {bultos_fr} Refrigerados) | TIPO: {tipo_c}"
+            else:
+                texto_bultos = f"{bultos_tot} (Todos Comunes) | TIPO: {tipo_c}"
         
         info_txt = f"<div style='background-color: {bg_color}; padding: 10px;'><b>GUÍA:</b> {op.guia_remito} <br><b>ESTADO ACTUAL:</b> <span style='color:{color_estado}; font-size: 18px; font-weight: bold;'>{op.estado.upper()}</span> {entregado_info} <br><b>FACTURACIÓN:</b> <span style='color:{color_fac}; font-weight: bold;'>{fac_str}</span> <br><b>DESTINATARIO:</b> {op.destinatario} ({op.localidad}) <br><b>CHOFER:</b> {op.chofer_asignado or 'Sin Asignar'} <br><b>📦 BULTOS / CARGA:</b> <span style='color:#d32f2f; font-weight:bold; font-size:15px;'>{texto_bultos}</span> <br><b>SERVICIO:</b> {op.tipo_servicio} <br><b>PESO TOTAL:</b> {op.peso} Kg</div>"
         self.lbl_info.setText(info_txt)
