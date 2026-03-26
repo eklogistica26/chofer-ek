@@ -19,7 +19,6 @@ from utilidades import parsear_txt_dhl_logic, crear_pdf_retiro, crear_pdf_factur
 from dialogos import PreviewImportacionDialog, ReprogramarAdminDialog, EditarPrecioFacturacionDialog, AgregarCargoDialog, CargarPagoDialog, ResumenDiarioChoferDialog
 
 def enviar_email_desktop(session, destinatario, guia, rutas_fotos, proveedor):
-    # 🔥 Forzamos la lectura del .env de la PC local 🔥
     try:
         from dotenv import load_dotenv
         BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -52,7 +51,6 @@ def enviar_email_desktop(session, destinatario, guia, rutas_fotos, proveedor):
         for i, ruta in enumerate(rutas_fotos):
             if os.path.exists(ruta):
                 try:
-                    # 🔥 COMPRESOR DE IMÁGENES EN MEMORIA PARA PC 🔥
                     try:
                         from PIL import Image
                         img = Image.open(ruta)
@@ -101,7 +99,6 @@ def enviar_email_desktop(session, destinatario, guia, rutas_fotos, proveedor):
     
     headers = {"accept": "application/json", "api-key": BREVO_API_KEY, "content-type": "application/json"}
     
-    # 🔥 ANTI-REBOTE POR PESO ACTIVADO EN ESCRITORIO 🔥
     try: 
         r = requests.post(url, json=payload, headers=headers)
         if r.status_code in [200, 201, 202]:
@@ -155,57 +152,6 @@ QGroupBox::title {
     background: transparent !important;
 }
 """
-
-class ConfirmarEntregaDialog(QDialog):
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        self.setWindowTitle("✅ Confirmar Entrega")
-        self.setGeometry(400, 300, 400, 300)
-        layout = QVBoxLayout()
-        form = QFormLayout()
-        
-        self.in_recibe = QLineEdit()
-        self.in_recibe.setPlaceholderText("Nombre y Apellido de quien recibe")
-        self.in_fecha = QDateEdit(QDate.currentDate())
-        self.in_fecha.setCalendarPopup(True)
-        
-        self.rutas_fotos = []
-        self.btn_fotos = QPushButton("📸 ADJUNTAR FOTOS DEL REMITO (PC)")
-        self.btn_fotos.setStyleSheet("background-color: #17a2b8; color: white; font-weight: bold;")
-        self.btn_fotos.clicked.connect(self.seleccionar_fotos)
-        self.lbl_fotos = QLabel("Ninguna foto adjunta.")
-        self.lbl_fotos.setStyleSheet("color: #666;")
-        
-        form.addRow("Recibió (Obligatorio):", self.in_recibe)
-        form.addRow("Fecha:", self.in_fecha)
-        form.addRow("", self.btn_fotos)
-        form.addRow("", self.lbl_fotos)
-        
-        btn_ok = QPushButton("CONFIRMAR ENTREGA Y ENVIAR MAIL")
-        btn_ok.setStyleSheet("background-color: #28a745; color: white; font-weight: bold; padding: 10px; margin-top: 15px;")
-        btn_ok.clicked.connect(self.validar)
-        
-        layout.addLayout(form)
-        layout.addWidget(btn_ok)
-        self.setLayout(layout)
-        
-        self.recibe_final = ""
-        self.fecha_final = ""
-        
-    def seleccionar_fotos(self):
-        archivos, _ = QFileDialog.getOpenFileNames(self, "Seleccionar Fotos", "", "Images (*.png *.jpg *.jpeg)")
-        if archivos:
-            self.rutas_fotos = archivos
-            self.lbl_fotos.setText(f"✅ {len(archivos)} foto(s) adjunta(s) listas para enviar.")
-            self.lbl_fotos.setStyleSheet("color: green; font-weight: bold;")
-            
-    def validar(self):
-        if not self.in_recibe.text().strip():
-            QMessageBox.warning(self, "Error", "Debe indicar quién recibió.")
-            return
-        self.recibe_final = self.in_recibe.text().strip()
-        self.fecha_final = self.in_fecha.date().toPyDate()
-        self.accept()
 
 class TabIngreso(QWidget):
     def __init__(self, main_window):
@@ -577,9 +523,11 @@ class TabIngreso(QWidget):
             cel_texto = self.in_cel.text().strip()
             
             if prov and prov != "JetPaq" and dest_texto and dom_texto:
-                existe = self.main.session.query(DestinoFrecuente).filter_by(
-                    proveedor=prov, sucursal=self.main.sucursal_actual, 
-                    destinatario=dest_texto, domicilio=dom_texto
+                # 🔥 BUSCAMOS SOLO POR DESTINATARIO (Ignorando mayus/minus) PARA EVITAR DUPLICADOS POR DOMICILIO 🔥
+                existe = self.main.session.query(DestinoFrecuente).filter(
+                    DestinoFrecuente.proveedor == prov, 
+                    DestinoFrecuente.sucursal == self.main.sucursal_actual, 
+                    DestinoFrecuente.destinatario.ilike(dest_texto)
                 ).first()
                 if not existe:
                     nuevo_dest = DestinoFrecuente(
@@ -870,7 +818,6 @@ class TabRendicion(QWidget):
                 if hasattr(dlg, 'rutas_fotos') and dlg.rutas_fotos:
                     detalle += f" [CON {len(dlg.rutas_fotos)} FOTO/S CARGADAS POR PC]"
                     
-                    # 🔥 Ahora atrapamos el resultado del correo para avisarle al operador 🔥
                     res_mail = enviar_email_desktop(self.main.session, dlg.recibe_final, op.guia_remito, dlg.rutas_fotos, op.proveedor)
                     if res_mail:
                         mensajes_mail.append(f"Guía {op.guia_remito}: {res_mail}")
@@ -880,7 +827,6 @@ class TabRendicion(QWidget):
                 
             self.main.session.commit()
             
-            # 🔥 Armamos el cartel final de aviso 🔥
             msg_final = f"{count} guía(s) entregada(s) correctamente en el sistema."
             if mensajes_mail:
                 msg_final += "\n\n📋 Estado de Correos:\n" + "\n".join(list(set(mensajes_mail)))
