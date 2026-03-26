@@ -3,6 +3,7 @@ import re
 import calendar
 import requests
 import base64
+import io
 from datetime import datetime, date
 from PyQt6.QtWidgets import (QApplication, QDialog, QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, 
                              QComboBox, QPushButton, QTableWidget, QTableWidgetItem, 
@@ -17,9 +18,18 @@ from database import Operacion, Historial, Estados, Urgencia, DestinoFrecuente, 
 from utilidades import parsear_txt_dhl_logic, crear_pdf_retiro, crear_pdf_facturacion, crear_pdf_resumen_diario
 from dialogos import PreviewImportacionDialog, ReprogramarAdminDialog, EditarPrecioFacturacionDialog, AgregarCargoDialog, CargarPagoDialog, ResumenDiarioChoferDialog
 
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except:
+    pass
+
 def enviar_email_desktop(session, destinatario, guia, rutas_fotos, proveedor):
     BREVO_API_KEY = os.environ.get("BREVO_API_KEY", "")
-    if not BREVO_API_KEY: return
+    if not BREVO_API_KEY: 
+        print("⚠️ No se encontró la API KEY de Brevo en la PC local.")
+        return
+        
     EMAIL_REMITENTE = "eklogistica19@gmail.com"
     email_prov = None
     try:
@@ -41,11 +51,25 @@ def enviar_email_desktop(session, destinatario, guia, rutas_fotos, proveedor):
         for i, ruta in enumerate(rutas_fotos):
             if os.path.exists(ruta):
                 try:
-                    with open(ruta, "rb") as f:
-                        content = base64.b64encode(f.read()).decode('utf-8')
-                        nombre_adjunto = f"remito_{guia}.jpg" if len(rutas_fotos) == 1 else f"remito_{guia}_parte{i+1}.jpg"
-                        adjuntos.append({"content": content, "name": nombre_adjunto})
-                except: pass
+                    # 🔥 COMPRESOR DE IMÁGENES EN MEMORIA PARA PC 🔥
+                    try:
+                        from PIL import Image
+                        img = Image.open(ruta)
+                        if img.mode in ("RGBA", "P"): img = img.convert("RGB")
+                        img.thumbnail((800, 800))
+                        buffer = io.BytesIO()
+                        img.save(buffer, format="JPEG", quality=70, optimize=True)
+                        b64_content = base64.b64encode(buffer.getvalue()).decode('utf-8')
+                    except Exception as e:
+                        print("Fallo compresión PIL, enviando original:", e)
+                        with open(ruta, "rb") as f:
+                            b64_content = base64.b64encode(f.read()).decode('utf-8')
+                            
+                    nombre_adjunto = f"remito_{guia}.jpg" if len(rutas_fotos) == 1 else f"remito_{guia}_parte{i+1}.jpg"
+                    adjuntos.append({"content": b64_content, "name": nombre_adjunto})
+                except Exception as e: 
+                    print("Error adjuntando archivo:", e)
+                    pass
     
     url = "https://api.brevo.com/v3/smtp/email"
     fecha_hora = datetime.now().strftime('%d/%m/%Y %H:%M')
@@ -76,13 +100,25 @@ def enviar_email_desktop(session, destinatario, guia, rutas_fotos, proveedor):
     if adjuntos: payload["attachment"] = adjuntos
     
     headers = {"accept": "application/json", "api-key": BREVO_API_KEY, "content-type": "application/json"}
+    
+    # 🔥 ANTI-REBOTE POR PESO ACTIVADO EN ESCRITORIO 🔥
     try: 
         r = requests.post(url, json=payload, headers=headers)
         if r.status_code not in [200, 201, 202]:
-            payload["to"] = [{"email": EMAIL_REMITENTE}]
-            if "bcc" in payload: del payload["bcc"]
-            requests.post(url, json=payload, headers=headers)
-    except: pass
+            print(f"Error Brevo PC (Intento 1): {r.text}")
+            if "attachment" in payload:
+                del payload["attachment"]
+                payload["htmlContent"] = html_content.replace(
+                    "<b>Adjuntamos la foto del remito/guía conformado.</b>",
+                    "<b style='color:#D32F2F;'>⚠️ La foto se guardó en nuestro sistema, pero era demasiado pesada para adjuntarse en este correo.</b>"
+                )
+                r2 = requests.post(url, json=payload, headers=headers)
+                if r2.status_code not in [200, 201, 202]:
+                    payload["to"] = [{"email": EMAIL_REMITENTE}]
+                    if "bcc" in payload: del payload["bcc"]
+                    requests.post(url, json=payload, headers=headers)
+    except Exception as e: 
+        print("Error crítico Brevo PC:", e)
 
 class PintorCeldasDelegate(QStyledItemDelegate):
     def paint(self, painter, option, index):
@@ -206,8 +242,6 @@ class TabIngreso(QWidget):
         
         dest_layout = QHBoxLayout(); self.in_destinos_frecuentes = QComboBox(); self.in_destinos_frecuentes.addItem("--- Destinos Guardados ---"); self.in_destinos_frecuentes.setEnabled(False); self.in_destinos_frecuentes.setEditable(True); self.in_destinos_frecuentes.completer().setFilterMode(Qt.MatchFlag.MatchContains); self.in_destinos_frecuentes.currentIndexChanged.connect(self.llenar_datos_destino); self.in_codigo_rapido = QLineEdit(); self.in_codigo_rapido.setPlaceholderText("Buscar ID..."); self.in_codigo_rapido.setFixedWidth(80); self.in_codigo_rapido.returnPressed.connect(self.buscar_destino_por_codigo)
         dest_layout.addWidget(self.in_destinos_frecuentes); dest_layout.addWidget(self.in_codigo_rapido)
-        
-        # 🔥 ACÁ BLOQUEAMOS LA ZONA PARA QUE NO SE PUEDA ESCRIBIR A MANO 🔥
         self.in_dest = QLineEdit(); self.in_cel = QLineEdit(); self.in_cel.setPlaceholderText("Ej: 261-155..."); self.in_dom = QLineEdit(); self.in_loc_combo = QComboBox()
         
         fl.addRow("Tipo:", self.in_serv)
@@ -1010,7 +1044,6 @@ class TabFacturacion(QWidget):
             if dlg.exec() == QDialog.DialogCode.Accepted: op.monto_servicio = dlg.precio_final; self.main.session.commit(); self.calcular_cierre(); self.main.toast.mostrar("✅ Precio actualizado")
         except Exception: self.main.session.rollback()
 
-    # 🔥 MOTOR DE BÚSQUEDA BLINDADO CON ILIKE (Ignora mayúsculas/minúsculas) 🔥
     def calcular_cierre(self):
         mes = self.cierre_mes.currentIndex() + 1
         anio = self.cierre_anio.value()
@@ -1026,7 +1059,6 @@ class TabFacturacion(QWidget):
             start_date = date(anio, mes, 1)
             end_date = date(anio, mes, last_day)
 
-            # Usamos SQLAlchemy nativo que es más seguro que el texto crudo
             query = self.main.session.query(Operacion).filter(
                 Operacion.fecha_ingreso >= start_date, 
                 Operacion.fecha_ingreso <= end_date,

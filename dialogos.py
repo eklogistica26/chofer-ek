@@ -258,8 +258,17 @@ class EditarEmpresaDialog(QDialog):
 
 class EditarOperacionDialog(QDialog):
     def __init__(self, operacion, session, parent=None):
-        super().__init__(parent); self.setWindowTitle(f"✏️ Editar Guía: {operacion.guia_remito}"); self.setGeometry(300, 200, 450, 650)
+        super().__init__(parent); self.setWindowTitle(f"✏️ Editar Guía: {operacion.guia_remito}"); self.setGeometry(300, 200, 450, 700)
         self.op = operacion; self.session = session; layout = QVBoxLayout(); form = QFormLayout()
+        
+        # 🔥 NUEVOS CAMPOS: FECHA Y GUÍA 🔥
+        self.in_fecha = QDateEdit(self.op.fecha_ingreso if self.op.fecha_ingreso else QDate.currentDate())
+        self.in_fecha.setCalendarPopup(True)
+        self.in_fecha.setStyleSheet("font-weight: bold; color: #d32f2f;")
+        
+        self.in_guia = QLineEdit(self.op.guia_remito or "")
+        self.in_guia.setStyleSheet("font-weight: bold; color: #1565c0;")
+        
         self.in_dest = QLineEdit(self.op.destinatario); self.in_dom = QLineEdit(self.op.domicilio); self.in_loc = QLineEdit(self.op.localidad); self.in_cel = QLineEdit(self.op.celular or "")
         self.in_peso = QDoubleSpinBox(); self.in_peso.setRange(0, 9999); self.in_peso.setSuffix(" Kg"); self.in_peso.setValue(self.op.peso or 0.0)
         self.in_prov = QComboBox(); clientes_db = self.session.query(ClientePrincipal).all(); lista_prov = [c.nombre for c in clientes_db] if clientes_db else ["JetPaq", "DHL", "Andreani", "MercadoLibre", "Directo", "Otro"]
@@ -279,6 +288,9 @@ class EditarOperacionDialog(QDialog):
         if self.op.estado == Estados.EN_DEPOSITO: self.in_precio.setEnabled(True); self.lbl_aviso = QLabel("🟢 ESTADO INICIAL: Puede modificar el precio (Extra)."); self.lbl_aviso.setStyleSheet("color: green; font-weight: bold;")
         else: self.in_precio.setEnabled(False); self.lbl_aviso = QLabel("🔒 PRECIO BLOQUEADO (Solo editable en estado 'En Deposito')"); self.lbl_aviso.setStyleSheet("color: red; font-size: 10px;")
         
+        # 🔥 AGREGAMOS AL FORMULARIO 🔥
+        form.addRow("Fecha Ingreso:", self.in_fecha)
+        form.addRow("Guía / Remito:", self.in_guia)
         form.addRow("Destinatario:", self.in_dest); form.addRow("Domicilio:", self.in_dom); form.addRow("Localidad:", self.in_loc); form.addRow("Celular:", self.in_cel); form.addRow("Proveedor:", self.in_prov); form.addRow("Peso Total:", self.in_peso);
         layout.addLayout(form); layout.addWidget(self.gb_tipo); layout.addWidget(self.in_bultos_simple); layout.addWidget(self.container_comb)
         form2 = QFormLayout(); form2.addRow("Precio Servicio:", self.in_precio); layout.addLayout(form2)
@@ -289,6 +301,10 @@ class EditarOperacionDialog(QDialog):
         else: self.in_bultos_simple.show(); self.container_comb.hide()
     def guardar(self):
         try:
+            # 🔥 GUARDAMOS LOS NUEVOS CAMPOS 🔥
+            self.op.fecha_ingreso = self.in_fecha.date().toPyDate()
+            self.op.guia_remito = self.in_guia.text()
+            
             self.op.destinatario = self.in_dest.text(); self.op.domicilio = self.in_dom.text(); self.op.localidad = self.in_loc.text(); self.op.celular = self.in_cel.text(); self.op.proveedor = self.in_prov.currentText(); self.op.peso = self.in_peso.value()
             if self.radio_comb.isChecked(): c = self.in_c_comun.value(); f = self.in_c_frio.value(); self.op.bultos = c + f; self.op.bultos_frio = f; self.op.tipo_carga = "COMBINADO"
             else: self.op.bultos = self.in_bultos_simple.value(); self.op.bultos_frio = self.op.bultos if self.radio_frio.isChecked() else 0; self.op.tipo_carga = "REFRIGERADO" if self.radio_frio.isChecked() else "COMUN"
