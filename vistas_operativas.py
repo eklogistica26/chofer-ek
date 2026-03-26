@@ -138,7 +138,6 @@ def enviar_email_desktop(session, destinatario, guia, rutas_fotos, proveedor):
                         img = Image.open(ruta)
                         if img.mode in ("RGBA", "P"): img = img.convert("RGB")
                         
-                        # 🔥 FOTOS EN ALTA CALIDAD PARA LECTURA DE CLIENTES 🔥
                         img.thumbnail((1600, 1600)) 
                         buffer = io.BytesIO()
                         img.save(buffer, format="JPEG", quality=85, optimize=True)
@@ -443,6 +442,7 @@ class TabIngreso(QWidget):
         l.addWidget(panel_izquierdo, 35) 
         l.addLayout(col_der, 65)
         
+        # 🔥 EL BUSCADOR SE CARGA CON RESPIRADOR ANTI-CUELGUE 🔥
         self.configurar_autocompletado_global()
         self.actualizar_interfaz_peso()
 
@@ -452,8 +452,8 @@ class TabIngreso(QWidget):
             nombres_completos = []
             self.mapa_destinos_global.clear()
             
-            for d in destinos:
-                # 🔥 ORDEN CORREGIDO Y LIMPIO: Destino - Domicilio [Proveedor] 🔥
+            for i, d in enumerate(destinos):
+                if i % 100 == 0: QApplication.processEvents() # 🔥 ANTI-CUELGUE: RESPIRA CADA 100 DESTINOS 🔥
                 texto_completer = f"{d.destinatario} - {d.domicilio} [{d.proveedor}]"
                 if texto_completer not in nombres_completos:
                     nombres_completos.append(texto_completer)
@@ -464,7 +464,6 @@ class TabIngreso(QWidget):
                 completer.setCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
                 completer.setFilterMode(Qt.MatchFlag.MatchContains)
                 
-                # 🔥 CSS PARA HACER LA LISTA ANCHA Y CON LÍNEAS SEPARADORAS 🔥
                 vista_lista = completer.popup()
                 vista_lista.setMinimumWidth(600)
                 vista_lista.setStyleSheet("""
@@ -683,7 +682,6 @@ class TabIngreso(QWidget):
             mensaje_toast = "✅ GUARDADO EN DEPÓSITO CORRECTAMENTE"
             
             if prov and prov != "JetPaq" and dest_texto and dom_texto:
-                # 🔥 AHORA EL SISTEMA EVITA DUPLICAR COMPROBANDO DESTINATARIO + DOMICILIO AL MISMO TIEMPO 🔥
                 existe = self.main.session.query(DestinoFrecuente).filter(
                     DestinoFrecuente.proveedor == prov, 
                     DestinoFrecuente.sucursal == self.main.sucursal_actual, 
@@ -774,6 +772,7 @@ class TabIngreso(QWidget):
             ).order_by(Operacion.id.desc()).all()
             
             for row, op in enumerate(ops):
+                if row % 10 == 0: QApplication.processEvents() # 🔥 ANTI-CUELGUE: RESPIRA CADA 10 FILAS 🔥
                 self.tabla_ingresos.insertRow(row); self.tabla_ingresos.setItem(row, 0, QTableWidgetItem(str(op.id)))
                 icon_srv = "🚚" if "Entrega" in op.tipo_servicio else ("🔄" if "Retiro" in op.tipo_servicio else "⏱️")
                 srv_txt = "Flete" if "Flete" in op.tipo_servicio else ("Retiro" if "Retiro" in op.tipo_servicio else "Entrega")
@@ -946,6 +945,7 @@ class TabRendicion(QWidget):
             self.tabla_rendicion.blockSignals(True); self.tabla_rendicion.setRowCount(0); estados = [Estados.EN_REPARTO]
             ops = self.main.session.query(Operacion).filter(Operacion.estado.in_(estados), Operacion.sucursal == self.main.sucursal_actual).order_by(Operacion.chofer_asignado.asc()).all()
             for row, op in enumerate(ops):
+                if row % 10 == 0: QApplication.processEvents() # 🔥 ANTI-CUELGUE: RESPIRA CADA 10 FILAS 🔥
                 self.tabla_rendicion.insertRow(row); self.tabla_rendicion.setItem(row, 0, QTableWidgetItem(str(op.id)))
                 chk = QTableWidgetItem(); chk.setFlags(Qt.ItemFlag.ItemIsUserCheckable | Qt.ItemFlag.ItemIsEnabled); chk.setCheckState(Qt.CheckState.Unchecked); self.tabla_rendicion.setItem(row, 1, chk)
                 guia_texto = op.guia_remito or "-"
@@ -1256,7 +1256,13 @@ class TabFacturacion(QWidget):
             tot_base = 0; tot_extras = 0; tot_final = 0; self.mapa_filas_cierre = {} 
             hubo_cambios_precios = False
             
+            total_ops = len(self.resultados_cierre)
+            
             for row, op in enumerate(self.resultados_cierre):
+                if row % 5 == 0:  # 🔥 ANTI-CUELGUE Y BARRA DE PROGRESO DE FACTURACIÓN 🔥
+                    self.main.setWindowTitle(f"⏳ Calculando facturación: {row} de {total_ops}...")
+                    QApplication.processEvents()
+                    
                 self.tabla_cierre.insertRow(row)
                 self.mapa_filas_cierre[row] = op.id 
                 
