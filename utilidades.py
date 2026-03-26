@@ -246,46 +246,46 @@ def crear_pdf_reporte(nombre_archivo, resultados, sucursal, usuario, fecha_gener
     doc.build(elements, onFirstPage=add_footer, onLaterPages=add_footer)
 
 
-# 🔥 FACTURACIÓN NUEVA CON LOGO, 2 DECIMALES Y AUTO-AJUSTE 🔥
+# 🔥 FACTURACIÓN CON LOGO AJUSTADO, SALTOS DE LÍNEA Y FORMATO EXCEL 🔥
 def crear_pdf_facturacion(nombre_archivo, data_filas, prov_nombre, periodo_str, usuario, fecha_generacion):
     doc = SimpleDocTemplate(nombre_archivo, pagesize=A4, rightMargin=20, leftMargin=20, topMargin=25, bottomMargin=25)
     elements = []
     styles = getSampleStyleSheet()
     
-    # 1. Buscamos el Logo
+    # Buscamos el Logo y lo hacemos más chico y discreto (120x45)
     logo_path = "eklogo.png" if os.path.exists("eklogo.png") else ("logo.png" if os.path.exists("logo.png") else None)
     if logo_path:
-        elements.append(Image(logo_path, width=150, height=60, hAlign='CENTER'))
+        elements.append(Image(logo_path, width=120, height=45, hAlign='CENTER'))
         elements.append(Spacer(1, 10))
         
-    title_style = ParagraphStyle(name='TitleCenter', parent=styles['Heading1'], alignment=TA_CENTER, fontSize=18)
-    client_style = ParagraphStyle(name='Client', parent=styles['Normal'], alignment=TA_CENTER, fontSize=12, spaceAfter=15)
+    title_style = ParagraphStyle(name='TitleCenter', parent=styles['Heading1'], alignment=TA_CENTER, fontSize=16)
+    client_style = ParagraphStyle(name='Client', parent=styles['Normal'], alignment=TA_CENTER, fontSize=11, spaceAfter=15)
     
     elements.append(Paragraph(f"RENDICIÓN {prov_nombre.upper()}", title_style))
     elements.append(Paragraph(f"Período: {periodo_str}", client_style))
     
-    # Estilos específicos para celdas
     estilo_celda = ParagraphStyle(name='CeldaTabla', parent=styles['Normal'], fontSize=8, leading=10, alignment=TA_CENTER)
-    # Permite saltos de línea (wordWrap) para números de guía largos
+    # Permite saltos de línea automáticos (wordWrap) para números de guía largos
     estilo_guia = ParagraphStyle(name='CeldaGuia', parent=styles['Normal'], fontSize=8, leading=10, alignment=TA_CENTER, wordWrap='CJK')
+    # Alineación estricta a la derecha para los precios
     estilo_monto = ParagraphStyle(name='CeldaMonto', parent=styles['Normal'], fontSize=9, alignment=TA_RIGHT)
     estilo_subtotal = ParagraphStyle(name='CeldaSub', parent=styles['Normal'], fontSize=10, alignment=TA_RIGHT, fontName='Helvetica-Bold')
     
     processed_data = []
     
     for i, row in enumerate(data_filas):
-        # La fila 0 es el encabezado, lo dejamos tal cual
+        # La fila 0 es el encabezado, lo dejamos centrado
         if i == 0:
             processed_data.append(row) 
             continue
             
         new_row = []
-        es_totales = (i >= len(data_filas) - 3) # Detecta si son las últimas 3 filas (Subtotales, IVA, Total)
+        es_totales = (i >= len(data_filas) - 3)
         
         for j, cell in enumerate(row):
             cell_str = str(cell) if cell is not None else ""
             
-            # Columna GUÍA (Índice 1): Le aplicamos Paragraph para que no desborde
+            # Columna GUÍA (Índice 1): Aplica salto de línea para que no desborde
             if j == 1 and not es_totales and cell_str:
                 new_row.append(Paragraph(cell_str, estilo_guia))
                 
@@ -306,11 +306,11 @@ def crear_pdf_facturacion(nombre_archivo, data_filas, prov_nombre, periodo_str, 
                 else:
                     new_row.append(Paragraph(val_formatted, estilo_monto))
                     
-            # Columna 0 en los totales (Los textos de la izquierda)
+            # Textos "SUBTOTALES", "IVA", "TOTAL"
             elif j == 0 and es_totales:
                 new_row.append(Paragraph(cell_str, estilo_subtotal))
                 
-            # Resto de celdas normales
+            # Resto de celdas
             else:
                 if cell_str:
                     new_row.append(Paragraph(cell_str, estilo_celda))
@@ -319,7 +319,6 @@ def crear_pdf_facturacion(nombre_archivo, data_filas, prov_nombre, periodo_str, 
                     
         processed_data.append(new_row)
         
-    # Anchos ajustados exactamente para el tamaño de la hoja A4 (Total ~555 puntos)
     t = Table(processed_data, colWidths=[55, 130, 90, 55, 75, 70, 80], repeatRows=1)
     
     t_style = [

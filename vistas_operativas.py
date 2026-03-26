@@ -18,7 +18,6 @@ from database import Operacion, Historial, Estados, Urgencia, DestinoFrecuente, 
 from utilidades import parsear_txt_dhl_logic, crear_pdf_retiro, crear_pdf_facturacion, crear_pdf_resumen_diario
 from dialogos import ConfirmarEntregaDialog, PreviewImportacionDialog, ReprogramarAdminDialog, EditarPrecioFacturacionDialog, AgregarCargoDialog, CargarPagoDialog, ResumenDiarioChoferDialog
 
-# 🔥 NUEVO DIALOGO PARA DESHACER FACTURACIÓN 🔥
 class DeshacerFacturacionDialog(QDialog):
     def __init__(self, main_app, parent=None):
         super().__init__(parent)
@@ -55,7 +54,6 @@ class DeshacerFacturacionDialog(QDialog):
         
     def cargar_datos(self):
         self.tabla.setRowCount(0)
-        # Traemos solo las facturadas de los últimos 60 días para no saturar
         f_limite = QDate.currentDate().addDays(-60).toPyDate()
         try:
             ops = self.main_app.session.query(Operacion).filter(
@@ -139,9 +137,11 @@ def enviar_email_desktop(session, destinatario, guia, rutas_fotos, proveedor):
                         from PIL import Image
                         img = Image.open(ruta)
                         if img.mode in ("RGBA", "P"): img = img.convert("RGB")
-                        img.thumbnail((800, 800))
+                        
+                        # 🔥 FOTOS EN ALTA CALIDAD PARA LECTURA DE CLIENTES 🔥
+                        img.thumbnail((1600, 1600)) 
                         buffer = io.BytesIO()
-                        img.save(buffer, format="JPEG", quality=70, optimize=True)
+                        img.save(buffer, format="JPEG", quality=85, optimize=True)
                         b64_content = base64.b64encode(buffer.getvalue()).decode('utf-8')
                     except Exception as e:
                         print("Fallo compresión PIL, enviando original:", e)
@@ -453,8 +453,8 @@ class TabIngreso(QWidget):
             self.mapa_destinos_global.clear()
             
             for d in destinos:
-                # 🔥 TEXTO REORDENADO Y MÁS LIMPIO PARA EL BUSCADOR 🔥
-                texto_completer = f"{d.destinatario} | [{d.proveedor}] - {d.domicilio}"
+                # 🔥 ORDEN CORREGIDO Y LIMPIO: Destino - Domicilio [Proveedor] 🔥
+                texto_completer = f"{d.destinatario} - {d.domicilio} [{d.proveedor}]"
                 if texto_completer not in nombres_completos:
                     nombres_completos.append(texto_completer)
                     self.mapa_destinos_global[texto_completer] = d
@@ -463,6 +463,16 @@ class TabIngreso(QWidget):
                 completer = QCompleter(nombres_completos)
                 completer.setCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
                 completer.setFilterMode(Qt.MatchFlag.MatchContains)
+                
+                # 🔥 CSS PARA HACER LA LISTA ANCHA Y CON LÍNEAS SEPARADORAS 🔥
+                vista_lista = completer.popup()
+                vista_lista.setMinimumWidth(600)
+                vista_lista.setStyleSheet("""
+                    QListView { background-color: #ffffff; border: 1px solid #999; font-size: 14px; outline: none; }
+                    QListView::item { padding: 10px; border-bottom: 1px solid #ddd; }
+                    QListView::item:selected { background-color: #bbdefb; color: black; border-bottom: 1px solid #90caf9; }
+                """)
+                
                 self.in_dest.setCompleter(completer)
                 completer.activated.connect(self.autollenar_desde_completer_global)
         except Exception:
@@ -1097,7 +1107,6 @@ class TabFacturacion(QWidget):
         
         self.lbl_resumen = QLabel("Total Base: $0  |  Total Extras: $0  |  TOTAL A FACTURAR: $0"); self.lbl_resumen.setStyleSheet("font-size: 16px; font-weight: bold; margin: 10px 15px; padding: 10px; border: 1px solid #ccc;")
         
-        # 🔥 ACÁ AGREGAMOS EL BOTÓN DESHACER AL LADO DEL TOTAL 🔥
         lay_abajo = QHBoxLayout()
         self.btn_deshacer_fac = QPushButton("⏪ Deshacer Facturación")
         self.btn_deshacer_fac.setStyleSheet("background-color: #ff9800; color: black; font-weight: bold; padding: 10px; border-radius: 5px;")
@@ -1129,7 +1138,6 @@ class TabFacturacion(QWidget):
 
         layout_cta.addLayout(top_cta); layout_cta.addWidget(self.tabla_ctacte); self.tabs_fact.addTab(tab_cta, "2. Cuentas Corrientes (Saldos)")
 
-    # 🔥 FUNCIÓN QUE ABRE LA VENTANITA DE DESHACER 🔥
     def abrir_dialogo_deshacer_facturacion(self):
         dlg = DeshacerFacturacionDialog(self.main, self)
         if dlg.exec() == QDialog.DialogCode.Accepted:
