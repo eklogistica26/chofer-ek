@@ -9,7 +9,7 @@ from PyQt6.QtWidgets import (QApplication, QDialog, QWidget, QVBoxLayout, QHBoxL
                              QComboBox, QPushButton, QTableWidget, QTableWidgetItem, 
                              QHeaderView, QMessageBox, QDateEdit, QGroupBox, 
                              QFormLayout, QSpinBox, QDoubleSpinBox, QRadioButton, 
-                             QButtonGroup, QListWidget, QAbstractItemView, QFrame, QFileDialog, QTabWidget, QCheckBox, QStyledItemDelegate, QScrollArea)
+                             QButtonGroup, QListWidget, QAbstractItemView, QFrame, QFileDialog, QTabWidget, QCheckBox, QStyledItemDelegate, QScrollArea, QCompleter)
 from PyQt6.QtCore import Qt, QDate, QTimer
 from PyQt6.QtGui import QColor, QFont, QBrush
 from sqlalchemy import text, extract
@@ -193,6 +193,7 @@ class TabIngreso(QWidget):
         
         dest_layout = QHBoxLayout(); self.in_destinos_frecuentes = QComboBox(); self.in_destinos_frecuentes.addItem("--- Destinos Guardados ---"); self.in_destinos_frecuentes.setEnabled(False); self.in_destinos_frecuentes.setEditable(True); self.in_destinos_frecuentes.completer().setFilterMode(Qt.MatchFlag.MatchContains); self.in_destinos_frecuentes.currentIndexChanged.connect(self.llenar_datos_destino); self.in_codigo_rapido = QLineEdit(); self.in_codigo_rapido.setPlaceholderText("Buscar ID..."); self.in_codigo_rapido.setFixedWidth(80); self.in_codigo_rapido.returnPressed.connect(self.buscar_destino_por_codigo)
         dest_layout.addWidget(self.in_destinos_frecuentes); dest_layout.addWidget(self.in_codigo_rapido)
+        
         self.in_dest = QLineEdit(); self.in_cel = QLineEdit(); self.in_cel.setPlaceholderText("Ej: 261-155..."); self.in_dom = QLineEdit(); self.in_loc_combo = QComboBox()
         
         fl.addRow("Tipo:", self.in_serv)
@@ -358,6 +359,14 @@ class TabIngreso(QWidget):
         l.addLayout(col_der, 65)
         self.actualizar_interfaz_peso()
 
+    def autollenar_desde_completer(self, texto):
+        try:
+            prov = self.in_prov.currentText()
+            destino_db = self.main.session.query(DestinoFrecuente).filter(DestinoFrecuente.proveedor == prov, DestinoFrecuente.sucursal == self.main.sucursal_actual, DestinoFrecuente.destinatario.ilike(texto)).first()
+            if destino_db:
+                self.llenar_campos_con_objeto(destino_db)
+        except Exception: self.main.session.rollback()
+
     def actualizar_interfaz_peso(self):
         prov = self.in_prov.currentText().upper()
         if "DHL" in prov:
@@ -419,12 +428,31 @@ class TabIngreso(QWidget):
     def cargar_destinos_frecuentes_combo(self, proveedor_texto):
         try:
             self.in_destinos_frecuentes.clear(); self.in_destinos_frecuentes.addItem("--- Destinos Guardados ---")
-            if proveedor_texto == "JetPaq": self.in_destinos_frecuentes.setEnabled(False); self.in_destinos_frecuentes.addItem("(Manual para JetPaq)"); return
+            if proveedor_texto == "JetPaq": 
+                self.in_destinos_frecuentes.setEnabled(False); self.in_destinos_frecuentes.addItem("(Manual para JetPaq)")
+                if hasattr(self, 'in_dest'): self.in_dest.setCompleter(None)
+                return
+            
             destinos = self.main.session.query(DestinoFrecuente).filter(DestinoFrecuente.proveedor == proveedor_texto, DestinoFrecuente.sucursal == self.main.sucursal_actual).order_by(DestinoFrecuente.destinatario).all()
+            
+            nombres_destinos = []
             if destinos:
                 self.in_destinos_frecuentes.setEnabled(True)
-                for d in destinos: self.in_destinos_frecuentes.addItem(f"{d.id} - {d.destinatario}", d.id) 
-            else: self.in_destinos_frecuentes.setEnabled(False); self.in_destinos_frecuentes.addItem("(Sin destinos guardados)")
+                for d in destinos: 
+                    self.in_destinos_frecuentes.addItem(f"{d.id} - {d.destinatario}", d.id)
+                    if d.destinatario not in nombres_destinos:
+                        nombres_destinos.append(d.destinatario)
+            else: 
+                self.in_destinos_frecuentes.setEnabled(False); self.in_destinos_frecuentes.addItem("(Sin destinos guardados)")
+                
+            # 🔥 MAGIA DEL AUTOCOMPLETADO 🔥
+            if hasattr(self, 'in_dest') and isinstance(self.in_dest, QLineEdit):
+                completer = QCompleter(nombres_destinos)
+                completer.setCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
+                completer.setFilterMode(Qt.MatchFlag.MatchContains)
+                self.in_dest.setCompleter(completer)
+                completer.activated.connect(self.autollenar_desde_completer)
+            
         except Exception: self.main.session.rollback()
 
     def buscar_destino_por_codigo(self):
@@ -522,6 +550,8 @@ class TabIngreso(QWidget):
             dom_texto = self.in_dom.text().strip()
             cel_texto = self.in_cel.text().strip()
             
+            mensaje_toast = "✅ GUARDADO EN DEPÓSITO CORRECTAMENTE"
+            
             if prov and prov != "JetPaq" and dest_texto and dom_texto:
                 # 🔥 BUSCAMOS SOLO POR DESTINATARIO (Ignorando mayus/minus) PARA EVITAR DUPLICADOS POR DOMICILIO 🔥
                 existe = self.main.session.query(DestinoFrecuente).filter(
@@ -537,6 +567,8 @@ class TabIngreso(QWidget):
                     )
                     self.main.session.add(nuevo_dest)
                     self.main.session.flush() 
+                else:
+                    mensaje_toast = "✅ GUARDADO (Destino ya existía, se evitó duplicarlo)"
             
             op = Operacion(fecha_ingreso=self.in_fecha.date().toPyDate(), sucursal=self.main.sucursal_actual, guia_remito=guia_final, proveedor=prov, destinatario=dest_texto, celular=cel_texto, domicilio=dom_texto, localidad=loc, bultos=bultos_total, bultos_frio=c_frio, peso=peso_manual, tipo_carga=tipo_carga_txt, tipo_urgencia=Urgencia.CLASICO, monto_servicio=precio, es_contra_reembolso=tiene_cr, monto_recaudacion=monto_cr, info_intercambio=info_cr, tipo_servicio=servicio)
             self.main.session.add(op); self.main.session.flush(); self.main.log_movimiento(op, "INGRESO A DEPOSITO", "Carga inicial en sistema"); self.main.session.commit()
@@ -548,7 +580,6 @@ class TabIngreso(QWidget):
             self.in_dest.clear()
             self.in_cel.clear()
             self.in_dom.clear()                 
-            self.in_loc_combo.setCurrentText("") 
             self.in_monto_recaudar.setValue(0)
             self.in_info_intercambio.clear()
             self.chk_cr.setChecked(False)
@@ -567,7 +598,10 @@ class TabIngreso(QWidget):
             self.cargar_destinos_frecuentes_combo(prov) 
             self.cargar_movimientos_dia()
             self.in_destinos_frecuentes.setCurrentIndex(0)
-            self.main.toast.mostrar("✅ GUARDADO EN DEPÓSITO CORRECTAMENTE")
+            
+            # 🔥 MOSTRAMOS EL AVISO AL OPERADOR 🔥
+            self.main.toast.mostrar(mensaje_toast)
+            
             if hasattr(self.main, 'cargar_monitor_global'): self.main.cargar_monitor_global()
         except Exception as e: 
             self.main.session.rollback(); QMessageBox.warning(self, "Micro-corte", "La conexión parpadeó. Intenta de nuevo.")
