@@ -16,7 +16,7 @@ from sqlalchemy import text, extract
 
 from database import Operacion, Historial, Estados, Urgencia, DestinoFrecuente, ClienteRetiro, ClientePrincipal, ReciboPago
 from utilidades import parsear_txt_dhl_logic, crear_pdf_retiro, crear_pdf_facturacion, crear_pdf_resumen_diario
-from dialogos import PreviewImportacionDialog, ReprogramarAdminDialog, EditarPrecioFacturacionDialog, AgregarCargoDialog, CargarPagoDialog, ResumenDiarioChoferDialog
+from dialogos import ConfirmarEntregaDialog, PreviewImportacionDialog, ReprogramarAdminDialog, EditarPrecioFacturacionDialog, AgregarCargoDialog, CargarPagoDialog, ResumenDiarioChoferDialog
 
 def enviar_email_desktop(session, destinatario, guia, rutas_fotos, proveedor):
     try:
@@ -157,6 +157,7 @@ class TabIngreso(QWidget):
     def __init__(self, main_window):
         super().__init__()
         self.main = main_window
+        self.mapa_destinos_global = {}
         self.setup_ui()
 
     def setup_ui(self):
@@ -357,15 +358,60 @@ class TabIngreso(QWidget):
         
         l.addWidget(panel_izquierdo, 35) 
         l.addLayout(col_der, 65)
+        
+        self.configurar_autocompletado_global()
         self.actualizar_interfaz_peso()
 
-    def autollenar_desde_completer(self, texto):
+    def configurar_autocompletado_global(self):
         try:
-            prov = self.in_prov.currentText()
-            destino_db = self.main.session.query(DestinoFrecuente).filter(DestinoFrecuente.proveedor == prov, DestinoFrecuente.sucursal == self.main.sucursal_actual, DestinoFrecuente.destinatario.ilike(texto)).first()
-            if destino_db:
-                self.llenar_campos_con_objeto(destino_db)
-        except Exception: self.main.session.rollback()
+            destinos = self.main.session.query(DestinoFrecuente).filter(DestinoFrecuente.sucursal == self.main.sucursal_actual).all()
+            nombres_completos = []
+            self.mapa_destinos_global.clear()
+            
+            for d in destinos:
+                texto_completer = f"{d.destinatario} | {d.domicilio} [{d.proveedor}]"
+                if texto_completer not in nombres_completos:
+                    nombres_completos.append(texto_completer)
+                    self.mapa_destinos_global[texto_completer] = d
+                    
+            if hasattr(self, 'in_dest') and isinstance(self.in_dest, QLineEdit):
+                completer = QCompleter(nombres_completos)
+                completer.setCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
+                completer.setFilterMode(Qt.MatchFlag.MatchContains)
+                self.in_dest.setCompleter(completer)
+                completer.activated.connect(self.autollenar_desde_completer_global)
+        except Exception:
+            self.main.session.rollback()
+
+    def autollenar_desde_completer_global(self, texto):
+        try:
+            if texto in self.mapa_destinos_global:
+                destino_db = self.mapa_destinos_global[texto]
+                
+                self.in_prov.blockSignals(True) 
+                self.in_prov.setCurrentText(destino_db.proveedor)
+                self.in_prov.blockSignals(False)
+                
+                self.cargar_destinos_frecuentes_combo(destino_db.proveedor)
+                self.actualizar_interfaz_peso()
+                
+                self.in_dest.blockSignals(True)
+                self.in_dest.setText(destino_db.destinatario)
+                self.in_dest.blockSignals(False)
+                
+                self.in_dom.setText(destino_db.domicilio)
+                self.in_cel.setText(destino_db.celular or "")
+                self.in_loc_combo.setCurrentText(destino_db.localidad)
+                
+                estilo_flash = "background-color: #d1e7dd; color: #0f5132; font-weight: bold; border: 2px solid #198754; border-radius: 4px;"
+                self.in_dest.setStyleSheet(estilo_flash)
+                self.in_dom.setStyleSheet(estilo_flash)
+                self.in_loc_combo.setStyleSheet(estilo_flash)
+                self.in_prov.setStyleSheet(estilo_flash)
+                
+                QTimer.singleShot(1500, self.restaurar_estilo_inputs)
+        except Exception:
+            self.main.session.rollback()
 
     def actualizar_interfaz_peso(self):
         prov = self.in_prov.currentText().upper()
@@ -430,29 +476,17 @@ class TabIngreso(QWidget):
             self.in_destinos_frecuentes.clear(); self.in_destinos_frecuentes.addItem("--- Destinos Guardados ---")
             if proveedor_texto == "JetPaq": 
                 self.in_destinos_frecuentes.setEnabled(False); self.in_destinos_frecuentes.addItem("(Manual para JetPaq)")
-                if hasattr(self, 'in_dest'): self.in_dest.setCompleter(None)
                 return
             
             destinos = self.main.session.query(DestinoFrecuente).filter(DestinoFrecuente.proveedor == proveedor_texto, DestinoFrecuente.sucursal == self.main.sucursal_actual).order_by(DestinoFrecuente.destinatario).all()
             
-            nombres_destinos = []
             if destinos:
                 self.in_destinos_frecuentes.setEnabled(True)
                 for d in destinos: 
                     self.in_destinos_frecuentes.addItem(f"{d.id} - {d.destinatario}", d.id)
-                    if d.destinatario not in nombres_destinos:
-                        nombres_destinos.append(d.destinatario)
             else: 
                 self.in_destinos_frecuentes.setEnabled(False); self.in_destinos_frecuentes.addItem("(Sin destinos guardados)")
                 
-            # 🔥 MAGIA DEL AUTOCOMPLETADO 🔥
-            if hasattr(self, 'in_dest') and isinstance(self.in_dest, QLineEdit):
-                completer = QCompleter(nombres_destinos)
-                completer.setCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
-                completer.setFilterMode(Qt.MatchFlag.MatchContains)
-                self.in_dest.setCompleter(completer)
-                completer.activated.connect(self.autollenar_desde_completer)
-            
         except Exception: self.main.session.rollback()
 
     def buscar_destino_por_codigo(self):
@@ -480,10 +514,11 @@ class TabIngreso(QWidget):
         self.in_dest.setText(destino_db.destinatario); self.in_dom.setText(destino_db.domicilio); self.in_cel.setText(destino_db.celular or ""); self.in_loc_combo.setCurrentText(destino_db.localidad)
         estilo_flash = "background-color: #d1e7dd; color: #0f5132; font-weight: bold; border: 2px solid #198754; border-radius: 4px;"
         self.in_dest.setStyleSheet(estilo_flash); self.in_dom.setStyleSheet(estilo_flash); self.in_loc_combo.setStyleSheet(estilo_flash)
+        self.in_prov.setStyleSheet(estilo_flash)
         QTimer.singleShot(800, self.restaurar_estilo_inputs)
 
     def restaurar_estilo_inputs(self): 
-        self.in_dest.setStyleSheet(""); self.in_dom.setStyleSheet(""); self.in_loc_combo.setStyleSheet("")
+        self.in_dest.setStyleSheet(""); self.in_dom.setStyleSheet(""); self.in_loc_combo.setStyleSheet(""); self.in_prov.setStyleSheet("")
 
     def guardar_ingreso(self):
         if not self.in_guia.text().strip() and "Entrega" in self.in_serv.currentText(): QMessageBox.warning(self, "Falta Dato", "Debe ingresar el N° de Guía/Remito."); return
@@ -553,12 +588,12 @@ class TabIngreso(QWidget):
             mensaje_toast = "✅ GUARDADO EN DEPÓSITO CORRECTAMENTE"
             
             if prov and prov != "JetPaq" and dest_texto and dom_texto:
-                # 🔥 BUSCAMOS SOLO POR DESTINATARIO (Ignorando mayus/minus) PARA EVITAR DUPLICADOS POR DOMICILIO 🔥
                 existe = self.main.session.query(DestinoFrecuente).filter(
                     DestinoFrecuente.proveedor == prov, 
                     DestinoFrecuente.sucursal == self.main.sucursal_actual, 
                     DestinoFrecuente.destinatario.ilike(dest_texto)
                 ).first()
+                
                 if not existe:
                     nuevo_dest = DestinoFrecuente(
                         proveedor=prov, sucursal=self.main.sucursal_actual,
@@ -599,7 +634,7 @@ class TabIngreso(QWidget):
             self.cargar_movimientos_dia()
             self.in_destinos_frecuentes.setCurrentIndex(0)
             
-            # 🔥 MOSTRAMOS EL AVISO AL OPERADOR 🔥
+            self.configurar_autocompletado_global()
             self.main.toast.mostrar(mensaje_toast)
             
             if hasattr(self.main, 'cargar_monitor_global'): self.main.cargar_monitor_global()
@@ -680,7 +715,8 @@ class TabRendicion(QWidget):
         top.insertWidget(2, self.txt_filtro_rendir)
         
         self.tabla_rendicion = QTableWidget(); self.tabla_rendicion.setColumnCount(10); 
-        self.tabla_rendicion.setHorizontalHeaderLabels(["ID", "Sel.", "Chofer", "Guía / Remito", "Destinatario", "Domicilio", "Localidad", "Bultos/Hs", "Estado", "Salida"]); self.tabla_rendicion.hideColumn(0); 
+        # 🔥 COLUMNA 9 AHORA SE LLAMA "Fecha Ingreso" EN VEZ DE "Salida" 🔥
+        self.tabla_rendicion.setHorizontalHeaderLabels(["ID", "Sel.", "Chofer", "Guía / Remito", "Destinatario", "Domicilio", "Localidad", "Bultos/Hs", "Estado", "Fecha Ingreso"]); self.tabla_rendicion.hideColumn(0); 
         self.tabla_rendicion.setStyleSheet(ESTILO_TABLAS_BLANCAS)
         self.pintor_rend = PintorCeldasDelegate(self.tabla_rendicion)
         self.tabla_rendicion.setItemDelegate(self.pintor_rend)
@@ -695,6 +731,7 @@ class TabRendicion(QWidget):
         self.tabla_rendicion.setColumnWidth(6, 160)
         self.tabla_rendicion.setColumnWidth(7, 100)
         self.tabla_rendicion.setColumnWidth(8, 180)
+        self.tabla_rendicion.setColumnWidth(9, 100)
         header_rend.setStretchLastSection(True)
         
         self.tabla_rendicion.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows); self.tabla_rendicion.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
@@ -825,7 +862,12 @@ class TabRendicion(QWidget):
                 if h_pend and "Pendiente" in h_pend.detalle: estado_calle = "EN CALLE (Pendiente)"
                 it_est = QTableWidgetItem(estado_calle)
                 if "Pendiente" in estado_calle: it_est.setForeground(QColor("#f57f17"))
-                self.tabla_rendicion.setItem(row, 8, it_est); self.tabla_rendicion.setItem(row, 9, QTableWidgetItem("Hoy")) 
+                self.tabla_rendicion.setItem(row, 8, it_est)
+                
+                # 🔥 ACÁ REEMPLAZAMOS "HOY" POR LA FECHA REAL DE CREACIÓN/INGRESO 🔥
+                fecha_creacion_str = op.fecha_ingreso.strftime("%d/%m/%Y") if op.fecha_ingreso else "-"
+                self.tabla_rendicion.setItem(row, 9, QTableWidgetItem(fecha_creacion_str)) 
+                
         except Exception: self.main.session.rollback()
         finally: self.tabla_rendicion.blockSignals(False)
         
