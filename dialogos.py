@@ -4,7 +4,7 @@ from PyQt6.QtWidgets import (QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QCombo
                              QHeaderView, QMessageBox, QDateEdit, QGroupBox, 
                              QFormLayout, QWidget, QSpinBox, QDoubleSpinBox, 
                              QRadioButton, QButtonGroup, QCheckBox, QDialog, 
-                             QTimeEdit, QAbstractItemView)
+                             QTimeEdit, QAbstractItemView, QFileDialog)
 from PyQt6.QtCore import Qt, QDate, QTimer, QTime
 from PyQt6.QtGui import QColor, QFont
 from sqlalchemy import extract, desc, text
@@ -173,17 +173,66 @@ class PreviewImportacionDialog(QDialog):
             self.resultados.append({'guia': self.tabla.item(i, 0).text(), 'destinatario': self.tabla.item(i, 1).text(), 'domicilio': self.tabla.item(i, 2).text(), 'celular': self.tabla.item(i, 3).text(), 'bultos': int(self.tabla.item(i, 4).text()), 'peso': peso_val, 'fecha_ingreso': fecha_sel})
         self.accept()
 
+# 🔥 RESTAURADA CON HORAS Y FOTOS 🔥
 class ConfirmarEntregaDialog(QDialog):
     def __init__(self, parent=None):
-        super().__init__(parent); self.setWindowTitle("✅ Confirmar Entrega"); self.setGeometry(400, 300, 350, 250); layout = QVBoxLayout(); form = QFormLayout(); self.in_recibe = QLineEdit(); self.in_recibe.setPlaceholderText("Nombre y Apellido de quien recibe"); self.in_fecha = QDateEdit(QDate.currentDate()); self.in_fecha.setCalendarPopup(True); self.in_hora = QTimeEdit(QTime.currentTime()); self.chk_hora = QCheckBox("Especificar Hora (Opcional)"); self.chk_hora.toggled.connect(self.in_hora.setEnabled); self.in_hora.setEnabled(False) 
-        form.addRow("Recibió (Obligatorio):", self.in_recibe); form.addRow("Fecha:", self.in_fecha); form.addRow(self.chk_hora, self.in_hora)
-        btn_ok = QPushButton("CONFIRMAR ENTREGA"); btn_ok.setStyleSheet("background-color: #28a745; color: white; font-weight: bold; padding: 10px;"); btn_ok.clicked.connect(self.validar)
-        layout.addLayout(form); layout.addWidget(btn_ok); self.setLayout(layout)
-        self.recibe_final = ""; self.fecha_final = ""; self.hora_final = None
+        super().__init__(parent)
+        self.setWindowTitle("✅ Confirmar Entrega")
+        self.setGeometry(400, 300, 450, 350)
+        layout = QVBoxLayout()
+        form = QFormLayout()
+        
+        self.in_recibe = QLineEdit()
+        self.in_recibe.setPlaceholderText("Nombre y Apellido de quien recibe")
+        
+        self.in_fecha = QDateEdit(QDate.currentDate())
+        self.in_fecha.setCalendarPopup(True)
+        
+        self.in_hora = QTimeEdit(QTime.currentTime())
+        self.chk_hora = QCheckBox("Especificar Hora (Opcional)")
+        self.chk_hora.toggled.connect(self.in_hora.setEnabled)
+        self.in_hora.setEnabled(False)
+        
+        self.rutas_fotos = []
+        self.btn_fotos = QPushButton("📸 ADJUNTAR FOTOS DEL REMITO (PC)")
+        self.btn_fotos.setStyleSheet("background-color: #17a2b8; color: white; font-weight: bold; padding: 8px;")
+        self.btn_fotos.clicked.connect(self.seleccionar_fotos)
+        self.lbl_fotos = QLabel("Ninguna foto adjunta.")
+        self.lbl_fotos.setStyleSheet("color: #666;")
+        
+        form.addRow("Recibió (Obligatorio):", self.in_recibe)
+        form.addRow("Fecha:", self.in_fecha)
+        form.addRow(self.chk_hora, self.in_hora)
+        form.addRow("", self.btn_fotos)
+        form.addRow("", self.lbl_fotos)
+        
+        btn_ok = QPushButton("CONFIRMAR ENTREGA Y ENVIAR MAIL")
+        btn_ok.setStyleSheet("background-color: #28a745; color: white; font-weight: bold; padding: 10px; margin-top: 15px;")
+        btn_ok.clicked.connect(self.validar)
+        
+        layout.addLayout(form)
+        layout.addWidget(btn_ok)
+        self.setLayout(layout)
+        
+        self.recibe_final = ""
+        self.fecha_final = ""
+        self.hora_final = None
+        
+    def seleccionar_fotos(self):
+        archivos, _ = QFileDialog.getOpenFileNames(self, "Seleccionar Fotos", "", "Images (*.png *.jpg *.jpeg)")
+        if archivos:
+            self.rutas_fotos = archivos
+            self.lbl_fotos.setText(f"✅ {len(archivos)} foto(s) adjunta(s) listas para enviar.")
+            self.lbl_fotos.setStyleSheet("color: green; font-weight: bold;")
+            
     def validar(self):
-        if not self.in_recibe.text().strip(): QMessageBox.warning(self, "Error", "Debe indicar quién recibió."); return
-        self.recibe_final = self.in_recibe.text().strip(); self.fecha_final = self.in_fecha.date().toPyDate()
-        if self.chk_hora.isChecked(): self.hora_final = self.in_hora.time().toPyTime()
+        if not self.in_recibe.text().strip():
+            QMessageBox.warning(self, "Error", "Debe indicar quién recibió.")
+            return
+        self.recibe_final = self.in_recibe.text().strip()
+        self.fecha_final = self.in_fecha.date().toPyDate()
+        if self.chk_hora.isChecked():
+            self.hora_final = self.in_hora.time().toPyTime()
         self.accept()
 
 class ReprogramarAdminDialog(QDialog):
@@ -301,7 +350,6 @@ class EditarOperacionDialog(QDialog):
         else: self.in_bultos_simple.show(); self.container_comb.hide()
     def guardar(self):
         try:
-            # 🔥 GUARDAMOS LOS NUEVOS CAMPOS 🔥
             self.op.fecha_ingreso = self.in_fecha.date().toPyDate()
             self.op.guia_remito = self.in_guia.text()
             
