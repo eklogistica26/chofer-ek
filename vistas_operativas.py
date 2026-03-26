@@ -18,6 +18,90 @@ from database import Operacion, Historial, Estados, Urgencia, DestinoFrecuente, 
 from utilidades import parsear_txt_dhl_logic, crear_pdf_retiro, crear_pdf_facturacion, crear_pdf_resumen_diario
 from dialogos import ConfirmarEntregaDialog, PreviewImportacionDialog, ReprogramarAdminDialog, EditarPrecioFacturacionDialog, AgregarCargoDialog, CargarPagoDialog, ResumenDiarioChoferDialog
 
+# 🔥 NUEVO DIALOGO PARA DESHACER FACTURACIÓN 🔥
+class DeshacerFacturacionDialog(QDialog):
+    def __init__(self, main_app, parent=None):
+        super().__init__(parent)
+        self.main_app = main_app
+        self.setWindowTitle("⏪ Deshacer Facturación")
+        self.setGeometry(400, 200, 750, 400)
+        layout = QVBoxLayout(self)
+        
+        lbl = QLabel("Seleccione las guías que desea devolver a estado 'No Facturado':")
+        lbl.setStyleSheet("font-weight: bold; color: #d32f2f;")
+        layout.addWidget(lbl)
+        
+        self.tabla = QTableWidget()
+        self.tabla.setColumnCount(7)
+        self.tabla.setHorizontalHeaderLabels(["ID", "Sel.", "Fecha", "Guía", "Proveedor", "Destinatario", "Total ($)"])
+        self.tabla.hideColumn(0)
+        self.tabla.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
+        self.tabla.setColumnWidth(1, 40)
+        self.tabla.setColumnWidth(2, 90)
+        self.tabla.setColumnWidth(3, 140)
+        self.tabla.setColumnWidth(4, 150)
+        self.tabla.setColumnWidth(5, 200)
+        self.tabla.horizontalHeader().setStretchLastSection(True)
+        self.tabla.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        self.tabla.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        layout.addWidget(self.tabla)
+        
+        btn_deshacer = QPushButton("⏪ DEVOLVER A LA TABLA PRINCIPAL")
+        btn_deshacer.setStyleSheet("background-color: #ff9800; font-weight: bold; padding: 10px; color: black;")
+        btn_deshacer.clicked.connect(self.procesar_deshacer)
+        layout.addWidget(btn_deshacer)
+        
+        self.cargar_datos()
+        
+    def cargar_datos(self):
+        self.tabla.setRowCount(0)
+        # Traemos solo las facturadas de los últimos 60 días para no saturar
+        f_limite = QDate.currentDate().addDays(-60).toPyDate()
+        try:
+            ops = self.main_app.session.query(Operacion).filter(
+                Operacion.facturado == True,
+                Operacion.sucursal == self.main_app.sucursal_actual,
+                Operacion.fecha_ingreso >= f_limite
+            ).order_by(Operacion.id.desc()).limit(150).all()
+            
+            for r, op in enumerate(ops):
+                self.tabla.insertRow(r)
+                self.tabla.setItem(r, 0, QTableWidgetItem(str(op.id)))
+                
+                chk = QTableWidgetItem()
+                chk.setFlags(Qt.ItemFlag.ItemIsUserCheckable | Qt.ItemFlag.ItemIsEnabled)
+                chk.setCheckState(Qt.CheckState.Unchecked)
+                self.tabla.setItem(r, 1, chk)
+                
+                self.tabla.setItem(r, 2, QTableWidgetItem(op.fecha_ingreso.strftime("%d/%m/%Y") if op.fecha_ingreso else "-"))
+                self.tabla.setItem(r, 3, QTableWidgetItem(op.guia_remito or "-"))
+                self.tabla.setItem(r, 4, QTableWidgetItem(op.proveedor or "-"))
+                self.tabla.setItem(r, 5, QTableWidgetItem(op.destinatario or "-"))
+                self.tabla.setItem(r, 6, QTableWidgetItem(f"$ {op.monto_servicio:,.2f}"))
+        except Exception as e:
+            pass
+            
+    def procesar_deshacer(self):
+        ids = []
+        for r in range(self.tabla.rowCount()):
+            if self.tabla.item(r, 1).checkState() == Qt.CheckState.Checked:
+                ids.append(int(self.tabla.item(r, 0).text()))
+        
+        if not ids:
+            QMessageBox.warning(self, "Aviso", "Seleccione al menos una guía.")
+            return
+            
+        try:
+            ops = self.main_app.session.query(Operacion).filter(Operacion.id.in_(ids)).all()
+            for op in ops:
+                op.facturado = False
+            self.main_app.session.commit()
+            QMessageBox.information(self, "Éxito", f"Se deshizo la facturación de {len(ids)} guías. Ahora volverán a aparecer en el listado para ser editadas.")
+            self.accept()
+        except Exception as e:
+            self.main_app.session.rollback()
+            QMessageBox.critical(self, "Error", str(e))
+
 def enviar_email_desktop(session, destinatario, guia, rutas_fotos, proveedor):
     try:
         from dotenv import load_dotenv
@@ -369,7 +453,8 @@ class TabIngreso(QWidget):
             self.mapa_destinos_global.clear()
             
             for d in destinos:
-                texto_completer = f"{d.destinatario} | {d.domicilio} [{d.proveedor}]"
+                # 🔥 TEXTO REORDENADO Y MÁS LIMPIO PARA EL BUSCADOR 🔥
+                texto_completer = f"{d.destinatario} | [{d.proveedor}] - {d.domicilio}"
                 if texto_completer not in nombres_completos:
                     nombres_completos.append(texto_completer)
                     self.mapa_destinos_global[texto_completer] = d
@@ -588,10 +673,12 @@ class TabIngreso(QWidget):
             mensaje_toast = "✅ GUARDADO EN DEPÓSITO CORRECTAMENTE"
             
             if prov and prov != "JetPaq" and dest_texto and dom_texto:
+                # 🔥 AHORA EL SISTEMA EVITA DUPLICAR COMPROBANDO DESTINATARIO + DOMICILIO AL MISMO TIEMPO 🔥
                 existe = self.main.session.query(DestinoFrecuente).filter(
                     DestinoFrecuente.proveedor == prov, 
                     DestinoFrecuente.sucursal == self.main.sucursal_actual, 
-                    DestinoFrecuente.destinatario.ilike(dest_texto)
+                    DestinoFrecuente.destinatario.ilike(dest_texto),
+                    DestinoFrecuente.domicilio.ilike(dom_texto)
                 ).first()
                 
                 if not existe:
@@ -715,7 +802,6 @@ class TabRendicion(QWidget):
         top.insertWidget(2, self.txt_filtro_rendir)
         
         self.tabla_rendicion = QTableWidget(); self.tabla_rendicion.setColumnCount(10); 
-        # 🔥 COLUMNA 9 AHORA SE LLAMA "Fecha Ingreso" EN VEZ DE "Salida" 🔥
         self.tabla_rendicion.setHorizontalHeaderLabels(["ID", "Sel.", "Chofer", "Guía / Remito", "Destinatario", "Domicilio", "Localidad", "Bultos/Hs", "Estado", "Fecha Ingreso"]); self.tabla_rendicion.hideColumn(0); 
         self.tabla_rendicion.setStyleSheet(ESTILO_TABLAS_BLANCAS)
         self.pintor_rend = PintorCeldasDelegate(self.tabla_rendicion)
@@ -862,9 +948,8 @@ class TabRendicion(QWidget):
                 if h_pend and "Pendiente" in h_pend.detalle: estado_calle = "EN CALLE (Pendiente)"
                 it_est = QTableWidgetItem(estado_calle)
                 if "Pendiente" in estado_calle: it_est.setForeground(QColor("#f57f17"))
-                self.tabla_rendicion.setItem(row, 8, it_est)
+                self.tabla_rendicion.setItem(row, 8, it_est); 
                 
-                # 🔥 ACÁ REEMPLAZAMOS "HOY" POR LA FECHA REAL DE CREACIÓN/INGRESO 🔥
                 fecha_creacion_str = op.fecha_ingreso.strftime("%d/%m/%Y") if op.fecha_ingreso else "-"
                 self.tabla_rendicion.setItem(row, 9, QTableWidgetItem(fecha_creacion_str)) 
                 
@@ -1010,8 +1095,18 @@ class TabFacturacion(QWidget):
         self.tabla_cierre.setAlternatingRowColors(False)
         self.tabla_cierre.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows); self.tabla_cierre.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers); self.tabla_cierre.cellDoubleClicked.connect(self.doble_clic_ajuste_precio)
         
-        self.lbl_resumen = QLabel("Total Base: $0  |  Total Extras: $0  |  TOTAL A FACTURAR: $0"); self.lbl_resumen.setStyleSheet("font-size: 16px; font-weight: bold; margin: 15px; padding: 10px; border: 1px solid #ccc;")
-        layout_rend.addWidget(panel); layout_rend.addWidget(self.tabla_cierre); layout_rend.addWidget(self.lbl_resumen); self.tabs_fact.addTab(tab_rendicion, "1. Calcular Rendición")
+        self.lbl_resumen = QLabel("Total Base: $0  |  Total Extras: $0  |  TOTAL A FACTURAR: $0"); self.lbl_resumen.setStyleSheet("font-size: 16px; font-weight: bold; margin: 10px 15px; padding: 10px; border: 1px solid #ccc;")
+        
+        # 🔥 ACÁ AGREGAMOS EL BOTÓN DESHACER AL LADO DEL TOTAL 🔥
+        lay_abajo = QHBoxLayout()
+        self.btn_deshacer_fac = QPushButton("⏪ Deshacer Facturación")
+        self.btn_deshacer_fac.setStyleSheet("background-color: #ff9800; color: black; font-weight: bold; padding: 10px; border-radius: 5px;")
+        self.btn_deshacer_fac.clicked.connect(self.abrir_dialogo_deshacer_facturacion)
+        lay_abajo.addWidget(self.btn_deshacer_fac)
+        lay_abajo.addStretch()
+        lay_abajo.addWidget(self.lbl_resumen)
+        
+        layout_rend.addWidget(panel); layout_rend.addWidget(self.tabla_cierre); layout_rend.addLayout(lay_abajo); self.tabs_fact.addTab(tab_rendicion, "1. Calcular Rendición")
 
         tab_cta = QWidget(); layout_cta = QVBoxLayout(tab_cta); top_cta = QHBoxLayout()
         btn_ref_cta = QPushButton("🔄 Actualizar Saldos"); btn_ref_cta.clicked.connect(self.cargar_ctas_ctes)
@@ -1033,6 +1128,13 @@ class TabFacturacion(QWidget):
         self.tabla_ctacte.setItemDelegate(self.pintor_cta)
 
         layout_cta.addLayout(top_cta); layout_cta.addWidget(self.tabla_ctacte); self.tabs_fact.addTab(tab_cta, "2. Cuentas Corrientes (Saldos)")
+
+    # 🔥 FUNCIÓN QUE ABRE LA VENTANITA DE DESHACER 🔥
+    def abrir_dialogo_deshacer_facturacion(self):
+        dlg = DeshacerFacturacionDialog(self.main, self)
+        if dlg.exec() == QDialog.DialogCode.Accepted:
+            self.calcular_cierre()
+            self.cargar_ctas_ctes()
 
     def agregar_cargo_fijo(self):
         proveedores = [self.cierre_prov.itemText(i) for i in range(self.cierre_prov.count()) if self.cierre_prov.itemText(i) != "Todos"]

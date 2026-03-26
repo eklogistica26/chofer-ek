@@ -5,7 +5,7 @@ from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4, landscape, portrait
 from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, Image
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-from reportlab.lib.enums import TA_CENTER
+from reportlab.lib.enums import TA_CENTER, TA_RIGHT
 
 def parsear_txt_dhl_logic(filepath):
     with open(filepath, 'r', encoding='latin-1', errors='replace') as f: lines = f.readlines()
@@ -245,29 +245,109 @@ def crear_pdf_reporte(nombre_archivo, resultados, sucursal, usuario, fecha_gener
         canvas.drawCentredString(page_width / 2.0, 20, f"Generado por: {usuario} | Pág. {doc.page}"); canvas.restoreState()
     doc.build(elements, onFirstPage=add_footer, onLaterPages=add_footer)
 
+
+# 🔥 FACTURACIÓN NUEVA CON LOGO, 2 DECIMALES Y AUTO-AJUSTE 🔥
 def crear_pdf_facturacion(nombre_archivo, data_filas, prov_nombre, periodo_str, usuario, fecha_generacion):
-    doc = SimpleDocTemplate(nombre_archivo, pagesize=A4); elements = []; styles = getSampleStyleSheet()
-    if os.path.exists("logo.png"): elements.append(Image("logo.png", width=120, height=50))
+    doc = SimpleDocTemplate(nombre_archivo, pagesize=A4, rightMargin=20, leftMargin=20, topMargin=25, bottomMargin=25)
+    elements = []
+    styles = getSampleStyleSheet()
+    
+    # 1. Buscamos el Logo
+    logo_path = "eklogo.png" if os.path.exists("eklogo.png") else ("logo.png" if os.path.exists("logo.png") else None)
+    if logo_path:
+        elements.append(Image(logo_path, width=150, height=60, hAlign='CENTER'))
+        elements.append(Spacer(1, 10))
+        
     title_style = ParagraphStyle(name='TitleCenter', parent=styles['Heading1'], alignment=TA_CENTER, fontSize=18)
-    client_style = ParagraphStyle(name='Client', parent=styles['Normal'], alignment=TA_CENTER, fontSize=12, spaceAfter=20)
-    elements.append(Paragraph(f"RENDICIÓN {prov_nombre.upper()}", title_style)); elements.append(Paragraph(f"Período: {periodo_str}", client_style))
-    t = Table(data_filas, colWidths=[55, 105, 90, 60, 75, 70, 75])
+    client_style = ParagraphStyle(name='Client', parent=styles['Normal'], alignment=TA_CENTER, fontSize=12, spaceAfter=15)
+    
+    elements.append(Paragraph(f"RENDICIÓN {prov_nombre.upper()}", title_style))
+    elements.append(Paragraph(f"Período: {periodo_str}", client_style))
+    
+    # Estilos específicos para celdas
+    estilo_celda = ParagraphStyle(name='CeldaTabla', parent=styles['Normal'], fontSize=8, leading=10, alignment=TA_CENTER)
+    # Permite saltos de línea (wordWrap) para números de guía largos
+    estilo_guia = ParagraphStyle(name='CeldaGuia', parent=styles['Normal'], fontSize=8, leading=10, alignment=TA_CENTER, wordWrap='CJK')
+    estilo_monto = ParagraphStyle(name='CeldaMonto', parent=styles['Normal'], fontSize=9, alignment=TA_RIGHT)
+    estilo_subtotal = ParagraphStyle(name='CeldaSub', parent=styles['Normal'], fontSize=10, alignment=TA_RIGHT, fontName='Helvetica-Bold')
+    
+    processed_data = []
+    
+    for i, row in enumerate(data_filas):
+        # La fila 0 es el encabezado, lo dejamos tal cual
+        if i == 0:
+            processed_data.append(row) 
+            continue
+            
+        new_row = []
+        es_totales = (i >= len(data_filas) - 3) # Detecta si son las últimas 3 filas (Subtotales, IVA, Total)
+        
+        for j, cell in enumerate(row):
+            cell_str = str(cell) if cell is not None else ""
+            
+            # Columna GUÍA (Índice 1): Le aplicamos Paragraph para que no desborde
+            if j == 1 and not es_totales and cell_str:
+                new_row.append(Paragraph(cell_str, estilo_guia))
+                
+            # Columnas de Montos (Índices 4, 5, 6): Pasamos a formato .2f y alineamos a la derecha
+            elif j in [4, 5, 6] and cell_str:
+                if "$" in cell_str:
+                    num_str = cell_str.replace("$", "").replace(",", "").strip()
+                    try:
+                        num = float(num_str)
+                        val_formatted = f"$ {num:,.2f}"
+                    except:
+                        val_formatted = cell_str
+                else:
+                    val_formatted = cell_str
+                    
+                if es_totales:
+                    new_row.append(Paragraph(val_formatted, estilo_subtotal))
+                else:
+                    new_row.append(Paragraph(val_formatted, estilo_monto))
+                    
+            # Columna 0 en los totales (Los textos de la izquierda)
+            elif j == 0 and es_totales:
+                new_row.append(Paragraph(cell_str, estilo_subtotal))
+                
+            # Resto de celdas normales
+            else:
+                if cell_str:
+                    new_row.append(Paragraph(cell_str, estilo_celda))
+                else:
+                    new_row.append("")
+                    
+        processed_data.append(new_row)
+        
+    # Anchos ajustados exactamente para el tamaño de la hoja A4 (Total ~555 puntos)
+    t = Table(processed_data, colWidths=[55, 130, 90, 55, 75, 70, 80], repeatRows=1)
+    
     t_style = [
         ('GRID', (0,0), (-1,-1), 0.5, colors.black), 
         ('BACKGROUND', (0,0), (-1,0), colors.lightgrey), 
         ('TEXTCOLOR', (0,0), (-1,0), colors.black), 
         ('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold'), 
-        ('ALIGN', (0,0), (-1,-1), 'CENTER'), 
-        ('BACKGROUND', (0,-3), (-1,-1), colors.lightgrey), 
-        ('FONTNAME', (0,-3), (-1,-1), 'Helvetica-Bold'),
-        ('SPAN', (0, -3), (3, -3)), ('ALIGN', (0,-3), (3,-3), 'CENTER'),
+        ('ALIGN', (0,0), (-1,0), 'CENTER'), 
+        ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
+        ('TOPPADDING', (0,0), (-1,-1), 4),
+        ('BOTTOMPADDING', (0,0), (-1,-1), 4),
+        
+        # Bloque final (Totales)
+        ('BACKGROUND', (0,-3), (-1,-1), colors.whitesmoke), 
+        ('SPAN', (0, -3), (3, -3)), ('ALIGN', (0,-3), (3,-3), 'RIGHT'),
         ('SPAN', (0, -2), (5, -2)), ('ALIGN', (0,-2), (5,-2), 'RIGHT'),
         ('SPAN', (0, -1), (5, -1)), ('ALIGN', (0,-1), (5,-1), 'RIGHT')
     ]
-    t.setStyle(TableStyle(t_style)); elements.append(t)
+    t.setStyle(TableStyle(t_style))
+    elements.append(t)
+    
     def add_footer(canvas, doc): 
-        canvas.saveState(); canvas.setFont('Helvetica', 8); page_width, _ = A4
-        canvas.drawCentredString(page_width / 2.0, 20, f"Generado por: {usuario} | Fecha: {fecha_generacion} | Pág. {doc.page}"); canvas.restoreState()
+        canvas.saveState()
+        canvas.setFont('Helvetica', 8)
+        page_width, _ = A4
+        canvas.drawCentredString(page_width / 2.0, 20, f"Generado por: {usuario} | Fecha: {fecha_generacion} | Pág. {doc.page}")
+        canvas.restoreState()
+        
     doc.build(elements, onFirstPage=add_footer, onLaterPages=add_footer)
 
 def crear_pdf_resumen_diario(nombre_archivo, chofer, fecha_str, entregados, no_entregados, sucursal, usuario):
