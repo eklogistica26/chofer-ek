@@ -18,17 +18,18 @@ from database import Operacion, Historial, Estados, Urgencia, DestinoFrecuente, 
 from utilidades import parsear_txt_dhl_logic, crear_pdf_retiro, crear_pdf_facturacion, crear_pdf_resumen_diario
 from dialogos import PreviewImportacionDialog, ReprogramarAdminDialog, EditarPrecioFacturacionDialog, AgregarCargoDialog, CargarPagoDialog, ResumenDiarioChoferDialog
 
-try:
-    from dotenv import load_dotenv
-    load_dotenv()
-except:
-    pass
-
 def enviar_email_desktop(session, destinatario, guia, rutas_fotos, proveedor):
+    # 🔥 Forzamos la lectura del .env de la PC local 🔥
+    try:
+        from dotenv import load_dotenv
+        BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+        load_dotenv(os.path.join(BASE_DIR, '.env'))
+    except:
+        pass
+
     BREVO_API_KEY = os.environ.get("BREVO_API_KEY", "")
     if not BREVO_API_KEY: 
-        print("⚠️ No se encontró la API KEY de Brevo en la PC local.")
-        return
+        return "⚠️ Correo NO enviado: Falta configurar BREVO_API_KEY en el archivo .env de tu PC."
         
     EMAIL_REMITENTE = "eklogistica19@gmail.com"
     email_prov = None
@@ -68,7 +69,6 @@ def enviar_email_desktop(session, destinatario, guia, rutas_fotos, proveedor):
                     nombre_adjunto = f"remito_{guia}.jpg" if len(rutas_fotos) == 1 else f"remito_{guia}_parte{i+1}.jpg"
                     adjuntos.append({"content": b64_content, "name": nombre_adjunto})
                 except Exception as e: 
-                    print("Error adjuntando archivo:", e)
                     pass
     
     url = "https://api.brevo.com/v3/smtp/email"
@@ -104,8 +104,9 @@ def enviar_email_desktop(session, destinatario, guia, rutas_fotos, proveedor):
     # 🔥 ANTI-REBOTE POR PESO ACTIVADO EN ESCRITORIO 🔥
     try: 
         r = requests.post(url, json=payload, headers=headers)
-        if r.status_code not in [200, 201, 202]:
-            print(f"Error Brevo PC (Intento 1): {r.text}")
+        if r.status_code in [200, 201, 202]:
+            return "📧 Correo enviado exitosamente con la foto adjunta."
+        else:
             if "attachment" in payload:
                 del payload["attachment"]
                 payload["htmlContent"] = html_content.replace(
@@ -113,12 +114,16 @@ def enviar_email_desktop(session, destinatario, guia, rutas_fotos, proveedor):
                     "<b style='color:#D32F2F;'>⚠️ La foto se guardó en nuestro sistema, pero era demasiado pesada para adjuntarse en este correo.</b>"
                 )
                 r2 = requests.post(url, json=payload, headers=headers)
-                if r2.status_code not in [200, 201, 202]:
+                if r2.status_code in [200, 201, 202]:
+                    return "📧 Correo enviado (Sin foto porque excedía el peso de la PC)."
+                else:
                     payload["to"] = [{"email": EMAIL_REMITENTE}]
                     if "bcc" in payload: del payload["bcc"]
                     requests.post(url, json=payload, headers=headers)
+                    return f"⚠️ Fallo al enviar al cliente. Error de servidor: {r2.status_code}"
+            return f"⚠️ Fallo en servidor de correo. Error: {r.status_code}"
     except Exception as e: 
-        print("Error crítico Brevo PC:", e)
+        return f"⚠️ Error de conexión a internet al enviar correo: {str(e)}"
 
 class PintorCeldasDelegate(QStyledItemDelegate):
     def paint(self, painter, option, index):
@@ -852,7 +857,10 @@ class TabRendicion(QWidget):
         if dlg.exec() != QDialog.DialogCode.Accepted: return
         
         try:
-            ops = self.main.session.query(Operacion).filter(Operacion.id.in_(ids)).all(); count = 0
+            ops = self.main.session.query(Operacion).filter(Operacion.id.in_(ids)).all()
+            count = 0
+            mensajes_mail = []
+            
             for op in ops:
                 if op.estado == Estados.ENTREGADO: continue 
                 op.estado = Estados.ENTREGADO
@@ -861,18 +869,29 @@ class TabRendicion(QWidget):
                 
                 if hasattr(dlg, 'rutas_fotos') and dlg.rutas_fotos:
                     detalle += f" [CON {len(dlg.rutas_fotos)} FOTO/S CARGADAS POR PC]"
-                    enviar_email_desktop(self.main.session, dlg.recibe_final, op.guia_remito, dlg.rutas_fotos, op.proveedor)
+                    
+                    # 🔥 Ahora atrapamos el resultado del correo para avisarle al operador 🔥
+                    res_mail = enviar_email_desktop(self.main.session, dlg.recibe_final, op.guia_remito, dlg.rutas_fotos, op.proveedor)
+                    if res_mail:
+                        mensajes_mail.append(f"Guía {op.guia_remito}: {res_mail}")
                 
                 self.main.log_movimiento(op, "ENTREGA CONFIRMADA (ADMIN)", detalle)
                 count += 1
                 
             self.main.session.commit()
-            QMessageBox.information(self, "Éxito", f"{count} entregadas correctamente. Emails enviados si correspondía.")
+            
+            # 🔥 Armamos el cartel final de aviso 🔥
+            msg_final = f"{count} guía(s) entregada(s) correctamente en el sistema."
+            if mensajes_mail:
+                msg_final += "\n\n📋 Estado de Correos:\n" + "\n".join(list(set(mensajes_mail)))
+                
+            QMessageBox.information(self, "Resultado de la Gestión", msg_final)
+            
             self.cargar_rendicion()
             if hasattr(self.main, 'cargar_monitor_global'): self.main.cargar_monitor_global()
-        except Exception: 
+        except Exception as e: 
             self.main.session.rollback()
-            QMessageBox.warning(self, "Micro-corte", "La conexión parpadeó. Intenta de nuevo.")
+            QMessageBox.warning(self, "Error de Sistema", f"Ocurrió un error al procesar: {e}")
 
     def marcar_pendiente_masivo(self):
         ids = []
