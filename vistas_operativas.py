@@ -406,7 +406,9 @@ class TabIngreso(QWidget):
         self.btn_dhl.clicked.connect(self.importar_txt_dhl)
         if self.main.sucursal_actual != "San Juan": self.btn_dhl.hide()
         
+        # 🔥 TOPE MÁXIMO DE 420px PARA QUE NO EMPUJE LA TABLA A LA DERECHA 🔥
         panel_izquierdo = QWidget()
+        panel_izquierdo.setMaximumWidth(420)
         layout_izquierdo = QVBoxLayout(panel_izquierdo)
         layout_izquierdo.setContentsMargins(0, 0, 5, 0)
         layout_izquierdo.addWidget(self.scroll_izq) 
@@ -439,10 +441,9 @@ class TabIngreso(QWidget):
         self.tabla_ingresos.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows); self.tabla_ingresos.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         lay_botones_tabla = QHBoxLayout(); btn_del = QPushButton("🗑️ ELIMINAR"); btn_del.clicked.connect(lambda: self.main.eliminar_fila(self.tabla_ingresos, Operacion)); btn_edit_ingreso = QPushButton("✏️ EDITAR"); btn_edit_ingreso.clicked.connect(lambda: self.main.abrir_edicion(self.tabla_ingresos)); lay_botones_tabla.addWidget(btn_edit_ingreso); lay_botones_tabla.addWidget(btn_del); col_der.addLayout(h_header_ingreso); col_der.addWidget(self.tabla_ingresos); col_der.addLayout(lay_botones_tabla)
         
-        l.addWidget(panel_izquierdo, 35) 
-        l.addLayout(col_der, 65)
+        l.addWidget(panel_izquierdo) 
+        l.addLayout(col_der, 1)
         
-        # 🔥 EL BUSCADOR SE CARGA CON RESPIRADOR ANTI-CUELGUE 🔥
         self.configurar_autocompletado_global()
         self.actualizar_interfaz_peso()
 
@@ -453,7 +454,7 @@ class TabIngreso(QWidget):
             self.mapa_destinos_global.clear()
             
             for i, d in enumerate(destinos):
-                if i % 100 == 0: QApplication.processEvents() # 🔥 ANTI-CUELGUE: RESPIRA CADA 100 DESTINOS 🔥
+                if i % 100 == 0: QApplication.processEvents() 
                 texto_completer = f"{d.destinatario} - {d.domicilio} [{d.proveedor}]"
                 if texto_completer not in nombres_completos:
                     nombres_completos.append(texto_completer)
@@ -464,6 +465,7 @@ class TabIngreso(QWidget):
                 completer.setCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
                 completer.setFilterMode(Qt.MatchFlag.MatchContains)
                 
+                # 🔥 ANCHO DE 600px PARA EL DESPLEGABLE 🔥
                 vista_lista = completer.popup()
                 vista_lista.setMinimumWidth(600)
                 vista_lista.setStyleSheet("""
@@ -703,7 +705,13 @@ class TabIngreso(QWidget):
             op = Operacion(fecha_ingreso=self.in_fecha.date().toPyDate(), sucursal=self.main.sucursal_actual, guia_remito=guia_final, proveedor=prov, destinatario=dest_texto, celular=cel_texto, domicilio=dom_texto, localidad=loc, bultos=bultos_total, bultos_frio=c_frio, peso=peso_manual, tipo_carga=tipo_carga_txt, tipo_urgencia=Urgencia.CLASICO, monto_servicio=precio, es_contra_reembolso=tiene_cr, monto_recaudacion=monto_cr, info_intercambio=info_cr, tipo_servicio=servicio)
             self.main.session.add(op); self.main.session.flush(); self.main.log_movimiento(op, "INGRESO A DEPOSITO", "Carga inicial en sistema"); self.main.session.commit()
             
-            if "Retiro" in servicio: crear_pdf_retiro(f"Comprobante_Retiro_{op.guia_remito or op.id}.pdf", op)
+            # 🔥 DESCARGA AUTOMÁTICA DE COMPROBANTE DE RETIRO 🔥
+            if "Retiro" in servicio: 
+                descargas_dir = os.path.join(os.path.expanduser('~'), 'Downloads')
+                ruta_pdf = os.path.join(descargas_dir, f"Comprobante_Retiro_{op.guia_remito or op.id}.pdf")
+                crear_pdf_retiro(ruta_pdf, op)
+                try: os.startfile(ruta_pdf)
+                except: pass
             
             self.main.cargar_ruta()
             self.in_guia.clear()
@@ -772,7 +780,7 @@ class TabIngreso(QWidget):
             ).order_by(Operacion.id.desc()).all()
             
             for row, op in enumerate(ops):
-                if row % 10 == 0: QApplication.processEvents() # 🔥 ANTI-CUELGUE: RESPIRA CADA 10 FILAS 🔥
+                if row % 10 == 0: QApplication.processEvents()
                 self.tabla_ingresos.insertRow(row); self.tabla_ingresos.setItem(row, 0, QTableWidgetItem(str(op.id)))
                 icon_srv = "🚚" if "Entrega" in op.tipo_servicio else ("🔄" if "Retiro" in op.tipo_servicio else "⏱️")
                 srv_txt = "Flete" if "Flete" in op.tipo_servicio else ("Retiro" if "Retiro" in op.tipo_servicio else "Entrega")
@@ -782,8 +790,6 @@ class TabIngreso(QWidget):
                 elif op.bultos_frio == op.bultos: det_b += " (R)"
                 self.tabla_ingresos.setItem(row, 7, QTableWidgetItem(det_b))
         except Exception: self.main.session.rollback()
-
-
 class TabRendicion(QWidget):
     def __init__(self, main_window):
         super().__init__()
@@ -929,8 +935,16 @@ class TabRendicion(QWidget):
         if not hasattr(self, 'datos_resumen_exitos'): QMessageBox.warning(self, "Atención", "Busque primero."); return
         chofer = self.resumen_chofer.currentText(); fecha_str = self.resumen_fecha.date().toPyDate().strftime("%d/%m/%Y"); fecha_file = self.resumen_fecha.date().toPyDate().strftime("%Y-%m-%d")
         if not self.datos_resumen_exitos and not self.datos_resumen_fallos: QMessageBox.warning(self, "Sin datos", "No hay actividad."); return
-        nombre_archivo, _ = QFileDialog.getSaveFileName(self, "Guardar", f"Resumen_{chofer}_{fecha_file}.pdf", "PDF (*.pdf)")
-        if nombre_archivo: crear_pdf_resumen_diario(nombre_archivo, chofer, fecha_str, self.datos_resumen_exitos, self.datos_resumen_fallos, self.main.sucursal_actual, self.main.usuario.username); os.startfile(nombre_archivo)
+        
+        # 🔥 DESCARGA AUTOMÁTICA EN LA CARPETA DESCARGAS 🔥
+        descargas_dir = os.path.join(os.path.expanduser('~'), 'Downloads')
+        default_path = os.path.join(descargas_dir, f"Resumen_{chofer}_{fecha_file}.pdf")
+        nombre_archivo, _ = QFileDialog.getSaveFileName(self, "Guardar", default_path, "PDF (*.pdf)")
+        
+        if nombre_archivo: 
+            crear_pdf_resumen_diario(nombre_archivo, chofer, fecha_str, self.datos_resumen_exitos, self.datos_resumen_fallos, self.main.sucursal_actual, self.main.usuario.username)
+            try: os.startfile(nombre_archivo)
+            except: pass
 
     def filtrar_tabla_rendicion(self, texto):
         texto = texto.lower()
@@ -945,7 +959,7 @@ class TabRendicion(QWidget):
             self.tabla_rendicion.blockSignals(True); self.tabla_rendicion.setRowCount(0); estados = [Estados.EN_REPARTO]
             ops = self.main.session.query(Operacion).filter(Operacion.estado.in_(estados), Operacion.sucursal == self.main.sucursal_actual).order_by(Operacion.chofer_asignado.asc()).all()
             for row, op in enumerate(ops):
-                if row % 10 == 0: QApplication.processEvents() # 🔥 ANTI-CUELGUE: RESPIRA CADA 10 FILAS 🔥
+                if row % 10 == 0: QApplication.processEvents() 
                 self.tabla_rendicion.insertRow(row); self.tabla_rendicion.setItem(row, 0, QTableWidgetItem(str(op.id)))
                 chk = QTableWidgetItem(); chk.setFlags(Qt.ItemFlag.ItemIsUserCheckable | Qt.ItemFlag.ItemIsEnabled); chk.setCheckState(Qt.CheckState.Unchecked); self.tabla_rendicion.setItem(row, 1, chk)
                 guia_texto = op.guia_remito or "-"
@@ -1259,7 +1273,7 @@ class TabFacturacion(QWidget):
             total_ops = len(self.resultados_cierre)
             
             for row, op in enumerate(self.resultados_cierre):
-                if row % 5 == 0:  # 🔥 ANTI-CUELGUE Y BARRA DE PROGRESO DE FACTURACIÓN 🔥
+                if row % 5 == 0: 
                     self.main.setWindowTitle(f"⏳ Calculando facturación: {row} de {total_ops}...")
                     QApplication.processEvents()
                     
@@ -1381,8 +1395,13 @@ class TabFacturacion(QWidget):
         if not hasattr(self, 'resultados_cierre') or not self.resultados_cierre: return
         reply = QMessageBox.question(self, "Cerrar Facturación", "¿Desea marcar estas guías como FACTURADAS?", QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
         marcar_facturado = (reply == QMessageBox.StandardButton.Yes); mes_nombre = self.cierre_mes.currentText(); anio_num = self.cierre_anio.value(); prov_nombre = self.cierre_prov.currentText()
-        nombre, _ = QFileDialog.getSaveFileName(self, "Rendicion", f"Facturacion_{prov_nombre}.pdf", "PDF (*.pdf)"); 
+        
+        # 🔥 DESCARGA AUTOMÁTICA EN CARPETA DESCARGAS 🔥
+        descargas_dir = os.path.join(os.path.expanduser('~'), 'Downloads')
+        default_path = os.path.join(descargas_dir, f"Facturacion_{prov_nombre}.pdf")
+        nombre, _ = QFileDialog.getSaveFileName(self, "Rendicion", default_path, "PDF (*.pdf)")
         if not nombre: return
+        
         data_filas = [['FECHA', 'GUÍA', 'ZONA', 'BULTOS', 'BASE ($)', 'EXTRAS ($)', 'TOTAL ($)']]
         for op in self.resultados_cierre:
             monto_serv = op.monto_servicio or 0.0
@@ -1412,4 +1431,6 @@ class TabFacturacion(QWidget):
             except: self.main.session.rollback()
         tot_base, tot_extras, tot_final = self.totales_cierre; iva = tot_final * 0.21; total_con_iva = tot_final + iva
         data_filas.append(['SUBTOTALES:', '', '', '', f"$ {tot_base:,.0f}", f"$ {tot_extras:,.0f}", f"$ {tot_final:,.0f}"]); data_filas.append(['IVA (21%):', '', '', '', '', '', f"$ {iva:,.0f}"]); data_filas.append(['TOTAL A FACTURAR:', '', '', '', '', '', f"$ {total_con_iva:,.0f}"]) 
-        crear_pdf_facturacion(nombre, data_filas, prov_nombre, f"{mes_nombre} {anio_num}", self.main.usuario.username, datetime.now().strftime('%d/%m/%Y %H:%M')); os.startfile(nombre)
+        crear_pdf_facturacion(nombre, data_filas, prov_nombre, f"{mes_nombre} {anio_num}", self.main.usuario.username, datetime.now().strftime('%d/%m/%Y %H:%M'))
+        try: os.startfile(nombre)
+        except: pass
