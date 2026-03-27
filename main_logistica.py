@@ -182,146 +182,12 @@ class PlataformaLogistica(QMainWindow):
         self.setup_monitor(); self.setup_ruta(); self.setStatusBar(QStatusBar())
 
     def mostrar_ayuda_inteligente(self):
-        idx = self.tabs.currentIndex()
-        tab_name = self.tabs.tabText(idx)
-        diccionario_ayuda = {
-            "📊 MONITOR GLOBAL": """
-            <h2 style='color:#0d6efd;'>MÓDULO: Monitor Global</h2>
-            <p>Es la pantalla de control principal para ver el estado de la calle en tiempo real.</p>
-            <b>PASO A PASO:</b><br>
-            <b>1.</b> Al abrir, verás todas las guías del día actual de tu sucursal.<br>
-            <b>2.</b> Si querés ver dónde está un paquete, buscá el enlace rojo [📍 MAPA] en la columna Domicilio.<br><br>
-            <b>¿QUÉ HACEN LOS BOTONES?</b><br>
-            - <b>[Fecha] (Calendario):</b> Arriba a la izquierda, te permite viajar en el tiempo y ver qué pasó un día anterior.<br>
-            - <b>[Chofer] (Desplegable):</b> Filtra la tabla para ver solo los paquetes que tiene un empleado específico.<br>
-            - <b>[🔄 Actualizar Ahora]:</b> Refresca la pantalla para ver las últimas entregas que acaban de hacer los choferes en la calle.<br>
-            - <b>[Botones de Colores (Abajo)]:</b> Sirven como filtros rápidos. Tocá '🟢 ENTREGADO' para ocultar todo y ver solo los éxitos.<br><br>
-            <i>Pestaña 'Últimas Novedades y Auditoría': Funciona como una caja negra. Registra qué usuario, a qué hora y qué modificó en cada paquete.</i>
-            """,
-            
-            "1. INGRESO": """
-            <h2 style='color:#0d6efd;'>MÓDULO: Ingreso al Depósito</h2>
-            <p>Se utiliza para cargar la mercadería física al sistema antes de despacharla.</p>
-            <b>PASO A PASO PARA INGRESAR PAQUETES:</b><br>
-            <b>1.</b> Seleccioná el Proveedor, completá el Destinatario y el Domicilio.<br>
-            <b>2.</b> En Zona, seleccioná la localidad (Esto es vital porque define el precio a cobrar).<br>
-            <b>3.</b> Ingresá los Bultos (y el peso si es DHL).<br>
-            <b>4.</b> Tocá <b>GUARDAR EN DEPOSITO</b>. El paquete se sumará a la tabla de la derecha.<br><br>
-            <b>¿QUÉ HACEN LOS BOTONES?</b><br>
-            - <b>[Tipo] (Entrega/Retiro/Flete):</b> Si lo cambiás a Retiro o Flete, la Guía se autogenera sola. Si elegís flete, se cobra por precio pactado.<br>
-            - <b>[📍 Destinos Fijos]:</b> Si elegís una empresa que ya tiene clientes guardados, abrí esta lista, tocá un nombre y los datos de domicilio se llenarán solos.<br>
-            - <b>[📥 IMPORTAR TXT DHL]:</b> Sirve para San Juan. Tocás, elegís el archivo del sistema de DHL y te carga 100 paquetes en 2 segundos.<br>
-            - <b>[✏️ EDITAR]:</b> Si te equivocaste al tipear un nombre, seleccioná la fila en la tabla derecha y tocá Editar.<br>
-            - <b>[🗑️ ELIMINAR]:</b> Borra permanentemente una guía mal ingresada.
-            """,
-            
-            "2. Hoja de Ruta": """
-            <h2 style='color:#0d6efd;'>MÓDULO: Asignación y Despacho</h2>
-            <p>Se usa para asignarle los paquetes a un chofer para que salgan a la calle.</p>
-            <b>PASO A PASO PARA DESPACHAR:</b><br>
-            <b>1.</b> En la tabla, tildá la casilla en la columna 'Sel.' de todos los paquetes que se llevará un chofer.<br>
-            <b>2.</b> Arriba, seleccioná el nombre del Chofer.<br>
-            <b>3.</b> Hacé clic en el botón <b>ASIGNAR GUÍAS</b>.<br><br>
-            <b>¿QUÉ HACEN LOS BOTONES?</b><br>
-            - <b>[☑️ Seleccionar Todo]:</b> Tilda de un solo clic todas las filas de la tabla.<br>
-            - <b>[ASIGNAR GUÍAS]:</b> Pasa los paquetes a 'EN REPARTO'. Le manda los datos a la App del chofer y te ofrece imprimir el PDF.<br>
-            - <b>[🚚 TERCERIZADOS]:</b> Si la carga se la lleva una empresa externa, tocá este botón. Te pedirá el nombre del transporte y generará un Remito especial.<br>
-            - <b>[📅 CAMBIAR FECHA]:</b> Podés tildar VARIOS envíos y tocar este botón para esconderlos y pasarlos para otro día. Desaparecerán hasta que llegue esa fecha.<br>
-            - <b>[📜 HISTORIAL]:</b> Abre un buscador para reimprimir Hojas de Ruta viejas.
-            """,
-            
-            "3. Rendición": """
-            <h2 style='color:#0d6efd;'>MÓDULO: Rendición de Choferes</h2>
-            <p>Se usa cuando el chofer vuelve de la calle para controlar el dinero y los paquetes rebotados.</p>
-            
-            <div style='background-color:#ffeeba; padding:10px; border-left:4px solid #ffc107; margin-bottom:10px;'>
-            <b>¿QUÉ HACER SI NO ENTREGAMOS HOY POR CULPA NUESTRA?</b><br>
-            <b>Paso 1:</b> Seleccioná la guía en la tabla y tocá <b>↩️ DESHACER (Admin)</b>. Esto anula la salida sin cobrar recargos.<br>
-            <b>Paso 2:</b> Andá a la pestaña '2. Hoja de Ruta', buscá el paquete, tocá <b>📅 CAMBIAR FECHA</b> y pasalo para mañana.
-            </div>
-
-            <b>¿QUÉ HACEN LOS BOTONES?</b><br>
-            - <b>[✅ CONFIRMAR ENTREGAS]:</b> Dar por entregado manualmente desde la PC.<br>
-            - <b>[📅 REPROGRAMAR]:</b> Usalo cuando el cliente no estaba o no tenía plata. Vuelve a depósito, PERO el sistema anota que se gastó una visita.<br>
-            - <b>[↩️ DESHACER (Admin)]:</b> Usalo cuando fue CULPA NUESTRA (ej: no hicimos a tiempo). Anula la salida sin cobrar recargos.<br>
-            - <b>[🔍 Buscar Resumen] (Pestaña 2):</b> Muestra lo que el chofer marcó como entregado o fallido hoy.<br>
-            - <b>[Imprimir PDF] (Pestaña 2):</b> Imprime el comprobante final de rendición.
-            """,
-            
-            "4. Reportes": """
-            <h2 style='color:#0d6efd;'>MÓDULO: Búsquedas Históricas</h2>
-            <p>El buscador general para encontrar información vieja o armar planillas.</p>
-            <b>PASO A PASO:</b><br>
-            <b>1.</b> Seleccioná la Fecha 'Desde' y 'Hasta'.<br>
-            <b>2.</b> Usá los desplegables para filtrar si necesitás algo en particular.<br>
-            <b>3.</b> Tocá <b>🔍 Generar</b>.<br><br>
-            <b>¿QUÉ HACEN LOS BOTONES?</b><br>
-            - <b>[🔍 Generar]:</b> Busca en la base de datos y llena la tabla.<br>
-            - <b>[Excel]:</b> Descarga un archivo editable.<br>
-            - <b>[PDF]:</b> Genera un documento formal, sellado e inmodificable.
-            """,
-            
-            "5. Facturación": """
-            <h2 style='color:#0d6efd;'>MÓDULO: Liquidación a Clientes</h2>
-            <p>Se utiliza a fin de mes para calcular cuánto cobrar a cada empresa.</p>
-            
-            <b>¿CÓMO SE CALCULA EL PRECIO?</b><br>
-            - <b>Paquetes:</b> Agrupa los bultos, divide por 3 y multiplica por la tarifa de la zona.<br>
-            - <b>Fletes Especiales:</b> Usa el "Precio Pactado" que le ingresaste en la pestaña Ingreso.<br>
-            - JetPaq no se cobra (Uso interno).<br><br>
-
-            <b>¿QUÉ HACEN LOS BOTONES?</b><br>
-            - <b>[Calcular Listado]:</b> Trae todas las guías. Si hay filas Amarillas, se visitó más de 1 vez a esa casa.<br>
-            - <b>[✏️ Editar] (En la grilla):</b> Permite modificar el precio final a mano o cobrar recargos.<br>
-            - <b>[➕ Agregar Cargo Fijo]:</b> Permite sumar un concepto extra manual.<br>
-            - <b>[Rendición PDF]:</b> Cierra la facturación y la da por cobrada en el sistema.<br>
-            - <b>[💰 Registrar Pago] (Pestaña 2):</b> Descuenta plata de la deuda que tiene el cliente.
-            """,
-            
-            "💬 CRM / Contacto": """
-            <h2 style='color:#0d6efd;'>MÓDULO: Atención Post-Venta (CRM)</h2>
-            <p>Se utiliza para medir la calidad del servicio y fidelizar clientes.</p>
-            <b>¿QUÉ HACEN LOS BOTONES?</b><br>
-            - <b>[🔄 Cargar Entregas Recientes]:</b> Busca las últimas entregas que tengan celular.<br>
-            - <b>[💬 Enviar WhatsApp]:</b> Abre WhatsApp Web con un mensaje saludando al destinatario y preguntándole qué le pareció el servicio.
-            """,
-            
-            "📈 Estadísticas": """
-            <h2 style='color:#0d6efd;'>MÓDULO: Panel Gerencial</h2>
-            <p>Un pantallazo de la salud operativa de tu sucursal.</p>
-            <b>¿QUÉ MUESTRA?</b><br>
-            - Cuántos paquetes salieron hoy, cuántos se entregaron y cuántos siguen en la calle.<br>
-            - El ranking de las empresas que más trabajo derivaron en el mes.<br>
-            - El ranking de los choferes que más paquetes entregaron en el mes.
-            """,
-            
-            "⚙️ Configuración": """
-            <h2 style='color:#0d6efd;'>MÓDULO: Motor del Sistema</h2>
-            <p>Solo accesible para Administradores. Controla el cerebro de la plataforma.</p>
-            <b>¿CÓMO USAR CADA PANEL?</b><br>
-            - <b>💲 Tarifas:</b> Cambiá el precio de una zona y aplicalo al resto de forma masiva.<br>
-            - <b>🚛 Choferes:</b> Agregá el DNI (Contraseña App) y el Celular (Para avisos por WhatsApp).<br>
-            - <b>🏢 Proveedores (Poderes):</b> Creá empresas y activales poderes (Ej: "Siempre Frío", "Es Facturable", etc).<br>
-            - <b>👥 Usuarios:</b> Creale la cuenta a los empleados de oficina y tildá a qué pestañas pueden entrar.
-            """
-        }
-        texto = diccionario_ayuda.get(tab_name, "Selecciona una pestaña específica para ver su manual de uso detallado paso a paso.")
-        
         d = QDialog(self)
-        d.setWindowTitle(f"📖 Manual de Usuario - {tab_name.replace('📊', '').replace('⚙️', '').strip()}")
+        d.setWindowTitle("📖 Manual de Usuario")
         d.setGeometry(300, 150, 850, 600)
-        l = QVBoxLayout(d)
-        t = QTextBrowser()
-        t.setOpenExternalLinks(True)
-        t.setHtml(f"<html><body style='font-family: Arial; font-size: 15px; color: #333; line-height: 1.4;'>{texto}</body></html>")
-        
         btn = QPushButton("ENTENDIDO / CERRAR")
-        btn.setStyleSheet("background-color: #198754; color: white; padding: 12px; font-weight: bold; border-radius: 5px;")
         btn.clicked.connect(d.accept)
-        
-        l.addWidget(t)
-        l.addWidget(btn)
-        d.exec()
+        l = QVBoxLayout(d); l.addWidget(btn); d.exec()
     
     def abrir_tracking(self): 
         d = TrackingDialog(self.session, getattr(self, 'usuario', None)); d.exec()
@@ -469,46 +335,27 @@ class PlataformaLogistica(QMainWindow):
     def aplicar_filtro_monitor(self, filtro):
         self.filtro_monitor = filtro; self.cargar_monitor_global()
 
-    # 🔥 CARGAR NOVEDADES: CON RELOJ COMPLETO Y COLORES 🔥
     def cargar_novedades(self):
         try:
             self.lista_novedades.clear()
             sql = text("SELECT h.fecha_hora, h.detalle, o.guia_remito, h.usuario, h.accion FROM historial_movimientos h JOIN operaciones o ON h.operacion_id = o.id WHERE o.sucursal = :s ORDER BY h.fecha_hora DESC LIMIT 100")
             logs = self.session.execute(sql, {"s": self.sucursal_actual}).fetchall()
-            
             for log in logs:
                 hora = log[0].strftime("%d/%m %H:%M:%S") if log[0] else ""
-                guia = log[2] or "S/G"
-                detalle = log[1] or ""
-                usuario = log[3]
-                accion = log[4] or ""
-                
+                guia = log[2] or "S/G"; detalle = log[1] or ""; usuario = log[3]; accion = log[4] or ""
                 texto = f"{hora} | {guia} | {usuario} | {accion}: {detalle}"
                 item = QListWidgetItem() 
-                
                 if "Reprogramado" in detalle or "Motivo" in detalle or "No Entregado" in detalle or "REPROGRAMADO" in accion: 
-                    item.setBackground(QColor("#f8d7da")) 
-                    item.setForeground(QColor("#721c24"))
-                    item.setFont(QFont("Arial", 10, QFont.Weight.Bold))
-                    item.setText(f"⚠️ {texto}")
+                    item.setBackground(QColor("#f8d7da")); item.setForeground(QColor("#721c24")); item.setFont(QFont("Arial", 10, QFont.Weight.Bold)); item.setText(f"⚠️ {texto}")
                 elif "Recibio" in detalle or "ENTREGA" in accion or "ENTREGADO" in accion: 
-                    item.setBackground(QColor("#d4edda")) 
-                    item.setForeground(QColor("#155724"))
-                    item.setText(f"✅ {texto}")
+                    item.setBackground(QColor("#d4edda")); item.setForeground(QColor("#155724")); item.setText(f"✅ {texto}")
                 elif "REPARTO" in accion or "TERCERIZADO" in accion:
-                    item.setBackground(QColor("#fff3cd")) 
-                    item.setForeground(QColor("#856404"))
-                    item.setText(f"🚚 {texto}")
+                    item.setBackground(QColor("#fff3cd")); item.setForeground(QColor("#856404")); item.setText(f"🚚 {texto}")
                 elif "INGRESO" in accion:
-                    item.setBackground(QColor("#e2e3e5")) 
-                    item.setForeground(QColor("#383d41"))
-                    item.setText(f"📥 {texto}")
-                else: 
-                    item.setText(f"ℹ️ {texto}")
-                    
+                    item.setBackground(QColor("#e2e3e5")); item.setForeground(QColor("#383d41")); item.setText(f"📥 {texto}")
+                else: item.setText(f"ℹ️ {texto}")
                 self.lista_novedades.addItem(item)
-        except Exception as e: 
-            self.session.rollback()
+        except Exception: self.session.rollback()
 
     def cargar_monitor_global(self):
         try:
@@ -684,36 +531,20 @@ class PlataformaLogistica(QMainWindow):
         for r in range(self.tabla_ruta.rowCount()):
             if self.tabla_ruta.item(r, 1).checkState() == Qt.CheckState.Checked: 
                 ids.append(int(self.tabla_ruta.item(r, 0).text()))
-        
         if not ids: 
             QMessageBox.warning(self, "Atención", "Seleccione al menos un envío para cambiar la fecha.")
             return
-            
         try:
-            if len(ids) == 1:
-                op = self.session.query(Operacion).get(ids[0])
-                titulo_dlg = op.guia_remito or f"ID {op.id}"
-            else:
-                titulo_dlg = f"{len(ids)} guías seleccionadas"
-                
+            titulo_dlg = f"{len(ids)} guías seleccionadas" if len(ids) > 1 else (self.session.query(Operacion).get(ids[0]).guia_remito or f"ID {ids[0]}")
             dlg = CambiarFechaDialog(titulo_dlg, self)
             if dlg.exec() == QDialog.DialogCode.Accepted:
-                detalle = f"Reprogramado para el {dlg.fecha_str}. Motivo: {dlg.motivo}"
-                nueva_fecha = datetime.combine(dlg.in_fecha.date().toPyDate(), datetime.min.time())
-                
+                detalle = f"Reprogramado para el {dlg.fecha_str}. Motivo: {dlg.motivo}"; nueva_fecha = datetime.combine(dlg.in_fecha.date().toPyDate(), datetime.min.time())
                 ops = self.session.query(Operacion).filter(Operacion.id.in_(ids)).all()
-                for op in ops:
-                    op.fecha_salida = nueva_fecha
-                    self.log_movimiento(op, "REPROGRAMADO (OFICINA)", detalle)
-                
-                self.session.commit()
-                self.toast.mostrar(f"✅ {len(ids)} guía(s) reprogramada(s)")
-                self.cargar_ruta()
-                if hasattr(self, 'tab_ingreso'):
-                    self.tab_ingreso.cargar_movimientos_dia()
+                for op in ops: op.fecha_salida = nueva_fecha; self.log_movimiento(op, "REPROGRAMADO (OFICINA)", detalle)
+                self.session.commit(); self.toast.mostrar(f"✅ {len(ids)} guía(s) reprogramada(s)"); self.cargar_ruta()
+                if hasattr(self, 'tab_ingreso'): self.tab_ingreso.cargar_movimientos_dia()
                 self.cargar_monitor_global()
-        except Exception: 
-            self.session.rollback()
+        except Exception: self.session.rollback()
 
     def asignar_chofer_masivo(self):
         chofer = self.combo_masivo_chofer.currentText()
@@ -751,6 +582,7 @@ class PlataformaLogistica(QMainWindow):
         estado = Qt.CheckState.Checked if tabla.item(0, 1).checkState() == Qt.CheckState.Unchecked else Qt.CheckState.Unchecked
         for r in range(rows): tabla.item(r, 1).setCheckState(estado)
         
+    # 🔥 HOJA DE RUTA: DESCARGA AUTOMÁTICA EN DESCARGAS 🔥
     def generar_pdf_ruta(self, ids_forzados=None, nombre_sufijo=""):
         chofer_filtro = self.combo_masivo_chofer.currentText()
         try:
@@ -767,13 +599,19 @@ class PlataformaLogistica(QMainWindow):
                 ops_upd = self.session.query(Operacion).filter(Operacion.id.in_(ids)).all()
                 for op in ops_upd: op.chofer_asignado = chofer_filtro; op.estado = Estados.EN_REPARTO; op.fecha_salida = datetime.now(); self.log_movimiento(op, "SALIDA A REPARTO", f"Asignado a {chofer_filtro}")
                 self.session.commit(); self.cargar_ruta()
+            
             ops = self.session.query(Operacion).filter(Operacion.id.in_(ids)).all()
-            nombre_final = f"Ruta_{chofer_filtro}_{datetime.now().strftime('%d-%m')}{nombre_sufijo}.pdf"
-            nombre, _ = QFileDialog.getSaveFileName(self, "Ruta", nombre_final, "PDF (*.pdf)")
-            if not nombre: return
-            crear_pdf_ruta(nombre, ops, self.sucursal_actual, chofer_filtro, self.usuario.username, datetime.now().strftime('%d/%m/%Y %H:%M'))
+            
+            descargas_dir = os.path.join(os.path.expanduser('~'), 'Downloads')
+            if not os.path.exists(descargas_dir): os.makedirs(descargas_dir, exist_ok=True)
+            ruta_pdf = os.path.join(descargas_dir, f"Ruta_{chofer_filtro}_{datetime.now().strftime('%d-%m')}{nombre_sufijo}.pdf")
+            
+            crear_pdf_ruta(ruta_pdf, ops, self.sucursal_actual, chofer_filtro, self.usuario.username, datetime.now().strftime('%d/%m/%Y %H:%M'))
+            try: os.startfile(ruta_pdf)
+            except: pass
         except Exception: self.session.rollback()
 
+    # 🔥 TERCERIZADOS: DESCARGA AUTOMÁTICA EN DESCARGAS 🔥
     def generar_pdf_terc(self):
         transporte, ok = QInputDialog.getText(self, "Transporte Tercerizado", "Nombre del Transporte / Empresa:")
         if not ok or not transporte: return
@@ -788,9 +626,14 @@ class PlataformaLogistica(QMainWindow):
                 if op.estado != Estados.EN_REPARTO: self.log_movimiento(op, "SALIDA A TERCERIZADO", f"Entregado a {transporte}")
                 op.estado = Estados.EN_REPARTO; op.fecha_salida = datetime.now() 
             self.session.commit(); self.cargar_ruta()
-            nombre, _ = QFileDialog.getSaveFileName(self, "Ruta", f"Remito_{transporte}_{datetime.now().strftime('%d-%m')}.pdf", "PDF (*.pdf)"); 
-            if not nombre: return
-            crear_pdf_tercerizados(nombre, ops, self.sucursal_actual, transporte, self.usuario.username, datetime.now().strftime('%d/%m/%Y %H:%M'))
+            
+            descargas_dir = os.path.join(os.path.expanduser('~'), 'Downloads')
+            if not os.path.exists(descargas_dir): os.makedirs(descargas_dir, exist_ok=True)
+            ruta_pdf = os.path.join(descargas_dir, f"Remito_{transporte}_{datetime.now().strftime('%d-%m')}.pdf")
+            
+            crear_pdf_tercerizados(ruta_pdf, ops, self.sucursal_actual, transporte, self.usuario.username, datetime.now().strftime('%d/%m/%Y %H:%M'))
+            try: os.startfile(ruta_pdf)
+            except: pass
         except Exception: self.session.rollback()
 
     def setup_reportes(self):
@@ -849,22 +692,45 @@ class PlataformaLogistica(QMainWindow):
             self.lbl_reporte_total.setText(f"Resultados: {total_guias} | Total Dinero: $ {total_dinero:,.2f}")
         except Exception: self.session.rollback()
         
+    # 🔥 REPORTE PDF: DESCARGA AUTOMÁTICA Y FILTROS DETALLADOS 🔥
     def generar_pdf_rep(self):
         try:
-            resultados = self.construir_query_reportes(); nombre_archivo = f"Reporte_{datetime.now().strftime('%Y-%m-%d')}_{self.sucursal_actual}.pdf"
-            nombre, _ = QFileDialog.getSaveFileName(self, "Reporte PDF", nombre_archivo, "PDF (*.pdf)"); 
-            if not nombre: return
-            total_dinero = sum([op.monto_servicio for op in resultados]); filtro_info = f"Desde: {self.rep_fecha_desde.text()} Hasta: {self.rep_fecha_hasta.text()}"
-            if self.rep_cliente.currentText() != "Todos": filtro_info += f" | CLIENTE: {self.rep_cliente.currentText()}"
-            crear_pdf_reporte(nombre, resultados, self.sucursal_actual, self.usuario.username, datetime.now().strftime('%d/%m/%Y %H:%M'), filtro_info, total_dinero); os.startfile(nombre)
+            resultados = self.construir_query_reportes()
+            
+            descargas_dir = os.path.join(os.path.expanduser('~'), 'Downloads')
+            if not os.path.exists(descargas_dir): os.makedirs(descargas_dir, exist_ok=True)
+            ruta_pdf = os.path.join(descargas_dir, f"Reporte_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{self.sucursal_actual}.pdf")
+            
+            total_dinero = sum([op.monto_servicio for op in resultados])
+            
+            # Recolectamos absolutamente todos los filtros aplicados
+            filtro_info = f"Desde: {self.rep_fecha_desde.text()} Hasta: {self.rep_fecha_hasta.text()}"
+            if self.rep_sucursal.currentText() != "Todas": filtro_info += f" | SUC: {self.rep_sucursal.currentText()}"
+            if self.rep_cliente.currentText() != "Todos": filtro_info += f" | CLI: {self.rep_cliente.currentText()}"
+            if self.rep_chofer.currentText() != "Todos": filtro_info += f" | CHOF: {self.rep_chofer.currentText()}"
+            if self.rep_estado.currentText() != "Todos": filtro_info += f" | ESTADO: {self.rep_estado.currentText()}"
+            if self.rep_facturado.currentText() != "Todos": filtro_info += f" | FAC: {self.rep_facturado.currentText()}"
+            
+            crear_pdf_reporte(ruta_pdf, resultados, self.sucursal_actual, self.usuario.username, datetime.now().strftime('%d/%m/%Y %H:%M'), filtro_info, total_dinero)
+            try: os.startfile(ruta_pdf)
+            except: pass
         except Exception: self.session.rollback()
         
+    # 🔥 EXCEL: DESCARGA AUTOMÁTICA EN DESCARGAS 🔥
     def exportar_reporte_excel(self):
         try:
             import pandas as pd
             resultados = self.construir_query_reportes(); data = []
             for op in resultados: data.append({"Fecha": op.fecha_ingreso, "Sucursal": op.sucursal, "Cliente": op.proveedor, "Guia": op.guia_remito, "Destinatario": op.destinatario, "Estado": op.estado, "Facturado": "SI" if op.facturado else "NO", "Monto": op.monto_servicio})
-            df = pd.DataFrame(data); df.to_excel("Reporte_Gestion.xlsx", index=False); os.startfile("Reporte_Gestion.xlsx")
+            df = pd.DataFrame(data)
+            
+            descargas_dir = os.path.join(os.path.expanduser('~'), 'Downloads')
+            if not os.path.exists(descargas_dir): os.makedirs(descargas_dir, exist_ok=True)
+            ruta_excel = os.path.join(descargas_dir, f"Reporte_Gestion_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx")
+            
+            df.to_excel(ruta_excel, index=False)
+            try: os.startfile(ruta_excel)
+            except: pass
         except Exception: self.session.rollback()
 
     def setup_crm(self):
