@@ -236,7 +236,7 @@ class PlataformaLogistica(QMainWindow):
             
             <div style='background-color:#ffeeba; padding:10px; border-left:4px solid #ffc107; margin-bottom:10px;'>
             <b>¿QUÉ HACER SI NO ENTREGAMOS HOY POR CULPA NUESTRA?</b><br>
-            <b>Paso 1:</b> Seleccioná la guía en la tabla y tocá <b>↩️ DESHACER (Admin)</b>. Esto anula la salida sin cobrarle demoras al cliente.<br>
+            <b>Paso 1:</b> Seleccioná la guía en la tabla y tocá <b>↩️ DESHACER (Admin)</b>. Esto anula la salida sin cobrar recargos.<br>
             <b>Paso 2:</b> Andá a la pestaña '2. Hoja de Ruta', buscá el paquete, tocá <b>📅 CAMBIAR FECHA</b> y pasalo para mañana.
             </div>
 
@@ -381,7 +381,6 @@ class PlataformaLogistica(QMainWindow):
                 costo_exc = excedente_kg * t.excedente
                 return base + costo_exc
             else:
-                # 🔥 LA MAGIA DE ILIKE: Busca la zona ignorando mayúsculas y minúsculas 🔥
                 loc_limpia = loc.strip()
                 t = self.session.query(Tarifa).filter(Tarifa.localidad.ilike(loc_limpia), Tarifa.sucursal == suc).first()
                 if not t: return 0.0
@@ -470,20 +469,46 @@ class PlataformaLogistica(QMainWindow):
     def aplicar_filtro_monitor(self, filtro):
         self.filtro_monitor = filtro; self.cargar_monitor_global()
 
+    # 🔥 CARGAR NOVEDADES: CON RELOJ COMPLETO Y COLORES 🔥
     def cargar_novedades(self):
         try:
             self.lista_novedades.clear()
-            sql = text("SELECT h.fecha_hora, h.detalle, o.guia_remito, h.usuario FROM historial_movimientos h JOIN operations o ON h.operacion_id = o.id WHERE o.sucursal = :s ORDER BY h.fecha_hora DESC LIMIT 100")
+            sql = text("SELECT h.fecha_hora, h.detalle, o.guia_remito, h.usuario, h.accion FROM historial_movimientos h JOIN operaciones o ON h.operacion_id = o.id WHERE o.sucursal = :s ORDER BY h.fecha_hora DESC LIMIT 100")
             logs = self.session.execute(sql, {"s": self.sucursal_actual}).fetchall()
+            
             for log in logs:
-                hora = log[0].strftime("%d/%m %H:%M") if log[0] else ""
-                guia = log[2] or "S/G"; detalle = log[1] or ""; usuario = log[3]; texto = f"{hora} | {guia}: {detalle} ({usuario})"
+                hora = log[0].strftime("%d/%m %H:%M:%S") if log[0] else ""
+                guia = log[2] or "S/G"
+                detalle = log[1] or ""
+                usuario = log[3]
+                accion = log[4] or ""
+                
+                texto = f"{hora} | {guia} | {usuario} | {accion}: {detalle}"
                 item = QListWidgetItem() 
-                if "Reprogramado" in detalle or "Motivo" in detalle or "No Entregado" in detalle: item.setForeground(QColor("red")); item.setFont(QFont("Arial", 9, QFont.Weight.Bold)); item.setText(f"⚠️ {texto}")
-                elif "Recibio" in detalle or "ENTREGA CONFIRMADA" in detalle: item.setForeground(QColor("green")); item.setText(f"✅ {texto}")
-                else: item.setText(f"ℹ️ {texto}")
+                
+                if "Reprogramado" in detalle or "Motivo" in detalle or "No Entregado" in detalle or "REPROGRAMADO" in accion: 
+                    item.setBackground(QColor("#f8d7da")) 
+                    item.setForeground(QColor("#721c24"))
+                    item.setFont(QFont("Arial", 10, QFont.Weight.Bold))
+                    item.setText(f"⚠️ {texto}")
+                elif "Recibio" in detalle or "ENTREGA" in accion or "ENTREGADO" in accion: 
+                    item.setBackground(QColor("#d4edda")) 
+                    item.setForeground(QColor("#155724"))
+                    item.setText(f"✅ {texto}")
+                elif "REPARTO" in accion or "TERCERIZADO" in accion:
+                    item.setBackground(QColor("#fff3cd")) 
+                    item.setForeground(QColor("#856404"))
+                    item.setText(f"🚚 {texto}")
+                elif "INGRESO" in accion:
+                    item.setBackground(QColor("#e2e3e5")) 
+                    item.setForeground(QColor("#383d41"))
+                    item.setText(f"📥 {texto}")
+                else: 
+                    item.setText(f"ℹ️ {texto}")
+                    
                 self.lista_novedades.addItem(item)
-        except Exception: self.session.rollback()
+        except Exception as e: 
+            self.session.rollback()
 
     def cargar_monitor_global(self):
         try:
