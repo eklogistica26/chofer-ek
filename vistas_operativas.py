@@ -406,9 +406,8 @@ class TabIngreso(QWidget):
         self.btn_dhl.clicked.connect(self.importar_txt_dhl)
         if self.main.sucursal_actual != "San Juan": self.btn_dhl.hide()
         
-        # 🔥 TOPE MÁXIMO DE 420px PARA QUE NO EMPUJE LA TABLA A LA DERECHA 🔥
+        # 🔥 EL PANEL SE AJUSTA SIN ESTIRARSE (PROPORCIONES 35/65 ORIGINALES) 🔥
         panel_izquierdo = QWidget()
-        panel_izquierdo.setMaximumWidth(420)
         layout_izquierdo = QVBoxLayout(panel_izquierdo)
         layout_izquierdo.setContentsMargins(0, 0, 5, 0)
         layout_izquierdo.addWidget(self.scroll_izq) 
@@ -441,8 +440,8 @@ class TabIngreso(QWidget):
         self.tabla_ingresos.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows); self.tabla_ingresos.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         lay_botones_tabla = QHBoxLayout(); btn_del = QPushButton("🗑️ ELIMINAR"); btn_del.clicked.connect(lambda: self.main.eliminar_fila(self.tabla_ingresos, Operacion)); btn_edit_ingreso = QPushButton("✏️ EDITAR"); btn_edit_ingreso.clicked.connect(lambda: self.main.abrir_edicion(self.tabla_ingresos)); lay_botones_tabla.addWidget(btn_edit_ingreso); lay_botones_tabla.addWidget(btn_del); col_der.addLayout(h_header_ingreso); col_der.addWidget(self.tabla_ingresos); col_der.addLayout(lay_botones_tabla)
         
-        l.addWidget(panel_izquierdo) 
-        l.addLayout(col_der, 1)
+        l.addWidget(panel_izquierdo, 35) # 🔥 Se mantiene el 35% a la izquierda para que respire 🔥
+        l.addLayout(col_der, 65) # 🔥 Se mantiene el 65% para la tabla de depósitos 🔥
         
         self.configurar_autocompletado_global()
         self.actualizar_interfaz_peso()
@@ -465,9 +464,8 @@ class TabIngreso(QWidget):
                 completer.setCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
                 completer.setFilterMode(Qt.MatchFlag.MatchContains)
                 
-                # 🔥 ANCHO DE 600px PARA EL DESPLEGABLE 🔥
                 vista_lista = completer.popup()
-                vista_lista.setMinimumWidth(600)
+                vista_lista.setMinimumWidth(600) # 🔥 La lista flota y mide 600px sin empujar al panel 🔥
                 vista_lista.setStyleSheet("""
                     QListView { background-color: #ffffff; border: 1px solid #999; font-size: 14px; outline: none; }
                     QListView::item { padding: 10px; border-bottom: 1px solid #ddd; }
@@ -705,9 +703,10 @@ class TabIngreso(QWidget):
             op = Operacion(fecha_ingreso=self.in_fecha.date().toPyDate(), sucursal=self.main.sucursal_actual, guia_remito=guia_final, proveedor=prov, destinatario=dest_texto, celular=cel_texto, domicilio=dom_texto, localidad=loc, bultos=bultos_total, bultos_frio=c_frio, peso=peso_manual, tipo_carga=tipo_carga_txt, tipo_urgencia=Urgencia.CLASICO, monto_servicio=precio, es_contra_reembolso=tiene_cr, monto_recaudacion=monto_cr, info_intercambio=info_cr, tipo_servicio=servicio)
             self.main.session.add(op); self.main.session.flush(); self.main.log_movimiento(op, "INGRESO A DEPOSITO", "Carga inicial en sistema"); self.main.session.commit()
             
-            # 🔥 DESCARGA AUTOMÁTICA DE COMPROBANTE DE RETIRO 🔥
+            # 🔥 DESCARGA DIRECTA (SIN PREGUNTAR) EN CARPETA DESCARGAS 🔥
             if "Retiro" in servicio: 
                 descargas_dir = os.path.join(os.path.expanduser('~'), 'Downloads')
+                os.makedirs(descargas_dir, exist_ok=True)
                 ruta_pdf = os.path.join(descargas_dir, f"Comprobante_Retiro_{op.guia_remito or op.id}.pdf")
                 crear_pdf_retiro(ruta_pdf, op)
                 try: os.startfile(ruta_pdf)
@@ -936,15 +935,14 @@ class TabRendicion(QWidget):
         chofer = self.resumen_chofer.currentText(); fecha_str = self.resumen_fecha.date().toPyDate().strftime("%d/%m/%Y"); fecha_file = self.resumen_fecha.date().toPyDate().strftime("%Y-%m-%d")
         if not self.datos_resumen_exitos and not self.datos_resumen_fallos: QMessageBox.warning(self, "Sin datos", "No hay actividad."); return
         
-        # 🔥 DESCARGA AUTOMÁTICA EN LA CARPETA DESCARGAS 🔥
+        # 🔥 DESCARGA DIRECTA (SIN PREGUNTAR) EN CARPETA DESCARGAS 🔥
         descargas_dir = os.path.join(os.path.expanduser('~'), 'Downloads')
-        default_path = os.path.join(descargas_dir, f"Resumen_{chofer}_{fecha_file}.pdf")
-        nombre_archivo, _ = QFileDialog.getSaveFileName(self, "Guardar", default_path, "PDF (*.pdf)")
+        os.makedirs(descargas_dir, exist_ok=True)
+        ruta_pdf = os.path.join(descargas_dir, f"Resumen_{chofer}_{fecha_file}.pdf")
         
-        if nombre_archivo: 
-            crear_pdf_resumen_diario(nombre_archivo, chofer, fecha_str, self.datos_resumen_exitos, self.datos_resumen_fallos, self.main.sucursal_actual, self.main.usuario.username)
-            try: os.startfile(nombre_archivo)
-            except: pass
+        crear_pdf_resumen_diario(ruta_pdf, chofer, fecha_str, self.datos_resumen_exitos, self.datos_resumen_fallos, self.main.sucursal_actual, self.main.usuario.username)
+        try: os.startfile(ruta_pdf)
+        except: pass
 
     def filtrar_tabla_rendicion(self, texto):
         texto = texto.lower()
@@ -1391,16 +1389,15 @@ class TabFacturacion(QWidget):
         finally:
             self.main.setWindowTitle(f"E.K. LOGISTICA (NUBE) - Usuario: {self.main.usuario.username.upper()}")
 
+    # 🔥 FACTURACIÓN PDF: DESCARGA DIRECTA EN LA CARPETA DESCARGAS 🔥
     def generar_pdf_fact(self):
         if not hasattr(self, 'resultados_cierre') or not self.resultados_cierre: return
         reply = QMessageBox.question(self, "Cerrar Facturación", "¿Desea marcar estas guías como FACTURADAS?", QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
         marcar_facturado = (reply == QMessageBox.StandardButton.Yes); mes_nombre = self.cierre_mes.currentText(); anio_num = self.cierre_anio.value(); prov_nombre = self.cierre_prov.currentText()
         
-        # 🔥 DESCARGA AUTOMÁTICA EN CARPETA DESCARGAS 🔥
         descargas_dir = os.path.join(os.path.expanduser('~'), 'Downloads')
-        default_path = os.path.join(descargas_dir, f"Facturacion_{prov_nombre}.pdf")
-        nombre, _ = QFileDialog.getSaveFileName(self, "Rendicion", default_path, "PDF (*.pdf)")
-        if not nombre: return
+        os.makedirs(descargas_dir, exist_ok=True)
+        ruta_pdf = os.path.join(descargas_dir, f"Facturacion_{prov_nombre}_{mes_nombre}_{anio_num}.pdf")
         
         data_filas = [['FECHA', 'GUÍA', 'ZONA', 'BULTOS', 'BASE ($)', 'EXTRAS ($)', 'TOTAL ($)']]
         for op in self.resultados_cierre:
@@ -1431,6 +1428,7 @@ class TabFacturacion(QWidget):
             except: self.main.session.rollback()
         tot_base, tot_extras, tot_final = self.totales_cierre; iva = tot_final * 0.21; total_con_iva = tot_final + iva
         data_filas.append(['SUBTOTALES:', '', '', '', f"$ {tot_base:,.0f}", f"$ {tot_extras:,.0f}", f"$ {tot_final:,.0f}"]); data_filas.append(['IVA (21%):', '', '', '', '', '', f"$ {iva:,.0f}"]); data_filas.append(['TOTAL A FACTURAR:', '', '', '', '', '', f"$ {total_con_iva:,.0f}"]) 
-        crear_pdf_facturacion(nombre, data_filas, prov_nombre, f"{mes_nombre} {anio_num}", self.main.usuario.username, datetime.now().strftime('%d/%m/%Y %H:%M'))
-        try: os.startfile(nombre)
+        
+        crear_pdf_facturacion(ruta_pdf, data_filas, prov_nombre, f"{mes_nombre} {anio_num}", self.main.usuario.username, datetime.now().strftime('%d/%m/%Y %H:%M'))
+        try: os.startfile(ruta_pdf)
         except: pass
