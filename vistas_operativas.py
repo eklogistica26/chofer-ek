@@ -248,6 +248,8 @@ class TabIngreso(QWidget):
         
         self.scroll_izq = QScrollArea()
         self.scroll_izq.setWidgetResizable(True)
+        # 🔥 APAGAR LA BARRA DE DESPLAZAMIENTO HORIZONTAL PARA SIEMPRE 🔥
+        self.scroll_izq.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.scroll_izq.setStyleSheet("QScrollArea { border: none; background-color: transparent; }")
         
         self.widget_izq = QWidget()
@@ -275,7 +277,19 @@ class TabIngreso(QWidget):
         self.in_prov.currentTextChanged.connect(self.cargar_destinos_frecuentes_combo)
         self.in_prov.currentTextChanged.connect(self.actualizar_interfaz_peso)
         
-        dest_layout = QHBoxLayout(); self.in_destinos_frecuentes = QComboBox(); self.in_destinos_frecuentes.addItem("--- Destinos Guardados ---"); self.in_destinos_frecuentes.setEnabled(False); self.in_destinos_frecuentes.setEditable(True); self.in_destinos_frecuentes.completer().setFilterMode(Qt.MatchFlag.MatchContains); self.in_destinos_frecuentes.currentIndexChanged.connect(self.llenar_datos_destino); self.in_codigo_rapido = QLineEdit(); self.in_codigo_rapido.setPlaceholderText("Buscar ID..."); self.in_codigo_rapido.setFixedWidth(80); self.in_codigo_rapido.returnPressed.connect(self.buscar_destino_por_codigo)
+        dest_layout = QHBoxLayout()
+        self.in_destinos_frecuentes = QComboBox()
+        self.in_destinos_frecuentes.addItem("--- Destinos Guardados ---")
+        self.in_destinos_frecuentes.setEnabled(False)
+        self.in_destinos_frecuentes.setEditable(True)
+        # 🔥 EVITA QUE EL COMBOBOX SE ESTIRE POR TEXTOS LARGOS 🔥
+        self.in_destinos_frecuentes.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon)
+        self.in_destinos_frecuentes.setMinimumContentsLength(25)
+        
+        self.in_destinos_frecuentes.completer().setFilterMode(Qt.MatchFlag.MatchContains)
+        self.in_destinos_frecuentes.currentIndexChanged.connect(self.llenar_datos_destino)
+        
+        self.in_codigo_rapido = QLineEdit(); self.in_codigo_rapido.setPlaceholderText("Buscar ID..."); self.in_codigo_rapido.setFixedWidth(80); self.in_codigo_rapido.returnPressed.connect(self.buscar_destino_por_codigo)
         dest_layout.addWidget(self.in_destinos_frecuentes); dest_layout.addWidget(self.in_codigo_rapido)
         
         self.in_dest = QLineEdit(); self.in_cel = QLineEdit(); self.in_cel.setPlaceholderText("Ej: 261-155..."); self.in_dom = QLineEdit(); self.in_loc_combo = QComboBox()
@@ -406,7 +420,6 @@ class TabIngreso(QWidget):
         self.btn_dhl.clicked.connect(self.importar_txt_dhl)
         if self.main.sucursal_actual != "San Juan": self.btn_dhl.hide()
         
-        # 🔥 EL PANEL SE AJUSTA SIN ESTIRARSE (PROPORCIONES 35/65 ORIGINALES) 🔥
         panel_izquierdo = QWidget()
         layout_izquierdo = QVBoxLayout(panel_izquierdo)
         layout_izquierdo.setContentsMargins(0, 0, 5, 0)
@@ -440,8 +453,9 @@ class TabIngreso(QWidget):
         self.tabla_ingresos.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows); self.tabla_ingresos.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         lay_botones_tabla = QHBoxLayout(); btn_del = QPushButton("🗑️ ELIMINAR"); btn_del.clicked.connect(lambda: self.main.eliminar_fila(self.tabla_ingresos, Operacion)); btn_edit_ingreso = QPushButton("✏️ EDITAR"); btn_edit_ingreso.clicked.connect(lambda: self.main.abrir_edicion(self.tabla_ingresos)); lay_botones_tabla.addWidget(btn_edit_ingreso); lay_botones_tabla.addWidget(btn_del); col_der.addLayout(h_header_ingreso); col_der.addWidget(self.tabla_ingresos); col_der.addLayout(lay_botones_tabla)
         
-        l.addWidget(panel_izquierdo, 35) # 🔥 Se mantiene el 35% a la izquierda para que respire 🔥
-        l.addLayout(col_der, 65) # 🔥 Se mantiene el 65% para la tabla de depósitos 🔥
+        # 🔥 EL PANEL IZQUIERDO AHORA TIENE EL 45% DEL ESPACIO PARA QUE ESCRIBAS CÓMODO 🔥
+        l.addWidget(panel_izquierdo, 45) 
+        l.addLayout(col_der, 55)
         
         self.configurar_autocompletado_global()
         self.actualizar_interfaz_peso()
@@ -465,7 +479,7 @@ class TabIngreso(QWidget):
                 completer.setFilterMode(Qt.MatchFlag.MatchContains)
                 
                 vista_lista = completer.popup()
-                vista_lista.setMinimumWidth(600) # 🔥 La lista flota y mide 600px sin empujar al panel 🔥
+                vista_lista.setMinimumWidth(600)
                 vista_lista.setStyleSheet("""
                     QListView { background-color: #ffffff; border: 1px solid #999; font-size: 14px; outline: none; }
                     QListView::item { padding: 10px; border-bottom: 1px solid #ddd; }
@@ -935,9 +949,9 @@ class TabRendicion(QWidget):
         chofer = self.resumen_chofer.currentText(); fecha_str = self.resumen_fecha.date().toPyDate().strftime("%d/%m/%Y"); fecha_file = self.resumen_fecha.date().toPyDate().strftime("%Y-%m-%d")
         if not self.datos_resumen_exitos and not self.datos_resumen_fallos: QMessageBox.warning(self, "Sin datos", "No hay actividad."); return
         
-        # 🔥 DESCARGA DIRECTA (SIN PREGUNTAR) EN CARPETA DESCARGAS 🔥
+        # 🔥 DESCARGA AUTOMÁTICA EN LA CARPETA DESCARGAS SIN PREGUNTAR 🔥
         descargas_dir = os.path.join(os.path.expanduser('~'), 'Downloads')
-        os.makedirs(descargas_dir, exist_ok=True)
+        if not os.path.exists(descargas_dir): os.makedirs(descargas_dir, exist_ok=True)
         ruta_pdf = os.path.join(descargas_dir, f"Resumen_{chofer}_{fecha_file}.pdf")
         
         crear_pdf_resumen_diario(ruta_pdf, chofer, fecha_str, self.datos_resumen_exitos, self.datos_resumen_fallos, self.main.sucursal_actual, self.main.usuario.username)
@@ -1389,12 +1403,12 @@ class TabFacturacion(QWidget):
         finally:
             self.main.setWindowTitle(f"E.K. LOGISTICA (NUBE) - Usuario: {self.main.usuario.username.upper()}")
 
-    # 🔥 FACTURACIÓN PDF: DESCARGA DIRECTA EN LA CARPETA DESCARGAS 🔥
     def generar_pdf_fact(self):
         if not hasattr(self, 'resultados_cierre') or not self.resultados_cierre: return
         reply = QMessageBox.question(self, "Cerrar Facturación", "¿Desea marcar estas guías como FACTURADAS?", QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
         marcar_facturado = (reply == QMessageBox.StandardButton.Yes); mes_nombre = self.cierre_mes.currentText(); anio_num = self.cierre_anio.value(); prov_nombre = self.cierre_prov.currentText()
         
+        # 🔥 DESCARGA DIRECTA (SIN PREGUNTAR) EN CARPETA DESCARGAS 🔥
         descargas_dir = os.path.join(os.path.expanduser('~'), 'Downloads')
         os.makedirs(descargas_dir, exist_ok=True)
         ruta_pdf = os.path.join(descargas_dir, f"Facturacion_{prov_nombre}_{mes_nombre}_{anio_num}.pdf")
