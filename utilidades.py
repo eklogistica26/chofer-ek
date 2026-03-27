@@ -46,10 +46,9 @@ def crear_pdf_retiro(nombre_archivo, op):
     doc = SimpleDocTemplate(nombre_archivo, pagesize=portrait(A4), rightMargin=30, leftMargin=30, topMargin=30, bottomMargin=30)
     elements = []; styles = getSampleStyleSheet()
     
-    # 🔥 Logo muy chiquito y discreto 🔥
     logo_path = "eklogo.png" if os.path.exists("eklogo.png") else ("logo.png" if os.path.exists("logo.png") else None)
     if logo_path:
-        elements.append(Image(logo_path, width=80, height=30, hAlign='CENTER'))
+        elements.append(Image(logo_path, width=65, height=40, hAlign='CENTER'))
         elements.append(Spacer(1, 10))
         
     titulo_style = ParagraphStyle(name='TituloCentro', parent=styles['Heading1'], alignment=TA_CENTER)
@@ -62,14 +61,15 @@ def crear_pdf_retiro(nombre_archivo, op):
 def crear_pdf_ruta(nombre_archivo, ops, sucursal, chofer, usuario, fecha_generacion):
     doc = SimpleDocTemplate(nombre_archivo, pagesize=landscape(A4), rightMargin=15, leftMargin=15, topMargin=15, bottomMargin=25)
     elements = []; styles = getSampleStyleSheet()
-    estilo_celda = ParagraphStyle(name='Celda', parent=styles['Normal'], fontSize=8, leading=9)
-    estilo_celda_centro = ParagraphStyle(name='CeldaCentro', parent=styles['Normal'], fontSize=8, leading=9, alignment=TA_CENTER)
+    
+    # 🔥 Se agregan wordWrap para evitar cortes por textos largos 🔥
+    estilo_celda = ParagraphStyle(name='Celda', parent=styles['Normal'], fontSize=8, leading=9, wordWrap='CJK')
+    estilo_celda_centro = ParagraphStyle(name='CeldaCentro', parent=styles['Normal'], fontSize=8, leading=9, alignment=TA_CENTER, wordWrap='CJK')
     estilo_titulo = ParagraphStyle(name='Titulo', parent=styles['Heading1'], alignment=1, fontSize=14, spaceAfter=5)
     
-    # 🔥 Logo muy chiquito y discreto 🔥
     logo_path = "eklogo.png" if os.path.exists("eklogo.png") else ("logo.png" if os.path.exists("logo.png") else None)
     if logo_path:
-        elements.append(Image(logo_path, width=80, height=30, hAlign='CENTER'))
+        elements.append(Image(logo_path, width=65, height=40, hAlign='CENTER'))
         elements.append(Spacer(1, 5))
     
     titulo_combinado = f"HOJA DE RUTA - {sucursal.upper()} <font size=11>(Chofer: {chofer.upper()})</font>"
@@ -126,7 +126,6 @@ def crear_pdf_ruta(nombre_archivo, ops, sucursal, chofer, usuario, fecha_generac
             if tiene_obs:
                 obs_str = ""
                 if op.es_contra_reembolso:
-                    # 🔥 Formato de 2 decimales para el chofer también 🔥
                     if op.monto_recaudacion > 0: obs_str += f"<b>COBRAR: $ {op.monto_recaudacion:,.2f}</b>"
                     if op.info_intercambio:
                         if obs_str: obs_str += " | "
@@ -171,14 +170,13 @@ def crear_pdf_tercerizados(nombre_archivo, ops, sucursal, transporte, usuario, f
     doc = SimpleDocTemplate(nombre_archivo, pagesize=landscape(A4), rightMargin=15, leftMargin=15, topMargin=15, bottomMargin=25)
     elements = []; styles = getSampleStyleSheet()
     
-    # 🔥 Logo muy chiquito y discreto 🔥
     logo_path = "eklogo.png" if os.path.exists("eklogo.png") else ("logo.png" if os.path.exists("logo.png") else None)
     if logo_path:
-        elements.append(Image(logo_path, width=80, height=30, hAlign='CENTER'))
+        elements.append(Image(logo_path, width=65, height=40, hAlign='CENTER'))
         elements.append(Spacer(1, 10))
         
-    estilo_celda = ParagraphStyle(name='Celda', parent=styles['Normal'], fontSize=8, leading=9)
-    estilo_celda_centro = ParagraphStyle(name='CeldaCentro', parent=styles['Normal'], fontSize=8, leading=9, alignment=TA_CENTER)
+    estilo_celda = ParagraphStyle(name='Celda', parent=styles['Normal'], fontSize=8, leading=9, wordWrap='CJK')
+    estilo_celda_centro = ParagraphStyle(name='CeldaCentro', parent=styles['Normal'], fontSize=8, leading=9, alignment=TA_CENTER, wordWrap='CJK')
     estilo_titulo = ParagraphStyle(name='Titulo', parent=styles['Heading1'], alignment=1, fontSize=14, spaceAfter=5)
     
     titulo_combinado = f"REMITO DE CARGA TERCERIZADA - {sucursal.upper()} <font size=11>(Empresa: {transporte.upper()})</font>"
@@ -246,48 +244,67 @@ def crear_pdf_tercerizados(nombre_archivo, ops, sucursal, transporte, usuario, f
     doc.build(elements, onFirstPage=add_footer, onLaterPages=add_footer)
 
 
-# 🔥 REPORTE CON MONTO EN 2 DECIMALES Y ALINEADO A LA DERECHA 🔥
+# 🔥 REPORTE COMPLETAMENTE OPTIMIZADO (SALTOS, 2 DECIMALES, LOGO PEQUEÑO) 🔥
 def crear_pdf_reporte(nombre_archivo, resultados, sucursal, usuario, fecha_generacion, filtro_info, total_dinero):
-    doc = SimpleDocTemplate(nombre_archivo, pagesize=landscape(A4), rightMargin=30, leftMargin=30, topMargin=30, bottomMargin=30)
+    doc = SimpleDocTemplate(nombre_archivo, pagesize=landscape(A4), rightMargin=20, leftMargin=20, topMargin=25, bottomMargin=25)
     elements = []; styles = getSampleStyleSheet()
     
-    # 🔥 Logo muy chiquito y discreto 🔥
     logo_path = "eklogo.png" if os.path.exists("eklogo.png") else ("logo.png" if os.path.exists("logo.png") else None)
     if logo_path:
-        elements.append(Image(logo_path, width=80, height=30, hAlign='CENTER'))
+        elements.append(Image(logo_path, width=65, height=40, hAlign='CENTER'))
         elements.append(Spacer(1, 10))
 
-    titulo_style = ParagraphStyle(name='TituloCentro', parent=styles['Heading1'], alignment=TA_CENTER)
-    sub_style = ParagraphStyle(name='SubCentro', parent=styles['Normal'], alignment=TA_CENTER)
+    titulo_style = ParagraphStyle(name='TituloCentro', parent=styles['Heading1'], alignment=TA_CENTER, fontSize=16)
+    sub_style = ParagraphStyle(name='SubCentro', parent=styles['Normal'], alignment=TA_CENTER, fontSize=10)
+    estilo_filtro = ParagraphStyle(name='Filtro', parent=styles['Normal'], fontSize=9, leading=11, alignment=TA_CENTER, textColor=colors.darkblue)
     
     elements.append(Paragraph(f"REPORTE - {sucursal.upper()}", titulo_style))
     elements.append(Paragraph(f"Generado el: {fecha_generacion} por {usuario}", sub_style))
-    elements.append(Paragraph(filtro_info, styles['Normal'])); elements.append(Spacer(1, 20))
+    elements.append(Spacer(1, 5))
+    elements.append(Paragraph(filtro_info, estilo_filtro))
+    elements.append(Spacer(1, 15))
     
-    data = [['FECHA', 'GUÍA', 'CLIENTE', 'DESTINO', 'ESTADO', 'MONTO']]
+    estilo_celda = ParagraphStyle(name='CeldaTabla', parent=styles['Normal'], fontSize=8, leading=10, alignment=TA_CENTER)
+    estilo_guia = ParagraphStyle(name='CeldaGuia', parent=styles['Normal'], fontSize=8, leading=10, alignment=TA_CENTER, wordWrap='CJK')
+    estilo_monto = ParagraphStyle(name='CeldaMonto', parent=styles['Normal'], fontSize=9, alignment=TA_RIGHT)
+    estilo_subtotal = ParagraphStyle(name='CeldaSub', parent=styles['Normal'], fontSize=10, alignment=TA_RIGHT, fontName='Helvetica-Bold')
+    estilo_head = ParagraphStyle(name='Encabezado', parent=styles['Normal'], fontSize=9, alignment=TA_CENTER, fontName='Helvetica-Bold')
+
+    data = [[
+        Paragraph('FECHA', estilo_head),
+        Paragraph('GUÍA', estilo_head),
+        Paragraph('CLIENTE', estilo_head),
+        Paragraph('DESTINO', estilo_head),
+        Paragraph('ESTADO', estilo_head),
+        Paragraph('MONTO', estilo_head)
+    ]]
+    
     for op in resultados: 
-        # 🔥 Aplicamos 2 decimales a todos los montos 🔥
         data.append([
-            op.fecha_ingreso.strftime("%d/%m/%Y"), 
-            op.guia_remito or "-", 
-            op.proveedor[:15], 
-            op.destinatario[:20], 
-            op.estado, 
-            f"$ {op.monto_servicio:,.2f}"
+            Paragraph(op.fecha_ingreso.strftime("%d/%m/%Y"), estilo_celda), 
+            Paragraph(op.guia_remito or "-", estilo_guia), 
+            Paragraph(op.proveedor[:25], estilo_celda), 
+            Paragraph(op.destinatario[:35], estilo_guia), 
+            Paragraph(op.estado, estilo_celda), 
+            Paragraph(f"$ {op.monto_servicio:,.2f}", estilo_monto)
         ])
         
-    data.append(['', '', '', 'TOTALES:', f"{len(resultados)} Guías", f"$ {total_dinero:,.2f}"])
+    data.append([
+        '', '', '', 
+        Paragraph('TOTALES:', estilo_subtotal), 
+        Paragraph(f"{len(resultados)} Guías", estilo_subtotal), 
+        Paragraph(f"$ {total_dinero:,.2f}", estilo_subtotal)
+    ])
     
-    t = Table(data, colWidths=[70, 110, 110, 220, 110, 100])
+    t = Table(data, colWidths=[65, 140, 140, 250, 100, 90], repeatRows=1)
     t.setStyle(TableStyle([
         ('GRID', (0,0), (-1,-1), 0.5, colors.grey), 
         ('BACKGROUND', (0,0), (-1,0), colors.lightgrey), 
-        ('TEXTCOLOR', (0,0), (-1,0), colors.black), 
-        ('ALIGN', (0,0), (4,-1), 'CENTER'), 
-        ('ALIGN', (5,0), (5,-1), 'RIGHT'), # 🔥 Alineamos TODA la columna de montos a la derecha 🔥
-        ('FONTSIZE', (0,0), (-1,-1), 9), 
-        ('FONTNAME', (0,-1), (-1,-1), 'Helvetica-Bold'), 
-        ('BACKGROUND', (0,-1), (-1,-1), colors.lightgrey)
+        ('ALIGN', (0,0), (-1,-1), 'CENTER'), 
+        ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
+        ('BACKGROUND', (0,-1), (-1,-1), colors.whitesmoke),
+        ('TOPPADDING', (0,0), (-1,-1), 4),
+        ('BOTTOMPADDING', (0,0), (-1,-1), 4),
     ]))
     elements.append(t)
     
@@ -296,17 +313,14 @@ def crear_pdf_reporte(nombre_archivo, resultados, sucursal, usuario, fecha_gener
         canvas.drawCentredString(page_width / 2.0, 20, f"Generado por: {usuario} | Pág. {doc.page}"); canvas.restoreState()
     doc.build(elements, onFirstPage=add_footer, onLaterPages=add_footer)
 
-
-# 🔥 FACTURACIÓN CON LOGO MINI, SALTOS DE LÍNEA Y 2 DECIMALES A LA DERECHA 🔥
 def crear_pdf_facturacion(nombre_archivo, data_filas, prov_nombre, periodo_str, usuario, fecha_generacion):
     doc = SimpleDocTemplate(nombre_archivo, pagesize=A4, rightMargin=20, leftMargin=20, topMargin=25, bottomMargin=25)
     elements = []
     styles = getSampleStyleSheet()
     
-    # 🔥 Buscamos el Logo y lo hacemos más chico y discreto (80x30) 🔥
     logo_path = "eklogo.png" if os.path.exists("eklogo.png") else ("logo.png" if os.path.exists("logo.png") else None)
     if logo_path:
-        elements.append(Image(logo_path, width=80, height=30, hAlign='CENTER'))
+        elements.append(Image(logo_path, width=65, height=40, hAlign='CENTER'))
         elements.append(Spacer(1, 10))
         
     title_style = ParagraphStyle(name='TitleCenter', parent=styles['Heading1'], alignment=TA_CENTER, fontSize=16)
@@ -316,9 +330,7 @@ def crear_pdf_facturacion(nombre_archivo, data_filas, prov_nombre, periodo_str, 
     elements.append(Paragraph(f"Período: {periodo_str}", client_style))
     
     estilo_celda = ParagraphStyle(name='CeldaTabla', parent=styles['Normal'], fontSize=8, leading=10, alignment=TA_CENTER)
-    # 🔥 Permite saltos de línea automáticos (wordWrap) para números de guía largos 🔥
     estilo_guia = ParagraphStyle(name='CeldaGuia', parent=styles['Normal'], fontSize=8, leading=10, alignment=TA_CENTER, wordWrap='CJK')
-    # 🔥 Alineación estricta a la derecha para los precios 🔥
     estilo_monto = ParagraphStyle(name='CeldaMonto', parent=styles['Normal'], fontSize=9, alignment=TA_RIGHT)
     estilo_subtotal = ParagraphStyle(name='CeldaSub', parent=styles['Normal'], fontSize=10, alignment=TA_RIGHT, fontName='Helvetica-Bold')
     
@@ -335,11 +347,9 @@ def crear_pdf_facturacion(nombre_archivo, data_filas, prov_nombre, periodo_str, 
         for j, cell in enumerate(row):
             cell_str = str(cell) if cell is not None else ""
             
-            # Columna GUÍA (Índice 1): Aplica salto de línea para que no desborde
             if j == 1 and not es_totales and cell_str:
                 new_row.append(Paragraph(cell_str, estilo_guia))
                 
-            # Columnas de Montos (Índices 4, 5, 6): Pasamos a formato .2f y alineamos a la derecha
             elif j in [4, 5, 6] and cell_str:
                 if "$" in cell_str:
                     num_str = cell_str.replace("$", "").replace(",", "").strip()
@@ -356,11 +366,9 @@ def crear_pdf_facturacion(nombre_archivo, data_filas, prov_nombre, periodo_str, 
                 else:
                     new_row.append(Paragraph(val_formatted, estilo_monto))
                     
-            # Textos "SUBTOTALES", "IVA", "TOTAL"
             elif j == 0 and es_totales:
                 new_row.append(Paragraph(cell_str, estilo_subtotal))
                 
-            # Resto de celdas
             else:
                 if cell_str:
                     new_row.append(Paragraph(cell_str, estilo_celda))
@@ -381,7 +389,6 @@ def crear_pdf_facturacion(nombre_archivo, data_filas, prov_nombre, periodo_str, 
         ('TOPPADDING', (0,0), (-1,-1), 4),
         ('BOTTOMPADDING', (0,0), (-1,-1), 4),
         
-        # Bloque final (Totales) alineado a la derecha
         ('BACKGROUND', (0,-3), (-1,-1), colors.whitesmoke), 
         ('SPAN', (0, -3), (3, -3)), ('ALIGN', (0,-3), (3,-3), 'RIGHT'),
         ('SPAN', (0, -2), (5, -2)), ('ALIGN', (0,-2), (5,-2), 'RIGHT'),
@@ -404,10 +411,9 @@ def crear_pdf_resumen_diario(nombre_archivo, chofer, fecha_str, entregados, no_e
     elements = []
     styles = getSampleStyleSheet()
     
-    # 🔥 Logo muy chiquito y discreto 🔥
     logo_path = "eklogo.png" if os.path.exists("eklogo.png") else ("logo.png" if os.path.exists("logo.png") else None)
     if logo_path:
-        elements.append(Image(logo_path, width=80, height=30, hAlign='CENTER'))
+        elements.append(Image(logo_path, width=65, height=40, hAlign='CENTER'))
         elements.append(Spacer(1, 10))
         
     titulo = ParagraphStyle(name='Tit', parent=styles['Heading1'], alignment=TA_CENTER)
