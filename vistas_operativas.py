@@ -296,7 +296,7 @@ class TabIngreso(QWidget):
         
         fl.addRow("Tipo:", self.in_serv)
         fl.addRow(self.lbl_cli_ret, self.in_cliente_retiro)
-        fl.addRow("Fecha (Máquina de Tiempo):", self.in_fecha)
+        fl.addRow("Fecha:", self.in_fecha)
         fl.addRow(self.lbl_guia, self.in_guia)
         fl.addRow("Proveedor:", self.in_prov)
         fl.addRow("📍 Destinos Fijos:", dest_layout)
