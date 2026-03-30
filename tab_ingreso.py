@@ -438,11 +438,23 @@ class TabIngreso(QWidget):
         if not self.in_dest.text().strip(): QMessageBox.warning(self, "Falta Dato", "Falta el Destinatario."); return
         if not self.in_dom.text().strip(): QMessageBox.warning(self, "Falta Dato", "Falta el Domicilio."); return
         if not self.in_loc_combo.currentText(): QMessageBox.warning(self, "Falta Dato", "Seleccione una Zona."); return
+        
         try:
             servicio = self.in_serv.currentText()
             loc = self.in_loc_combo.currentText().strip()
             peso_manual = self.in_peso_manual.value()
             prov = self.in_prov.currentText()
+            guia_final = self.in_guia.text().strip()
+
+            # 🔥 FIX 3: ANTI-DUPLICADOS POR CLIENTE 🔥
+            if prov and prov != "JetPaq" and guia_final and "Flete" not in servicio:
+                existe = self.main.session.query(Operacion).filter(
+                    Operacion.guia_remito == guia_final,
+                    Operacion.proveedor == prov
+                ).first()
+                if existe:
+                    QMessageBox.warning(self, "Guía Duplicada", f"⚠️ ¡ALTO!\n\nEl remito/guía '{guia_final}' ya fue ingresado previamente para el cliente '{prov}'.\n\nNo se puede ingresar dos veces el mismo paquete.")
+                    return
             
             if "Flete" in servicio:
                 c_comun = 0
@@ -482,7 +494,6 @@ class TabIngreso(QWidget):
                 monto_cr = self.in_monto_recaudar.value() if tiene_cr else 0.0
                 info_cr = self.in_info_intercambio.text() if tiene_cr else ""
             
-            guia_final = self.in_guia.text()
             if ("Retiro" in servicio or "Flete" in servicio) and not guia_final: 
                 now = datetime.now(); c_year = now.strftime('%Y'); c_month = now.strftime('%m')
                 prefijo = "Retiro" if "Retiro" in servicio else "FLETE"
@@ -501,14 +512,14 @@ class TabIngreso(QWidget):
             mensaje_toast = "✅ GUARDADO EN DEPÓSITO CORRECTAMENTE"
             
             if prov and prov != "JetPaq" and dest_texto and dom_texto:
-                existe = self.main.session.query(DestinoFrecuente).filter(
+                existe_dest = self.main.session.query(DestinoFrecuente).filter(
                     DestinoFrecuente.proveedor == prov, 
                     DestinoFrecuente.sucursal == self.main.sucursal_actual, 
                     DestinoFrecuente.destinatario.ilike(dest_texto),
                     DestinoFrecuente.domicilio.ilike(dom_texto)
                 ).first()
                 
-                if not existe:
+                if not existe_dest:
                     nuevo_dest = DestinoFrecuente(
                         proveedor=prov, sucursal=self.main.sucursal_actual,
                         destinatario=dest_texto, domicilio=dom_texto,
@@ -520,17 +531,26 @@ class TabIngreso(QWidget):
                     mensaje_toast = "✅ GUARDADO (Destino ya existía, se evitó duplicarlo)"
             
             op = Operacion(fecha_ingreso=self.in_fecha.date().toPyDate(), sucursal=self.main.sucursal_actual, guia_remito=guia_final, proveedor=prov, destinatario=dest_texto, celular=cel_texto, domicilio=dom_texto, localidad=loc, bultos=bultos_total, bultos_frio=c_frio, peso=peso_manual, tipo_carga=tipo_carga_txt, tipo_urgencia=Urgencia.CLASICO, monto_servicio=precio, es_contra_reembolso=tiene_cr, monto_recaudacion=monto_cr, info_intercambio=info_cr, tipo_servicio=servicio)
-            self.main.session.add(op); self.main.session.flush(); self.main.log_movimiento(op, "INGRESO A DEPOSITO", "Carga inicial en sistema"); self.main.session.commit()
+            self.main.session.add(op)
+            self.main.session.flush()
+            self.main.log_movimiento(op, "INGRESO A DEPOSITO", "Carga inicial en sistema")
+            self.main.session.commit()
             
-            if "Retiro" in servicio: 
-                descargas_dir = os.path.join(os.path.expanduser('~'), 'Downloads')
-                os.makedirs(descargas_dir, exist_ok=True)
-                ruta_pdf = os.path.join(descargas_dir, f"Comprobante_Retiro_{op.guia_remito or op.id}.pdf")
-                crear_pdf_retiro(ruta_pdf, op)
-                try: os.startfile(ruta_pdf)
-                except: pass
+            # 🔥 FIX 2: CÁPSULA DE SEGURIDAD PARA EL PDF (Evita el Micro-corte visual) 🔥
+            try:
+                if "Retiro" in servicio: 
+                    descargas_dir = os.path.join(os.path.expanduser('~'), 'Downloads')
+                    os.makedirs(descargas_dir, exist_ok=True)
+                    ruta_pdf = os.path.join(descargas_dir, f"Comprobante_Retiro_{op.guia_remito or op.id}.pdf")
+                    crear_pdf_retiro(ruta_pdf, op)
+                    try: os.startfile(ruta_pdf)
+                    except: pass
+            except Exception as e_pdf:
+                print("Aviso interno: Falló la creación del PDF, pero la BD guardó bien.", e_pdf)
             
-            self.main.cargar_ruta()
+            if hasattr(self.main, 'cargar_ruta'):
+                self.main.cargar_ruta()
+                
             self.in_guia.clear()
             self.in_dest.clear()
             self.in_cel.clear()
@@ -558,8 +578,10 @@ class TabIngreso(QWidget):
             self.main.toast.mostrar(mensaje_toast)
             
             if hasattr(self.main, 'cargar_monitor_global'): self.main.cargar_monitor_global()
+            
         except Exception as e: 
-            self.main.session.rollback(); QMessageBox.warning(self, "Micro-corte", "La conexión parpadeó. Intenta de nuevo.")
+            self.main.session.rollback()
+            QMessageBox.warning(self, "Micro-corte", "La conexión parpadeó. Intenta de nuevo.")
 
     def importar_txt_dhl(self):
         filepath, _ = QFileDialog.getOpenFileName(self, "Seleccionar TXT de DHL", "", "Text Files (*.txt);;All Files (*)")

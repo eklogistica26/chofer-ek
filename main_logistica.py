@@ -86,7 +86,6 @@ class PlataformaLogistica(QMainWindow):
         global Operacion, Historial, Tarifa, Chofer, ClienteRetiro, ClientePrincipal, DestinoFrecuente, Estados, Urgencia, TarifaDHL, HistorialTarifas, ReciboPago
         from database import Operacion, Historial, Tarifa, Chofer, ClienteRetiro, ClientePrincipal, DestinoFrecuente, Estados, Urgencia, TarifaDHL, HistorialTarifas, ReciboPago
         
-        # 🔥 ACÁ ESTÁN LOS CABLES NUEVOS A TUS ARCHIVOS RECIÉN CREADOS 🔥
         global TabIngreso, TabRendicion, TabFacturacion, TabConfiguracion
         from tab_ingreso import TabIngreso
         from tab_rendicion import TabRendicion
@@ -427,164 +426,36 @@ class PlataformaLogistica(QMainWindow):
                         else: it.setForeground(txt_color_main)
             self.tabla_monitor.setUpdatesEnabled(True); self.tabla_monitor.blockSignals(False)
         except Exception: self.session.rollback(); self.tabla_monitor.setUpdatesEnabled(True); self.tabla_monitor.blockSignals(False)
-
-    def setup_ruta(self):
-        l = QVBoxLayout(self.tab_ruta); top_row1 = QHBoxLayout(); top_row2 = QHBoxLayout()
-        self.combo_masivo_chofer = QComboBox(); self.combo_masivo_chofer.setMinimumWidth(150)
-        self.txt_filtro_ruta = QLineEdit(); self.txt_filtro_ruta.setPlaceholderText("🔎 Filtrar por Guía, Cliente, Destino..."); self.txt_filtro_ruta.textChanged.connect(self.filtrar_tabla_ruta)
-        btn_aplicar_masivo = QPushButton("ASIGNAR GUÍAS"); btn_aplicar_masivo.clicked.connect(self.asignar_chofer_masivo)
-        btn_mark = QPushButton("☑️ Seleccionar Todo"); btn_mark.clicked.connect(lambda: self.toggle_seleccion_todo(self.tabla_ruta))
-        btn_tercerizado = QPushButton("🚚 TERCERIZADOS"); btn_tercerizado.clicked.connect(self.generar_pdf_terc)
-        btn_reprog = QPushButton("📅 CAMBIAR FECHA"); btn_reprog.clicked.connect(self.cambiar_fecha_ruta)
-        btn_historial = QPushButton("📜 HISTORIAL"); btn_historial.clicked.connect(self.abrir_historial_hojas)
-        btn_editar = QPushButton("✏️ EDITAR"); btn_editar.clicked.connect(lambda: self.abrir_edicion(self.tabla_ruta))
-        btn_ref = QPushButton("🔄 Actualizar"); btn_ref.clicked.connect(self.cargar_ruta)
-        top_row1.addWidget(QLabel("Seleccionar Chofer:")); top_row1.addWidget(self.combo_masivo_chofer); top_row1.addWidget(btn_aplicar_masivo); top_row1.addWidget(btn_mark); top_row1.addWidget(btn_tercerizado); top_row1.addStretch()
-        top_row2.addWidget(self.txt_filtro_ruta); top_row2.addWidget(btn_reprog); top_row2.addWidget(btn_editar); top_row2.addWidget(btn_historial); top_row2.addWidget(btn_ref)
-        self.tabla_ruta = QTableWidget(); self.tabla_ruta.setColumnCount(10); self.tabla_ruta.setHorizontalHeaderLabels(["ID", "Sel.", "Guía", "Proveedor", "Destinatario", "Domicilio", "Localidad", "Bultos/Hs", "Cobro / Obs", "Estado"]); self.tabla_ruta.hideColumn(0); 
-        
-        header_ruta = self.tabla_ruta.horizontalHeader()
-        header_ruta.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
-        self.tabla_ruta.setColumnWidth(1, 40)   
-        self.tabla_ruta.setColumnWidth(2, 140)  
-        self.tabla_ruta.setColumnWidth(3, 180)  
-        self.tabla_ruta.setColumnWidth(4, 250)  
-        self.tabla_ruta.setColumnWidth(5, 350)  
-        self.tabla_ruta.setColumnWidth(6, 150)  
-        self.tabla_ruta.setColumnWidth(7, 90)   
-        self.tabla_ruta.setColumnWidth(8, 150)  
-        header_ruta.setStretchLastSection(True) 
-        
-        self.tabla_ruta.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows); self.tabla_ruta.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
-        l.addLayout(top_row1); l.addLayout(top_row2); l.addWidget(self.tabla_ruta)
-    
-    def filtrar_tabla_ruta(self, texto):
-        texto = texto.lower()
-        for r in range(self.tabla_ruta.rowCount()):
-            mostrar = False
-            for c in [2, 3, 4, 5, 6, 9]: 
-                item = self.tabla_ruta.item(r, c)
-                if item and texto in item.text().lower(): mostrar = True; break
-            self.tabla_ruta.setRowHidden(r, not mostrar)
-
-    def abrir_historial_hojas(self): d = HistorialHojasRutaDialog(self.session, self.sucursal_actual, self); d.exec()
-
-    def cargar_ruta(self):
-        try:
-            seleccionados = set(); 
-            for r in range(self.tabla_ruta.rowCount()):
-                if self.tabla_ruta.item(r, 1).checkState() == Qt.CheckState.Checked: seleccionados.add(self.tabla_ruta.item(r, 0).text())
-            self.tabla_ruta.blockSignals(True); self.tabla_ruta.setRowCount(0); 
-            estados_deposito = [Estados.EN_DEPOSITO, 'EN DEPOSITO', 'En Depósito', 'En Deposito', 'EN DEPÓSITO']
-            
-            ops = self.session.query(Operacion).filter(
-                Operacion.estado.in_(estados_deposito), 
-                Operacion.sucursal == self.sucursal_actual,
-                text("DATE(COALESCE(fecha_salida, fecha_ingreso)) <= CURRENT_DATE")
-            ).order_by(Operacion.domicilio.asc()).all()
-            
-            op_ids = [op.id for op in ops]; last_hists = {}
-            if op_ids:
-                h_records = self.session.query(Historial).filter(Historial.operacion_id.in_(op_ids)).order_by(Historial.id.asc()).all()
-                for h in h_records: last_hists[h.operacion_id] = h
-            tiene_cobro_general = False
-            for row, op in enumerate(ops):
-                self.tabla_ruta.insertRow(row); self.tabla_ruta.setItem(row, 0, QTableWidgetItem(str(op.id)))
-                chk = QTableWidgetItem(); chk.setFlags(Qt.ItemFlag.ItemIsUserCheckable | Qt.ItemFlag.ItemIsEnabled)
-                if str(op.id) in seleccionados: chk.setCheckState(Qt.CheckState.Checked)
-                else: chk.setCheckState(Qt.CheckState.Unchecked)
-                self.tabla_ruta.setItem(row, 1, chk)
-                
-                guia_texto = op.guia_remito or "-"
-                if op.tipo_servicio and "Retiro" in op.tipo_servicio: guia_texto = f"🔄 [RETIRO] {guia_texto}"
-                elif op.tipo_servicio and "Flete" in op.tipo_servicio: guia_texto = f"⏱️ {guia_texto}"
-                
-                self.tabla_ruta.setItem(row, 2, QTableWidgetItem(guia_texto)); self.tabla_ruta.setItem(row, 3, QTableWidgetItem(op.proveedor)); self.tabla_ruta.setItem(row, 4, QTableWidgetItem(op.destinatario)); self.tabla_ruta.setItem(row, 5, QTableWidgetItem(op.domicilio)); self.tabla_ruta.setItem(row, 6, QTableWidgetItem(op.localidad))
-                det_b = str(op.bultos); 
-                if op.bultos_frio and op.bultos_frio > 0 and op.bultos_frio < op.bultos: det_b += f" ({op.bultos-op.bultos_frio}C/{op.bultos_frio}R)"
-                elif op.bultos_frio == op.bultos: det_b += " (R)"
-                self.tabla_ruta.setItem(row, 7, QTableWidgetItem(det_b))
-                estado_visual = op.estado; hist = last_hists.get(op.id); es_reprogramado = False
-                if hist:
-                    if 'Reprogramado' in (hist.detalle or "") or 'REPROGRAMADO' in (hist.accion or ""):
-                        es_reprogramado = True; match = re.search(r'(\d{2}/\d{2}/\d{4})', hist.detalle or "")
-                        if match: estado_visual = f"REPROG. ({match.group(1)[:5]})" 
-                        else: estado_visual = "REPROGRAMADO"
-                it_estado = QTableWidgetItem(estado_visual)
-                if es_reprogramado: it_estado.setForeground(QColor("#9c27b0")); it_estado.setFont(QFont("Arial", 9, QFont.Weight.Bold))
-                self.tabla_ruta.setItem(row, 9, it_estado)
-                extra_txt = ""
-                if op.es_contra_reembolso and op.monto_recaudacion and op.monto_recaudacion > 0: extra_txt += f"COBRAR ${op.monto_recaudacion} "
-                if op.info_intercambio: extra_txt += f"| {op.info_intercambio}" if extra_txt else f"{op.info_intercambio}"
-                if es_reprogramado and hist and hist.detalle:
-                    motivo_limpio = hist.detalle.split("Motivo:")[-1].strip() if "Motivo:" in hist.detalle else "Sin motivo"
-                    if "| GPS:" in motivo_limpio: motivo_limpio = motivo_limpio.split("| GPS:")[0].strip()
-                    extra_txt += f" | Obs: {motivo_limpio}" if extra_txt else f"Obs: {motivo_limpio}"
-                if extra_txt.strip(): tiene_cobro_general = True
-                it_extra = QTableWidgetItem(extra_txt.strip()); 
-                if op.es_contra_reembolso: it_extra.setForeground(QColor("red"))
-                self.tabla_ruta.setItem(row, 8, it_extra)
-            if tiene_cobro_general: self.tabla_ruta.showColumn(8)
-            else: self.tabla_ruta.hideColumn(8)
-        except Exception: self.session.rollback()
-        finally: self.tabla_ruta.blockSignals(False)
-
-    def cambiar_fecha_ruta(self):
-        ids = []
-        for r in range(self.tabla_ruta.rowCount()):
-            if self.tabla_ruta.item(r, 1).checkState() == Qt.CheckState.Checked: 
-                ids.append(int(self.tabla_ruta.item(r, 0).text()))
-        if not ids: 
-            QMessageBox.warning(self, "Atención", "Seleccione al menos un envío para cambiar la fecha.")
+# 🔥 FIX 5: FUNCIÓN QUE JUNTA TODO LO DEL DÍA Y TE ARMA UN PDF GIGANTE NUEVO 🔥
+    def reimprimir_ruta_completa(self):
+        chofer_filtro = self.combo_masivo_chofer.currentText()
+        if not chofer_filtro: 
+            QMessageBox.warning(self, "Atención", "Seleccione un chofer de la lista.")
             return
+            
         try:
-            titulo_dlg = f"{len(ids)} guías seleccionadas" if len(ids) > 1 else (self.session.query(Operacion).get(ids[0]).guia_remito or f"ID {ids[0]}")
-            dlg = CambiarFechaDialog(titulo_dlg, self)
-            if dlg.exec() == QDialog.DialogCode.Accepted:
-                detalle = f"Reprogramado para el {dlg.fecha_str}. Motivo: {dlg.motivo}"; nueva_fecha = datetime.combine(dlg.in_fecha.date().toPyDate(), datetime.min.time())
-                ops = self.session.query(Operacion).filter(Operacion.id.in_(ids)).all()
-                for op in ops: op.fecha_salida = nueva_fecha; self.log_movimiento(op, "REPROGRAMADO (OFICINA)", detalle)
-                self.session.commit(); self.toast.mostrar(f"✅ {len(ids)} guía(s) reprogramada(s)"); self.cargar_ruta()
-                if hasattr(self, 'tab_ingreso'): self.tab_ingreso.cargar_movimientos_dia()
-                self.cargar_monitor_global()
-        except Exception: self.session.rollback()
+            ops = self.session.query(Operacion).filter(
+                Operacion.chofer_asignado == chofer_filtro,
+                text("DATE(fecha_salida) = CURRENT_DATE")
+            ).all()
+            
+            if not ops:
+                QMessageBox.warning(self, "Sin viajes", f"El chofer {chofer_filtro} no tiene ninguna guía asignada en el día de hoy.")
+                return
+                
+            descargas_dir = os.path.join(os.path.expanduser('~'), 'Downloads')
+            if not os.path.exists(descargas_dir): os.makedirs(descargas_dir, exist_ok=True)
+            ruta_pdf = os.path.join(descargas_dir, f"Ruta_COMPLETA_{chofer_filtro}_{datetime.now().strftime('%d-%m-%Y_%H%M')}.pdf")
+            
+            crear_pdf_ruta(ruta_pdf, ops, self.sucursal_actual, chofer_filtro, self.usuario.username, datetime.now().strftime('%d/%m/%Y %H:%M'))
+            try: os.startfile(ruta_pdf)
+            except: pass
+            
+            self.toast.mostrar(f"✅ Hoja de ruta completa generada ({len(ops)} guías)")
+        except Exception as e:
+            self.session.rollback()
+            QMessageBox.critical(self, "Error", f"Ocurrió un error: {e}")
 
-    def asignar_chofer_masivo(self):
-        chofer = self.combo_masivo_chofer.currentText()
-        if not chofer: return
-        ids = []
-        for r in range(self.tabla_ruta.rowCount()):
-            if self.tabla_ruta.item(r, 1).checkState() == Qt.CheckState.Checked: ids.append(int(self.tabla_ruta.item(r, 0).text()))
-        if not ids: QMessageBox.warning(self, "Atención", "Seleccione al menos un envío."); return
-        box = QMessageBox(self); box.setWindowTitle("Confirmar Asignación"); box.setText(f"¿Está seguro de asignar {len(ids)} guías al chofer {chofer}?"); box.setIcon(QMessageBox.Icon.Question); btn_si = box.addButton("Sí, Asignar", QMessageBox.ButtonRole.YesRole); btn_no = box.addButton("Cancelar", QMessageBox.ButtonRole.NoRole); box.exec()
-        if box.clickedButton() != btn_si: return 
-        try:
-            ops = self.session.query(Operacion).filter(Operacion.id.in_(ids)).all(); now = datetime.now()
-            for op in ops: op.chofer_asignado = chofer; op.estado = Estados.EN_REPARTO; op.fecha_salida = now; self.log_movimiento(op, "SALIDA A REPARTO", f"Asignado a {chofer}")
-            self.session.commit()
-            try:
-                res_cel = self.session.execute(text("SELECT celular FROM choferes WHERE nombre = :n"), {"n": chofer}).fetchone()
-                if res_cel and res_cel[0]:
-                    cel_chofer = "".join(filter(str.isdigit, str(res_cel[0])))
-                    if cel_chofer:
-                        msg_wsp = QMessageBox(self); msg_wsp.setWindowTitle("Aviso por WhatsApp"); msg_wsp.setText(f"✅ Guías asignadas a {chofer}.\n¿Deseas avisarle por WhatsApp?"); msg_wsp.setIcon(QMessageBox.Icon.Question); btn_wsp_si = msg_wsp.addButton("Sí, avisar", QMessageBox.ButtonRole.YesRole); btn_wsp_no = msg_wsp.addButton("No", QMessageBox.ButtonRole.NoRole); msg_wsp.exec()
-                        if msg_wsp.clickedButton() == btn_wsp_si:
-                            if not cel_chofer.startswith("54"): cel_chofer = "549" + cel_chofer
-                            mensaje = f"🚨 Hola {chofer}, te acabo de agregar {len(ids)} envío(s) a tu ruta. ¡Por favor revisá la App para ver los detalles!"
-                            url = f"https://web.whatsapp.com/send?phone={cel_chofer}&text={urllib.parse.quote(mensaje)}"
-                            QDesktopServices.openUrl(QUrl(url))
-            except Exception: pass
-            box2 = QMessageBox(self); box2.setWindowTitle("Imprimir Hoja de Ruta"); box2.setText("¿Desea generar el PDF de Hoja de Ruta ahora?"); box2.setIcon(QMessageBox.Icon.Question); btn_si2 = box2.addButton("Sí, Imprimir", QMessageBox.ButtonRole.YesRole); btn_no2 = box2.addButton("No", QMessageBox.ButtonRole.NoRole); box2.exec()
-            if box2.clickedButton() == btn_si2: self.generar_pdf_ruta(ids_forzados=ids)
-            self.cargar_ruta(); self.cargar_monitor_global()
-        except Exception: self.session.rollback()
-        
-    def toggle_seleccion_todo(self, tabla):
-        rows = tabla.rowCount(); 
-        if rows == 0: return
-        estado = Qt.CheckState.Checked if tabla.item(0, 1).checkState() == Qt.CheckState.Unchecked else Qt.CheckState.Unchecked
-        for r in range(rows): tabla.item(r, 1).setCheckState(estado)
-        
     def generar_pdf_ruta(self, ids_forzados=None, nombre_sufijo=""):
         chofer_filtro = self.combo_masivo_chofer.currentText()
         try:

@@ -5,7 +5,7 @@ from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4, landscape, portrait
 from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, Image
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-from reportlab.lib.enums import TA_CENTER, TA_RIGHT
+from reportlab.lib.enums import TA_CENTER, TA_RIGHT, TA_LEFT
 
 def parsear_txt_dhl_logic(filepath):
     with open(filepath, 'r', encoding='latin-1', errors='replace') as f: lines = f.readlines()
@@ -62,7 +62,6 @@ def crear_pdf_ruta(nombre_archivo, ops, sucursal, chofer, usuario, fecha_generac
     doc = SimpleDocTemplate(nombre_archivo, pagesize=landscape(A4), rightMargin=15, leftMargin=15, topMargin=15, bottomMargin=25)
     elements = []; styles = getSampleStyleSheet()
     
-    # 🔥 Se agregan wordWrap para evitar cortes por textos largos 🔥
     estilo_celda = ParagraphStyle(name='Celda', parent=styles['Normal'], fontSize=8, leading=9, wordWrap='CJK')
     estilo_celda_centro = ParagraphStyle(name='CeldaCentro', parent=styles['Normal'], fontSize=8, leading=9, alignment=TA_CENTER, wordWrap='CJK')
     estilo_titulo = ParagraphStyle(name='Titulo', parent=styles['Heading1'], alignment=1, fontSize=14, spaceAfter=5)
@@ -243,8 +242,6 @@ def crear_pdf_tercerizados(nombre_archivo, ops, sucursal, transporte, usuario, f
         
     doc.build(elements, onFirstPage=add_footer, onLaterPages=add_footer)
 
-
-# 🔥 REPORTE COMPLETAMENTE OPTIMIZADO (SALTOS, 2 DECIMALES, LOGO PEQUEÑO) 🔥
 def crear_pdf_reporte(nombre_archivo, resultados, sucursal, usuario, fecha_generacion, filtro_info, total_dinero):
     doc = SimpleDocTemplate(nombre_archivo, pagesize=landscape(A4), rightMargin=20, leftMargin=20, topMargin=25, bottomMargin=25)
     elements = []; styles = getSampleStyleSheet()
@@ -406,6 +403,8 @@ def crear_pdf_facturacion(nombre_archivo, data_filas, prov_nombre, periodo_str, 
         
     doc.build(elements, onFirstPage=add_footer, onLaterPages=add_footer)
 
+
+# 🔥 EL RESUMEN DIARIO AHORA TIENE BULTOS, FECHAS Y TEXTO CON WORD-WRAP 🔥
 def crear_pdf_resumen_diario(nombre_archivo, chofer, fecha_str, entregados, no_entregados, sucursal, usuario):
     doc = SimpleDocTemplate(nombre_archivo, pagesize=portrait(A4), rightMargin=30, leftMargin=30, topMargin=30, bottomMargin=30)
     elements = []
@@ -418,6 +417,10 @@ def crear_pdf_resumen_diario(nombre_archivo, chofer, fecha_str, entregados, no_e
         
     titulo = ParagraphStyle(name='Tit', parent=styles['Heading1'], alignment=TA_CENTER)
     
+    # Estilos especiales para que el texto baje de renglón si es largo
+    estilo_celda = ParagraphStyle(name='CeldaTabla', parent=styles['Normal'], fontSize=8, leading=10, alignment=TA_CENTER, wordWrap='CJK')
+    estilo_celda_izq = ParagraphStyle(name='CeldaIzq', parent=styles['Normal'], fontSize=8, leading=10, alignment=TA_LEFT, wordWrap='CJK')
+    
     elements.append(Paragraph(f"RESUMEN DIARIO DE CHOFER - {sucursal.upper()}", titulo))
     elements.append(Spacer(1, 10))
     elements.append(Paragraph(f"<b>Chofer:</b> {chofer} &nbsp;&nbsp;&nbsp; <b>Fecha:</b> {fecha_str} &nbsp;&nbsp;&nbsp; <b>Generado por:</b> {usuario}", styles['Normal']))
@@ -425,17 +428,37 @@ def crear_pdf_resumen_diario(nombre_archivo, chofer, fecha_str, entregados, no_e
     
     elements.append(Paragraph(f"✅ ENTREGAS / RETIROS EXITOSOS ({len(entregados)})", styles['Heading2']))
     if entregados:
-        data_e = [["GUÍA", "DESTINATARIO", "DOMICILIO"]]
+        data_e = [["GUÍA", "CLIENTE", "DESTINATARIO", "DOMICILIO", "BULTOS", "ENTREGADO"]]
         for row in entregados:
-            g = row[1]
-            dest = row[2]
-            dom = row[3]
-            data_e.append([Paragraph(g or "-", styles['Normal']), Paragraph(dest, styles['Normal']), Paragraph(dom, styles['Normal'])])
-        t_e = Table(data_e, colWidths=[120, 180, 235])
+            g = row[1] or "-"
+            if row[4] and "Retiro" in row[4]: g = f"🔄 [RET] {g}"
+            elif row[4] and "Flete" in row[4]: g = f"⏱️ {g}"
+            
+            cliente = row[5] or "-"
+            dest = row[2] or "-"
+            dom = row[3] or "-"
+            bultos = str(row[6]) if row[6] else "1"
+            
+            f_ent = "-"
+            if len(row) > 7 and row[7]:
+                f_ent = row[7].strftime("%d/%m %H:%M")
+            
+            # Usamos Paragraph para forzar el salto de línea automático
+            data_e.append([
+                Paragraph(g, estilo_celda), 
+                Paragraph(cliente, estilo_celda_izq), 
+                Paragraph(dest, estilo_celda_izq), 
+                Paragraph(dom, estilo_celda_izq), 
+                Paragraph(bultos, estilo_celda), 
+                Paragraph(f_ent, estilo_celda)
+            ])
+            
+        t_e = Table(data_e, colWidths=[75, 80, 90, 150, 45, 95])
         t_e.setStyle(TableStyle([
             ('GRID', (0,0), (-1,-1), 0.5, colors.black),
             ('BACKGROUND', (0,0), (-1,0), colors.lightgreen),
             ('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold'),
+            ('FONTSIZE', (0,0), (-1,0), 8),
             ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
         ]))
         elements.append(t_e)
@@ -446,17 +469,29 @@ def crear_pdf_resumen_diario(nombre_archivo, chofer, fecha_str, entregados, no_e
     
     elements.append(Paragraph(f"⚠️ NO ENTREGADOS / PENDIENTES ({len(no_entregados)})", styles['Heading2']))
     if no_entregados:
-        data_n = [["GUÍA", "DESTINATARIO", "MOTIVO"]]
+        data_n = [["GUÍA", "CLIENTE", "DESTINATARIO", "MOTIVO"]]
         for row in no_entregados:
-            g = row[0]
-            dest = row[1]
-            mot = row[2]
-            data_n.append([Paragraph(g or "-", styles['Normal']), Paragraph(dest, styles['Normal']), Paragraph(mot, styles['Normal'])])
-        t_n = Table(data_n, colWidths=[120, 180, 235])
+            g = row[0] or "-"
+            if row[3] and "Retiro" in row[3]: g = f"🔄 [RET] {g}"
+            elif row[3] and "Flete" in row[3]: g = f"⏱️ {g}"
+            
+            dest = row[1] or "-"
+            mot = row[2] or "-"
+            cliente = row[4] if len(row) > 4 and row[4] else "-"
+            
+            data_n.append([
+                Paragraph(g, estilo_celda), 
+                Paragraph(cliente, estilo_celda_izq),
+                Paragraph(dest, estilo_celda_izq), 
+                Paragraph(mot, estilo_celda_izq)
+            ])
+            
+        t_n = Table(data_n, colWidths=[80, 90, 115, 250])
         t_n.setStyle(TableStyle([
             ('GRID', (0,0), (-1,-1), 0.5, colors.black),
             ('BACKGROUND', (0,0), (-1,0), colors.lightcoral),
             ('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold'),
+            ('FONTSIZE', (0,0), (-1,0), 8),
             ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
         ]))
         elements.append(t_n)

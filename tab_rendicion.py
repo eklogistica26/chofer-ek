@@ -197,21 +197,32 @@ class TabRendicion(QWidget):
         top_res.addWidget(QLabel("Seleccionar Chofer:")); top_res.addWidget(self.resumen_chofer); top_res.addWidget(QLabel("Fecha:")); top_res.addWidget(self.resumen_fecha); top_res.addWidget(btn_buscar_res); top_res.addStretch(); top_res.addWidget(btn_pdf_res)
         self.lbl_res_exitos = QLabel("✅ ENTREGAS / RETIROS EXITOSOS (0)"); self.lbl_res_exitos.setStyleSheet("font-size: 14px; font-weight: bold; color: #2e7d32; margin-top: 10px;")
         
-        self.tabla_res_exitos = QTableWidget(); self.tabla_res_exitos.setColumnCount(3); self.tabla_res_exitos.setHorizontalHeaderLabels(["Guía", "Destinatario", "Domicilio"])
+        # 🔥 ACÁ SE AGREGAN LAS NUEVAS COLUMNAS VISUALES EN LA COMPU 🔥
+        self.tabla_res_exitos = QTableWidget()
+        self.tabla_res_exitos.setColumnCount(6)
+        self.tabla_res_exitos.setHorizontalHeaderLabels(["Guía", "Cliente", "Destinatario", "Domicilio", "Bultos", "Fecha Ent."])
         
         self.tabla_res_exitos.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
-        self.tabla_res_exitos.setColumnWidth(0, 150)
-        self.tabla_res_exitos.setColumnWidth(1, 250)
+        self.tabla_res_exitos.setColumnWidth(0, 120)
+        self.tabla_res_exitos.setColumnWidth(1, 120)
+        self.tabla_res_exitos.setColumnWidth(2, 180)
+        self.tabla_res_exitos.setColumnWidth(3, 200)
+        self.tabla_res_exitos.setColumnWidth(4, 60)
+        self.tabla_res_exitos.setColumnWidth(5, 120)
         self.tabla_res_exitos.horizontalHeader().setStretchLastSection(True)
         self.tabla_res_exitos.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         
         self.lbl_res_fallos = QLabel("⚠️ NO ENTREGADOS / PENDIENTES (0)"); self.lbl_res_fallos.setStyleSheet("font-size: 14px; font-weight: bold; color: #c62828; margin-top: 10px;")
         
-        self.tabla_res_fallos = QTableWidget(); self.tabla_res_fallos.setColumnCount(3); self.tabla_res_fallos.setHorizontalHeaderLabels(["Guía", "Destinatario", "Motivo del Chofer"])
+        self.tabla_res_fallos = QTableWidget()
+        self.tabla_res_fallos.setColumnCount(4)
+        self.tabla_res_fallos.setHorizontalHeaderLabels(["Guía", "Cliente", "Destinatario", "Motivo del Chofer"])
         
         self.tabla_res_fallos.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
-        self.tabla_res_fallos.setColumnWidth(0, 150)
-        self.tabla_res_fallos.setColumnWidth(1, 250)
+        self.tabla_res_fallos.setColumnWidth(0, 120)
+        self.tabla_res_fallos.setColumnWidth(1, 120)
+        self.tabla_res_fallos.setColumnWidth(2, 180)
+        self.tabla_res_fallos.setColumnWidth(3, 300)
         self.tabla_res_fallos.horizontalHeader().setStretchLastSection(True)
         self.tabla_res_fallos.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         
@@ -221,15 +232,22 @@ class TabRendicion(QWidget):
         lay_res.addLayout(top_res); lay_res.addWidget(self.lbl_res_exitos); lay_res.addWidget(self.tabla_res_exitos); lay_res.addWidget(self.lbl_res_fallos); lay_res.addWidget(self.tabla_res_fallos)
         self.tabs_rendicion.addTab(tab_res, "2. Resumen Diario por Chofer")
 
+    # 🔥 SE ACTUALIZA EL MOTOR PARA QUE VAYA A BUSCAR EL CLIENTE, LA FECHA Y LOS BULTOS 🔥
     def cargar_resumen_chofer_vista(self):
         chofer = self.resumen_chofer.currentText(); fecha = self.resumen_fecha.date().toPyDate()
         if not chofer or chofer == "Todos": return
         try:
-            sql_entregados = text("SELECT DISTINCT o.id, o.guia_remito, o.destinatario, o.domicilio, o.tipo_servicio FROM operaciones o JOIN historial_movimientos h ON o.id = h.operacion_id WHERE o.chofer_asignado = :c AND o.estado = 'ENTREGADO' AND DATE(h.fecha_hora) = :f AND (h.accion LIKE '%ENTREGA%' OR h.accion = 'APP')")
+            sql_entregados = text("""
+                SELECT DISTINCT o.id, o.guia_remito, o.destinatario, o.domicilio, o.tipo_servicio, o.proveedor, o.bultos, o.fecha_entrega 
+                FROM operaciones o 
+                JOIN historial_movimientos h ON o.id = h.operacion_id 
+                WHERE o.chofer_asignado = :c AND o.estado = 'ENTREGADO' 
+                AND DATE(h.fecha_hora) = :f AND (h.accion LIKE '%ENTREGA%' OR h.accion = 'APP')
+            """)
             entregados = self.main.session.execute(sql_entregados, {"c": chofer, "f": fecha}).fetchall()
             
             sql_no_ent = text("""
-                SELECT o.guia_remito, o.destinatario, h.detalle, o.tipo_servicio 
+                SELECT o.guia_remito, o.destinatario, h.detalle, o.tipo_servicio, o.proveedor 
                 FROM historial_movimientos h 
                 JOIN operaciones o ON h.operacion_id = o.id 
                 WHERE DATE(h.fecha_hora) = :f 
@@ -237,7 +255,7 @@ class TabRendicion(QWidget):
                        OR (h.usuario = :c AND h.detalle LIKE 'Pendiente%') 
                        OR (o.chofer_asignado = :c AND h.accion LIKE '%REPROGRAMADO%'))
                 UNION
-                SELECT guia_remito, destinatario, 'EN CALLE (Aún no gestionado)', tipo_servicio 
+                SELECT guia_remito, destinatario, 'EN CALLE (Aún no gestionado)', tipo_servicio, proveedor 
                 FROM operaciones 
                 WHERE chofer_asignado = :c AND estado = 'EN REPARTO'
             """)
@@ -254,9 +272,14 @@ class TabRendicion(QWidget):
                 elif row_data[4] and "Flete" in row_data[4]:
                     guia_str = f"⏱️ {guia_str}"
                 
+                f_ent = row_data[7].strftime("%d/%m %H:%M") if row_data[7] else "-"
+                
                 self.tabla_res_exitos.setItem(r, 0, QTableWidgetItem(guia_str))
-                self.tabla_res_exitos.setItem(r, 1, QTableWidgetItem(row_data[2]))
-                self.tabla_res_exitos.setItem(r, 2, QTableWidgetItem(row_data[3]))
+                self.tabla_res_exitos.setItem(r, 1, QTableWidgetItem(row_data[5] or "-"))
+                self.tabla_res_exitos.setItem(r, 2, QTableWidgetItem(row_data[2] or "-"))
+                self.tabla_res_exitos.setItem(r, 3, QTableWidgetItem(row_data[3] or "-"))
+                self.tabla_res_exitos.setItem(r, 4, QTableWidgetItem(str(row_data[6]) if row_data[6] else "1"))
+                self.tabla_res_exitos.setItem(r, 5, QTableWidgetItem(f_ent))
                 
             self.lbl_res_exitos.setText(f"✅ ENTREGAS / RETIROS EXITOSOS ({len(entregados)})")
             
@@ -270,11 +293,13 @@ class TabRendicion(QWidget):
                     guia_str = f"⏱️ {guia_str}"
                     
                 self.tabla_res_fallos.setItem(r, 0, QTableWidgetItem(guia_str))
-                self.tabla_res_fallos.setItem(r, 1, QTableWidgetItem(row_data[1]))
-                self.tabla_res_fallos.setItem(r, 2, QTableWidgetItem(row_data[2]))
+                self.tabla_res_fallos.setItem(r, 1, QTableWidgetItem(row_data[4] or "-"))
+                self.tabla_res_fallos.setItem(r, 2, QTableWidgetItem(row_data[1] or "-"))
+                self.tabla_res_fallos.setItem(r, 3, QTableWidgetItem(row_data[2] or "-"))
                 
             self.lbl_res_fallos.setText(f"⚠️ NO ENTREGADOS / PENDIENTES ({len(no_entregados)})")
-        except Exception as e: self.main.session.rollback(); QMessageBox.critical(self, "Error", str(e))
+        except Exception as e: 
+            self.main.session.rollback(); QMessageBox.critical(self, "Error", str(e))
 
     def imprimir_resumen_chofer(self):
         if not hasattr(self, 'datos_resumen_exitos'): QMessageBox.warning(self, "Atención", "Busque primero."); return
