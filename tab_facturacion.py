@@ -1,0 +1,476 @@
+import os
+import calendar
+from datetime import datetime, date
+from PyQt6.QtWidgets import (QApplication, QDialog, QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, 
+                             QComboBox, QPushButton, QTableWidget, QTableWidgetItem, 
+                             QHeaderView, QMessageBox, QSpinBox, QFrame, QFileDialog, QTabWidget, QAbstractItemView, QStyledItemDelegate)
+from PyQt6.QtCore import Qt, QDate
+from PyQt6.QtGui import QColor, QFont, QBrush
+from sqlalchemy import text
+
+from database import Operacion, Historial, Estados, ReciboPago
+from utilidades import crear_pdf_facturacion
+from dialogos import EditarPrecioFacturacionDialog, AgregarCargoDialog, CargarPagoDialog
+
+class DeshacerFacturacionDialog(QDialog):
+    def __init__(self, main_app, parent=None):
+        super().__init__(parent)
+        self.main_app = main_app
+        self.setWindowTitle("⏪ Deshacer Facturación")
+        self.setGeometry(400, 200, 750, 400)
+        layout = QVBoxLayout(self)
+        
+        lbl = QLabel("Seleccione las guías que desea devolver a estado 'No Facturado':")
+        lbl.setStyleSheet("font-weight: bold; color: #d32f2f;")
+        layout.addWidget(lbl)
+        
+        self.tabla = QTableWidget()
+        self.tabla.setColumnCount(7)
+        self.tabla.setHorizontalHeaderLabels(["ID", "Sel.", "Fecha", "Guía", "Proveedor", "Destinatario", "Total ($)"])
+        self.tabla.hideColumn(0)
+        self.tabla.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
+        self.tabla.setColumnWidth(1, 40)
+        self.tabla.setColumnWidth(2, 90)
+        self.tabla.setColumnWidth(3, 140)
+        self.tabla.setColumnWidth(4, 150)
+        self.tabla.setColumnWidth(5, 200)
+        self.tabla.horizontalHeader().setStretchLastSection(True)
+        self.tabla.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        self.tabla.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        layout.addWidget(self.tabla)
+        
+        btn_deshacer = QPushButton("⏪ DEVOLVER A LA TABLA PRINCIPAL")
+        btn_deshacer.setStyleSheet("background-color: #ff9800; font-weight: bold; padding: 10px; color: black;")
+        btn_deshacer.clicked.connect(self.procesar_deshacer)
+        layout.addWidget(btn_deshacer)
+        
+        self.cargar_datos()
+        
+    def cargar_datos(self):
+        self.tabla.setRowCount(0)
+        f_limite = QDate.currentDate().addDays(-60).toPyDate()
+        try:
+            ops = self.main_app.session.query(Operacion).filter(
+                Operacion.facturado == True,
+                Operacion.sucursal == self.main_app.sucursal_actual,
+                Operacion.fecha_ingreso >= f_limite
+            ).order_by(Operacion.id.desc()).limit(150).all()
+            
+            for r, op in enumerate(ops):
+                self.tabla.insertRow(r)
+                self.tabla.setItem(r, 0, QTableWidgetItem(str(op.id)))
+                
+                chk = QTableWidgetItem()
+                chk.setFlags(Qt.ItemFlag.ItemIsUserCheckable | Qt.ItemFlag.ItemIsEnabled)
+                chk.setCheckState(Qt.CheckState.Unchecked)
+                self.tabla.setItem(r, 1, chk)
+                
+                self.tabla.setItem(r, 2, QTableWidgetItem(op.fecha_ingreso.strftime("%d/%m/%Y") if op.fecha_ingreso else "-"))
+                self.tabla.setItem(r, 3, QTableWidgetItem(op.guia_remito or "-"))
+                self.tabla.setItem(r, 4, QTableWidgetItem(op.proveedor or "-"))
+                self.tabla.setItem(r, 5, QTableWidgetItem(op.destinatario or "-"))
+                self.tabla.setItem(r, 6, QTableWidgetItem(f"$ {op.monto_servicio:,.2f}"))
+        except Exception as e:
+            pass
+            
+    def procesar_deshacer(self):
+        ids = []
+        for r in range(self.tabla.rowCount()):
+            if self.tabla.item(r, 1).checkState() == Qt.CheckState.Checked:
+                ids.append(int(self.tabla.item(r, 0).text()))
+        
+        if not ids:
+            QMessageBox.warning(self, "Aviso", "Seleccione al menos una guía.")
+            return
+            
+        try:
+            ops = self.main_app.session.query(Operacion).filter(Operacion.id.in_(ids)).all()
+            for op in ops:
+                op.facturado = False
+            self.main_app.session.commit()
+            QMessageBox.information(self, "Éxito", f"Se deshizo la facturación de {len(ids)} guías. Ahora volverán a aparecer en el listado para ser editadas.")
+            self.accept()
+        except Exception as e:
+            self.main_app.session.rollback()
+            QMessageBox.critical(self, "Error", str(e))
+
+class PintorCeldasDelegate(QStyledItemDelegate):
+    def paint(self, painter, option, index):
+        bg_color = index.data(Qt.ItemDataRole.BackgroundRole)
+        if bg_color:
+            painter.fillRect(option.rect, bg_color)
+        super().paint(painter, option, index)
+
+ESTILO_TABLAS_BLANCAS = """
+QTableWidget { background-color: #ffffff !important; }
+QTableWidget::item { background-color: transparent !important; color: #000000 !important; border-bottom: 1px solid #f0f0f0 !important; }
+QTableWidget::item:selected { background-color: #bbdefb !important; color: #000000 !important; }
+"""
+
+class TabFacturacion(QWidget):
+    def __init__(self, main_window):
+        super().__init__()
+        self.main = main_window
+        self.setup_ui()
+
+    def setup_ui(self):
+        l = QVBoxLayout(self); self.tabs_fact = QTabWidget(); l.addWidget(self.tabs_fact)
+        tab_rendicion = QWidget(); layout_rend = QVBoxLayout(tab_rendicion); panel = QFrame(); hl = QHBoxLayout(panel)
+        
+        self.cierre_mes = QComboBox()
+        self.cierre_mes.addItems(["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"])
+        self.cierre_mes.setCurrentIndex(datetime.now().month - 1) 
+        
+        self.cierre_anio = QSpinBox(); self.cierre_anio.setRange(2020, 2030); self.cierre_anio.setValue(datetime.now().year)
+        self.cierre_sucursal = QComboBox(); self.cierre_sucursal.addItems(["Todas", "Mendoza", "San Juan"]) 
+        self.cierre_prov = QComboBox(); self.cierre_prov.addItem("Todos"); self.cierre_prov.addItems(self.main.lista_proveedores)
+        btn_c = QPushButton("Calcular Listado"); btn_c.clicked.connect(self.calcular_cierre)
+        
+        btn_pdf = QPushButton("Rendición PDF")
+        btn_pdf.setStyleSheet("background-color: #dc3545 !important; color: white !important;")
+        btn_pdf.clicked.connect(self.generar_pdf_fact)
+        
+        hl.addWidget(QLabel("Sucursal:")); hl.addWidget(self.cierre_sucursal); hl.addWidget(QLabel("Mes:")); hl.addWidget(self.cierre_mes); hl.addWidget(QLabel("Año:")); hl.addWidget(self.cierre_anio); hl.addWidget(QLabel("Proveedor:")); hl.addWidget(self.cierre_prov); hl.addWidget(btn_c); hl.addWidget(btn_pdf)
+        btn_cargo_fijo = QPushButton("➕ Agregar Cargo Fijo / Extra"); btn_cargo_fijo.clicked.connect(self.agregar_cargo_fijo); hl.addWidget(btn_cargo_fijo)
+        
+        self.tabla_cierre = QTableWidget()
+        self.tabla_cierre.setColumnCount(10) 
+        
+        self.tabla_cierre.setHorizontalHeaderLabels(["Fecha", "Sucursal", "Guía / Remito", "Zona", "Bultos/Hs", "Estado", "Base ($)", "Extras ($)", "Total ($)", "Ajuste"])
+        self.tabla_cierre.setStyleSheet(ESTILO_TABLAS_BLANCAS)
+        self.pintor_cierre = PintorCeldasDelegate(self.tabla_cierre)
+        self.tabla_cierre.setItemDelegate(self.pintor_cierre)
+
+        header = self.tabla_cierre.horizontalHeader()
+        header.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
+        self.tabla_cierre.setColumnWidth(0, 90)
+        self.tabla_cierre.setColumnWidth(1, 100)
+        self.tabla_cierre.setColumnWidth(2, 140)
+        self.tabla_cierre.setColumnWidth(3, 140)
+        self.tabla_cierre.setColumnWidth(4, 90)
+        self.tabla_cierre.setColumnWidth(5, 140)
+        self.tabla_cierre.setColumnWidth(6, 100)
+        self.tabla_cierre.setColumnWidth(7, 100)
+        self.tabla_cierre.setColumnWidth(8, 100)
+        header.setStretchLastSection(True)
+        
+        self.tabla_cierre.verticalHeader().setFixedWidth(30)
+        self.tabla_cierre.verticalHeader().setDefaultSectionSize(45)
+        
+        self.tabla_cierre.setAlternatingRowColors(False)
+        self.tabla_cierre.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows); self.tabla_cierre.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers); self.tabla_cierre.cellDoubleClicked.connect(self.doble_clic_ajuste_precio)
+        
+        self.lbl_resumen = QLabel("Total Base: $0  |  Total Extras: $0  |  TOTAL A FACTURAR: $0"); self.lbl_resumen.setStyleSheet("font-size: 16px; font-weight: bold; margin: 10px 15px; padding: 10px; border: 1px solid #ccc;")
+        
+        lay_abajo = QHBoxLayout()
+        self.btn_deshacer_fac = QPushButton("⏪ Deshacer Facturación")
+        self.btn_deshacer_fac.setStyleSheet("background-color: #ff9800; color: black; font-weight: bold; padding: 10px; border-radius: 5px;")
+        self.btn_deshacer_fac.clicked.connect(self.abrir_dialogo_deshacer_facturacion)
+        lay_abajo.addWidget(self.btn_deshacer_fac)
+        lay_abajo.addStretch()
+        lay_abajo.addWidget(self.lbl_resumen)
+        
+        layout_rend.addWidget(panel); layout_rend.addWidget(self.tabla_cierre); layout_rend.addLayout(lay_abajo); self.tabs_fact.addTab(tab_rendicion, "1. Calcular Rendición")
+
+        tab_cta = QWidget(); layout_cta = QVBoxLayout(tab_cta); top_cta = QHBoxLayout()
+        btn_ref_cta = QPushButton("🔄 Actualizar Saldos"); btn_ref_cta.clicked.connect(self.cargar_ctas_ctes)
+        btn_pago = QPushButton("💰 Registrar Pago Recibido"); btn_pago.clicked.connect(self.registrar_pago_ctacte)
+        top_cta.addWidget(btn_ref_cta); top_cta.addStretch(); top_cta.addWidget(btn_pago)
+        
+        self.tabla_ctacte = QTableWidget(); self.tabla_ctacte.setColumnCount(4); self.tabla_ctacte.setHorizontalHeaderLabels(["Proveedor", "Total Facturado Histórico ($)", "Pagos Recibidos ($)", "SALDO A COBRAR ($)"])
+        
+        self.tabla_ctacte.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
+        self.tabla_ctacte.setColumnWidth(0, 250)
+        self.tabla_ctacte.setColumnWidth(1, 180)
+        self.tabla_ctacte.setColumnWidth(2, 180)
+        self.tabla_ctacte.horizontalHeader().setStretchLastSection(True)
+        
+        self.tabla_ctacte.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows); self.tabla_ctacte.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        
+        self.tabla_ctacte.setStyleSheet(ESTILO_TABLAS_BLANCAS)
+        self.pintor_cta = PintorCeldasDelegate(self.tabla_ctacte)
+        self.tabla_ctacte.setItemDelegate(self.pintor_cta)
+
+        layout_cta.addLayout(top_cta); layout_cta.addWidget(self.tabla_ctacte); self.tabs_fact.addTab(tab_cta, "2. Cuentas Corrientes (Saldos)")
+
+    def abrir_dialogo_deshacer_facturacion(self):
+        dlg = DeshacerFacturacionDialog(self.main, self)
+        if dlg.exec() == QDialog.DialogCode.Accepted:
+            self.calcular_cierre()
+            self.cargar_ctas_ctes()
+
+    def agregar_cargo_fijo(self):
+        proveedores = [self.cierre_prov.itemText(i) for i in range(self.cierre_prov.count()) if self.cierre_prov.itemText(i) != "Todos"]
+        dlg = AgregarCargoDialog(proveedores, self)
+        if dlg.exec() == QDialog.DialogCode.Accepted:
+            try:
+                op = Operacion(fecha_ingreso=datetime.now(), sucursal=self.cierre_sucursal.currentText() if self.cierre_sucursal.currentText() != "Todas" else self.main.sucursal_actual, guia_remito="CARGO-FIJO", proveedor=dlg.in_prov.currentText(), destinatario=dlg.in_concepto.text(), domicilio="-", localidad="-", bultos=1, bultos_frio=0, peso=0.0, tipo_carga="COMUN", monto_servicio=dlg.in_monto.value(), estado=Estados.ENTREGADO, facturado=False, tipo_servicio="Cargo Extra")
+                self.main.session.add(op); self.main.session.commit(); self.main.toast.mostrar("✅ Cargo extra agregado."); self.calcular_cierre()
+            except Exception: self.main.session.rollback(); QMessageBox.warning(self, "Error", "No se pudo guardar.")
+
+    def registrar_pago_ctacte(self):
+        r = self.tabla_ctacte.currentRow()
+        if r < 0: return
+        prov = self.tabla_ctacte.item(r, 0).text(); dlg = CargarPagoDialog(prov, self)
+        if dlg.exec() == QDialog.DialogCode.Accepted:
+            try:
+                pago = ReciboPago(proveedor=prov, monto=dlg.in_monto.value(), detalle=dlg.in_detalle.text(), usuario=self.main.usuario.username)
+                self.main.session.add(pago); self.main.session.commit(); self.main.toast.mostrar("✅ Pago registrado."); self.cargar_ctas_ctes()
+            except Exception: self.main.session.rollback()
+
+    def cargar_ctas_ctes(self):
+        try:
+            self.tabla_ctacte.setRowCount(0)
+            sql_fac = text("SELECT proveedor, SUM(monto_servicio) FROM operaciones WHERE (facturado = TRUE) AND UPPER(TRIM(proveedor)) != 'JETPAQ' GROUP BY proveedor")
+            facturados = self.main.session.execute(sql_fac).fetchall()
+            dict_saldos = {f[0]: {"fac": f[1] or 0.0, "pag": 0.0} for f in facturados}
+            sql_pag = text("SELECT proveedor, SUM(monto) FROM recibos_pago GROUP BY proveedor")
+            pagados = self.main.session.execute(sql_pag).fetchall()
+            for p in pagados:
+                if p[0] not in dict_saldos: dict_saldos[p[0]] = {"fac": 0.0, "pag": 0.0}
+                dict_saldos[p[0]]["pag"] += (p[1] or 0.0)
+            for i, (prov, montos) in enumerate(dict_saldos.items()):
+                self.tabla_ctacte.insertRow(i); fac = montos["fac"]; pag = montos["pag"]; saldo = fac - pag
+                self.tabla_ctacte.setItem(i, 0, QTableWidgetItem(prov)); self.tabla_ctacte.setItem(i, 1, QTableWidgetItem(f"$ {fac:,.2f}")); self.tabla_ctacte.setItem(i, 2, QTableWidgetItem(f"$ {pag:,.2f}"))
+                it_saldo = QTableWidgetItem(f"$ {saldo:,.2f}"); it_saldo.setFont(QFont("Arial", 11, QFont.Weight.Bold))
+                if saldo > 0: it_saldo.setForeground(QColor("red"))
+                else: it_saldo.setForeground(QColor("green"))
+                self.tabla_ctacte.setItem(i, 3, it_saldo)
+        except Exception: self.main.session.rollback()
+
+    def doble_clic_ajuste_precio(self, row, col):
+        id_op = self.mapa_filas_cierre.get(row)
+        if id_op: self.abrir_dialogo_ajuste_precio(id_op)
+
+    def abrir_dialogo_ajuste_precio(self, id_op):
+        try:
+            op = self.main.session.query(Operacion).get(id_op)
+            if not op: return
+            dlg = EditarPrecioFacturacionDialog(op, self.main, self)
+            if dlg.exec() == QDialog.DialogCode.Accepted: op.monto_servicio = dlg.precio_final; self.main.session.commit(); self.calcular_cierre(); self.main.toast.mostrar("✅ Precio actualizado")
+        except Exception: self.main.session.rollback()
+
+    def calcular_cierre(self):
+        mes = self.cierre_mes.currentIndex() + 1
+        anio = self.cierre_anio.value()
+        prov = self.cierre_prov.currentText().strip()
+        sucursal = self.cierre_sucursal.currentText()
+        
+        self.tabla_cierre.setRowCount(0)
+        self.main.setWindowTitle("⏳ Calculando facturación, por favor espere...")
+        QApplication.processEvents()
+        
+        try:
+            _, last_day = calendar.monthrange(anio, mes)
+            start_date = date(anio, mes, 1)
+            end_date = date(anio, mes, last_day)
+
+            query = self.main.session.query(Operacion).filter(
+                Operacion.fecha_ingreso >= start_date, 
+                Operacion.fecha_ingreso <= end_date,
+                (Operacion.facturado == False) | (Operacion.facturado == None),
+                Operacion.estado.ilike('ENTREGADO')
+            )
+            
+            if prov != "Todos": 
+                query = query.filter(Operacion.proveedor.ilike(prov))
+            else:
+                query = query.filter(~Operacion.proveedor.ilike('JetPaq'))
+                
+            if sucursal != "Todas": 
+                query = query.filter(Operacion.sucursal == sucursal)
+                
+            query = query.order_by(Operacion.fecha_ingreso.asc())
+            self.resultados_cierre = query.all()
+            
+            if not self.resultados_cierre:
+                self.tabla_cierre.setRowCount(1)
+                item_empty = QTableWidgetItem("❌ Ninguna guía en este periodo para facturar (JetPaq es interno)")
+                item_empty.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                self.tabla_cierre.setItem(0, 0, item_empty)
+                self.tabla_cierre.setSpan(0, 0, 1, 10) 
+                
+                self.lbl_resumen.setText("Total Base: $0  |  Total Extras: $0  |  TOTAL A FACTURAR: $0")
+                self.main.setWindowTitle(f"E.K. LOGISTICA (NUBE) - Usuario: {self.main.usuario.username.upper()}")
+                return
+
+            op_ids = [op.id for op in self.resultados_cierre]
+            
+            conteo_repartos = {}
+            if op_ids:
+                hist_records = self.main.session.query(Historial.operacion_id, Historial.accion).filter(
+                    Historial.operacion_id.in_(op_ids),
+                    Historial.accion.in_(['SALIDA A REPARTO', 'DESHACER (ADMIN)', 'REPROGRAMADO (ADMIN)', 'SALIDA A TERCERIZADO'])
+                ).all()
+                for op_id, accion in hist_records:
+                    if op_id not in conteo_repartos: conteo_repartos[op_id] = 0
+                    if accion == 'SALIDA A REPARTO': conteo_repartos[op_id] += 1
+                    elif accion in ['DESHACER (ADMIN)', 'REPROGRAMADO (ADMIN)']: 
+                        conteo_repartos[op_id] -= 1
+
+            tot_base = 0; tot_extras = 0; tot_final = 0; self.mapa_filas_cierre = {} 
+            hubo_cambios_precios = False
+            
+            total_ops = len(self.resultados_cierre)
+            
+            for row, op in enumerate(self.resultados_cierre):
+                if row % 5 == 0: 
+                    self.main.setWindowTitle(f"⏳ Calculando facturación: {row} de {total_ops}...")
+                    QApplication.processEvents()
+                    
+                self.tabla_cierre.insertRow(row)
+                self.mapa_filas_cierre[row] = op.id 
+                
+                fecha_str = op.fecha_ingreso.strftime("%d/%m/%Y") if op.fecha_ingreso else "-"
+                self.tabla_cierre.setItem(row, 0, QTableWidgetItem(fecha_str))
+                self.tabla_cierre.setItem(row, 1, QTableWidgetItem((op.sucursal or "").upper()))
+                self.tabla_cierre.setItem(row, 2, QTableWidgetItem(op.guia_remito or "RET"))
+                self.tabla_cierre.setItem(row, 3, QTableWidgetItem(op.localidad or ""))
+                
+                bultos_tot = op.bultos if op.bultos is not None else 1
+                bultos_fr = op.bultos_frio if op.bultos_frio is not None else 0
+                
+                det_b = str(bultos_tot)
+                if bultos_fr > 0 and bultos_fr < bultos_tot: det_b += f" ({bultos_tot-bultos_fr}C/{bultos_fr}R)"
+                elif bultos_fr == bultos_tot: det_b += " (R)"
+                
+                self.tabla_cierre.setItem(row, 4, QTableWidgetItem(det_b))
+                
+                visitas = conteo_repartos.get(op.id, 1)
+                if visitas < 1: visitas = 1 
+                
+                estado_txt = op.estado or ""
+                bg_color_row = QColor("#ffffff")
+                
+                if visitas > 1:
+                    estado_txt = f"{estado_txt} (⚠️ {visitas} Visitas)"
+                    bg_color_row = QColor("#fff3cd")
+                
+                self.tabla_cierre.setItem(row, 5, QTableWidgetItem(estado_txt))
+                
+                monto_serv = op.monto_servicio or 0.0
+                
+                if op.guia_remito == "CARGO-FIJO" or (op.tipo_servicio and "Flete" in op.tipo_servicio): 
+                    precio_base_actual = monto_serv
+                else:
+                    cant_comun = bultos_tot - bultos_fr
+                    peso_val = op.peso or 0.0
+                    precio_base_actual = self.main.obtener_precio(op.localidad, cant_comun, bultos_fr, op.sucursal, proveedor=op.proveedor, peso=peso_val, bultos_totales=bultos_tot)
+                
+                if monto_serv == 0 and precio_base_actual > 0:
+                    nuevo_monto = precio_base_actual
+                    if op.tipo_servicio == 'Entrega (Guardia)':
+                        wd = op.fecha_ingreso.weekday()
+                        if wd >= 5: 
+                            nuevo_monto += precio_base_actual
+                        if op.tipo_carga and "REFRIGERADO" in op.tipo_carga:
+                            nuevo_monto += 1500.0
+                            
+                    op.monto_servicio = nuevo_monto
+                    monto_serv = nuevo_monto
+                    hubo_cambios_precios = True
+                    
+                    precio_base = precio_base_actual
+                    extras = monto_serv - precio_base
+                elif 0 < monto_serv < precio_base_actual: 
+                    precio_base = monto_serv
+                    extras = 0
+                else: 
+                    precio_base = precio_base_actual
+                    extras = monto_serv - precio_base
+                
+                self.tabla_cierre.setItem(row, 6, QTableWidgetItem(f"$ {precio_base:,.2f}"))
+                it_extras = QTableWidgetItem(f"$ {extras:,.2f}")
+                if extras > 0: it_extras.setForeground(QColor("blue"))
+                elif extras < 0: it_extras.setForeground(QColor("red"))
+                self.tabla_cierre.setItem(row, 7, it_extras)
+                
+                it_final = QTableWidgetItem(f"$ {monto_serv:,.2f}")
+                it_final.setFlags(Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsSelectable)
+                it_final.setFont(QFont("Arial", 9, QFont.Weight.Bold))
+                self.tabla_cierre.setItem(row, 8, it_final)
+                
+                btn_ajuste = QPushButton("✏️ Editar")
+                btn_ajuste.setFixedSize(85, 30) 
+                btn_ajuste.setStyleSheet("background-color: #0d6efd !important; color: white !important; font-weight: bold !important; font-size: 11px !important; border-radius: 4px !important; margin: 0px !important;")
+                
+                widget_centrado = QWidget()
+                layout_centrado = QHBoxLayout(widget_centrado)
+                layout_centrado.setContentsMargins(0, 0, 0, 0)
+                layout_centrado.setAlignment(Qt.AlignmentFlag.AlignCenter)
+                layout_centrado.addWidget(btn_ajuste)
+                
+                btn_ajuste.clicked.connect(lambda checked, r=row: self.abrir_dialogo_ajuste_precio(self.mapa_filas_cierre[r]))
+                self.tabla_cierre.setCellWidget(row, 9, widget_centrado)
+                
+                if visitas > 1:
+                    brush_bg = QBrush(bg_color_row)
+                    for col_idx in range(10):
+                        it_celda = self.tabla_cierre.item(row, col_idx)
+                        if it_celda:
+                            it_celda.setBackground(brush_bg)
+                            if col_idx == 5:
+                                font_bold = QFont(); font_bold.setBold(True); it_celda.setFont(font_bold)
+                                it_celda.setForeground(QColor("#d32f2f"))
+                            else:
+                                it_celda.setForeground(QColor("#000000")) 
+                
+                tot_base += precio_base
+                tot_extras += extras
+                tot_final += monto_serv
+                
+            self.totales_cierre = (tot_base, tot_extras, tot_final)
+            self.lbl_resumen.setText(f"Total Base: ${tot_base:,.2f}  |  Total Extras: ${tot_extras:,.2f}  |  TOTAL A FACTURAR: ${tot_final:,.2f}")
+            
+            if hubo_cambios_precios:
+                self.main.session.commit()
+                
+        except Exception as e:
+            self.main.session.rollback()
+            self.tabla_cierre.setRowCount(0)
+            QMessageBox.critical(self, "Error Cálculo", f"Hubo un problema al traer la facturación:\n{e}")
+        finally:
+            self.main.setWindowTitle(f"E.K. LOGISTICA (NUBE) - Usuario: {self.main.usuario.username.upper()}")
+
+    def generar_pdf_fact(self):
+        if not hasattr(self, 'resultados_cierre') or not self.resultados_cierre: return
+        reply = QMessageBox.question(self, "Cerrar Facturación", "¿Desea marcar estas guías como FACTURADAS?", QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+        marcar_facturado = (reply == QMessageBox.StandardButton.Yes); mes_nombre = self.cierre_mes.currentText(); anio_num = self.cierre_anio.value(); prov_nombre = self.cierre_prov.currentText()
+        
+        descargas_dir = os.path.join(os.path.expanduser('~'), 'Downloads')
+        if not os.path.exists(descargas_dir): os.makedirs(descargas_dir, exist_ok=True)
+        ruta_pdf = os.path.join(descargas_dir, f"Facturacion_{prov_nombre}_{mes_nombre}_{anio_num}.pdf")
+        
+        data_filas = [['FECHA', 'GUÍA', 'ZONA', 'BULTOS', 'BASE ($)', 'EXTRAS ($)', 'TOTAL ($)']]
+        for op in self.resultados_cierre:
+            monto_serv = op.monto_servicio or 0.0
+            if op.guia_remito == "CARGO-FIJO": precio_base_actual = monto_serv
+            else:
+                bultos_tot = op.bultos if op.bultos is not None else 1
+                bultos_fr = op.bultos_frio if op.bultos_frio is not None else 0
+                peso_val = op.peso or 0.0
+                cant_comun = bultos_tot - bultos_fr
+                precio_base_actual = self.main.obtener_precio(op.localidad, cant_comun, bultos_fr, op.sucursal, proveedor=op.proveedor, peso=peso_val, bultos_totales=bultos_tot)
+            if monto_serv == 0 and precio_base_actual > 0: precio_base = precio_base_actual; extras = 0
+            elif 0 < monto_serv < precio_base_actual: precio_base = monto_serv; extras = 0
+            else: precio_base = precio_base_actual; extras = monto_serv - precio_base
+            desc_guia = op.guia_remito or "RET"
+            
+            bultos_tot = op.bultos if op.bultos is not None else 1
+            bultos_fr = op.bultos_frio if op.bultos_frio is not None else 0
+            det_b = str(bultos_tot)
+            
+            if bultos_fr > 0 and bultos_fr < bultos_tot: det_b += f" ({bultos_tot-bultos_fr}C/{bultos_fr}R)"
+            elif bultos_fr == bultos_tot: det_b += " (R)"
+            
+            data_filas.append([op.fecha_ingreso.strftime("%d/%m/%Y") if op.fecha_ingreso else "-", desc_guia, op.localidad[:15] if op.localidad else "-", det_b, f"$ {precio_base:,.0f}", f"$ {extras:,.0f}", f"$ {monto_serv:,.0f}"])
+            if marcar_facturado: op.facturado = True
+        if marcar_facturado: 
+            try: self.main.session.commit(); QMessageBox.information(self, "Éxito", "Guías marcadas como FACTURADAS."); self.calcular_cierre(); self.cargar_ctas_ctes()
+            except: self.main.session.rollback()
+        tot_base, tot_extras, tot_final = self.totales_cierre; iva = tot_final * 0.21; total_con_iva = tot_final + iva
+        data_filas.append(['SUBTOTALES:', '', '', '', f"$ {tot_base:,.0f}", f"$ {tot_extras:,.0f}", f"$ {tot_final:,.0f}"]); data_filas.append(['IVA (21%):', '', '', '', '', '', f"$ {iva:,.0f}"]); data_filas.append(['TOTAL A FACTURAR:', '', '', '', '', '', f"$ {total_con_iva:,.0f}"]) 
+        
+        crear_pdf_facturacion(ruta_pdf, data_filas, prov_nombre, f"{mes_nombre} {anio_num}", self.main.usuario.username, datetime.now().strftime('%d/%m/%Y %H:%M'))
+        try: os.startfile(ruta_pdf)
+        except: pass

@@ -86,8 +86,11 @@ class PlataformaLogistica(QMainWindow):
         global Operacion, Historial, Tarifa, Chofer, ClienteRetiro, ClientePrincipal, DestinoFrecuente, Estados, Urgencia, TarifaDHL, HistorialTarifas, ReciboPago
         from database import Operacion, Historial, Tarifa, Chofer, ClienteRetiro, ClientePrincipal, DestinoFrecuente, Estados, Urgencia, TarifaDHL, HistorialTarifas, ReciboPago
         
+        # 🔥 ACÁ ESTÁN LOS CABLES NUEVOS A TUS ARCHIVOS RECIÉN CREADOS 🔥
         global TabIngreso, TabRendicion, TabFacturacion, TabConfiguracion
-        from vistas_operativas import TabIngreso, TabRendicion, TabFacturacion
+        from tab_ingreso import TabIngreso
+        from tab_rendicion import TabRendicion
+        from tab_facturacion import TabFacturacion
         from vista_configuracion import TabConfiguracion
         
         global ToastNotification, ConfirmarEntregaDialog, ReprogramarAdminDialog, HistorialHojasRutaDialog, EditarOperacionDialog, CambiarFechaDialog, TrackingDialog
@@ -582,7 +585,6 @@ class PlataformaLogistica(QMainWindow):
         estado = Qt.CheckState.Checked if tabla.item(0, 1).checkState() == Qt.CheckState.Unchecked else Qt.CheckState.Unchecked
         for r in range(rows): tabla.item(r, 1).setCheckState(estado)
         
-    # 🔥 HOJA DE RUTA: DESCARGA AUTOMÁTICA EN DESCARGAS 🔥
     def generar_pdf_ruta(self, ids_forzados=None, nombre_sufijo=""):
         chofer_filtro = self.combo_masivo_chofer.currentText()
         try:
@@ -611,7 +613,6 @@ class PlataformaLogistica(QMainWindow):
             except: pass
         except Exception: self.session.rollback()
 
-    # 🔥 TERCERIZADOS: DESCARGA AUTOMÁTICA EN DESCARGAS 🔥
     def generar_pdf_terc(self):
         transporte, ok = QInputDialog.getText(self, "Transporte Tercerizado", "Nombre del Transporte / Empresa:")
         if not ok or not transporte: return
@@ -692,7 +693,6 @@ class PlataformaLogistica(QMainWindow):
             self.lbl_reporte_total.setText(f"Resultados: {total_guias} | Total Dinero: $ {total_dinero:,.2f}")
         except Exception: self.session.rollback()
         
-    # 🔥 REPORTE PDF: DESCARGA AUTOMÁTICA Y FILTROS DETALLADOS 🔥
     def generar_pdf_rep(self):
         try:
             resultados = self.construir_query_reportes()
@@ -703,7 +703,6 @@ class PlataformaLogistica(QMainWindow):
             
             total_dinero = sum([op.monto_servicio for op in resultados])
             
-            # Recolectamos absolutamente todos los filtros aplicados
             filtro_info = f"Desde: {self.rep_fecha_desde.text()} Hasta: {self.rep_fecha_hasta.text()}"
             if self.rep_sucursal.currentText() != "Todas": filtro_info += f" | SUC: {self.rep_sucursal.currentText()}"
             if self.rep_cliente.currentText() != "Todos": filtro_info += f" | CLI: {self.rep_cliente.currentText()}"
@@ -716,7 +715,6 @@ class PlataformaLogistica(QMainWindow):
             except: pass
         except Exception: self.session.rollback()
         
-    # 🔥 EXCEL: DESCARGA AUTOMÁTICA EN DESCARGAS 🔥
     def exportar_reporte_excel(self):
         try:
             import pandas as pd
