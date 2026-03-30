@@ -86,6 +86,7 @@ class PlataformaLogistica(QMainWindow):
         global Operacion, Historial, Tarifa, Chofer, ClienteRetiro, ClientePrincipal, DestinoFrecuente, Estados, Urgencia, TarifaDHL, HistorialTarifas, ReciboPago
         from database import Operacion, Historial, Tarifa, Chofer, ClienteRetiro, ClientePrincipal, DestinoFrecuente, Estados, Urgencia, TarifaDHL, HistorialTarifas, ReciboPago
         
+        # 🔥 ACTUALIZACIÓN: ACÁ REEMPLAZAMOS vistas_operativas POR LOS 3 ARCHIVOS NUEVOS 🔥
         global TabIngreso, TabRendicion, TabFacturacion, TabConfiguracion
         from tab_ingreso import TabIngreso
         from tab_rendicion import TabRendicion
