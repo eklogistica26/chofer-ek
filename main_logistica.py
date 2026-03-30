@@ -86,11 +86,8 @@ class PlataformaLogistica(QMainWindow):
         global Operacion, Historial, Tarifa, Chofer, ClienteRetiro, ClientePrincipal, DestinoFrecuente, Estados, Urgencia, TarifaDHL, HistorialTarifas, ReciboPago
         from database import Operacion, Historial, Tarifa, Chofer, ClienteRetiro, ClientePrincipal, DestinoFrecuente, Estados, Urgencia, TarifaDHL, HistorialTarifas, ReciboPago
         
-        # 🔥 IMPORTANTE: Ahora usamos los archivos divididos 🔥
         global TabIngreso, TabRendicion, TabFacturacion, TabConfiguracion
-        from tab_ingreso import TabIngreso
-        from tab_rendicion import TabRendicion
-        from tab_facturacion import TabFacturacion
+        from vistas_operativas import TabIngreso, TabRendicion, TabFacturacion
         from vista_configuracion import TabConfiguracion
         
         global ToastNotification, ConfirmarEntregaDialog, ReprogramarAdminDialog, HistorialHojasRutaDialog, EditarOperacionDialog, CambiarFechaDialog, TrackingDialog
@@ -297,7 +294,8 @@ class PlataformaLogistica(QMainWindow):
                     elif hasattr(self, 'tab_ingreso') and tabla == self.tab_ingreso.tabla_ingresos: self.tab_ingreso.cargar_movimientos_dia()
                     self.cargar_monitor_global()
         except Exception: self.session.rollback()
-def setup_monitor(self):
+
+    def setup_monitor(self):
         layout = QVBoxLayout(self.tab_monitor)
         self.tabs_internas_monitor = QTabWidget()
         tab_tabla = QWidget(); layout_tabla = QVBoxLayout(tab_tabla); top_bar = QHBoxLayout()
@@ -312,9 +310,14 @@ def setup_monitor(self):
         
         header = self.tabla_monitor.horizontalHeader()
         header.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
-        self.tabla_monitor.setColumnWidth(0, 130); self.tabla_monitor.setColumnWidth(1, 140); self.tabla_monitor.setColumnWidth(2, 180)
-        self.tabla_monitor.setColumnWidth(3, 250); self.tabla_monitor.setColumnWidth(4, 350); self.tabla_monitor.setColumnWidth(5, 150)
-        self.tabla_monitor.setColumnWidth(6, 80); header.setStretchLastSection(True)         
+        self.tabla_monitor.setColumnWidth(0, 130)  
+        self.tabla_monitor.setColumnWidth(1, 140)  
+        self.tabla_monitor.setColumnWidth(2, 180)  
+        self.tabla_monitor.setColumnWidth(3, 250)  
+        self.tabla_monitor.setColumnWidth(4, 350)  
+        self.tabla_monitor.setColumnWidth(5, 150)  
+        self.tabla_monitor.setColumnWidth(6, 80)   
+        header.setStretchLastSection(True)         
         
         self.tabla_monitor.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows); self.tabla_monitor.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         legend = QHBoxLayout()
@@ -429,26 +432,25 @@ def setup_monitor(self):
         btn_aplicar_masivo = QPushButton("ASIGNAR GUÍAS"); btn_aplicar_masivo.clicked.connect(self.asignar_chofer_masivo)
         btn_mark = QPushButton("☑️ Seleccionar Todo"); btn_mark.clicked.connect(lambda: self.toggle_seleccion_todo(self.tabla_ruta))
         btn_tercerizado = QPushButton("🚚 TERCERIZADOS"); btn_tercerizado.clicked.connect(self.generar_pdf_terc)
-        
-        # 🔥 FIX 5: BOTÓN PARA REIMPRIMIR LA HOJA CON LO VIEJO Y LO NUEVO 🔥
-        btn_reimprimir = QPushButton("🖨️ REIMPRIMIR RUTA DE HOY")
-        btn_reimprimir.setStyleSheet("background-color: #6f42c1 !important; color: white !important;")
-        btn_reimprimir.clicked.connect(self.reimprimir_ruta_completa)
-        
         btn_reprog = QPushButton("📅 CAMBIAR FECHA"); btn_reprog.clicked.connect(self.cambiar_fecha_ruta)
         btn_historial = QPushButton("📜 HISTORIAL"); btn_historial.clicked.connect(self.abrir_historial_hojas)
         btn_editar = QPushButton("✏️ EDITAR"); btn_editar.clicked.connect(lambda: self.abrir_edicion(self.tabla_ruta))
         btn_ref = QPushButton("🔄 Actualizar"); btn_ref.clicked.connect(self.cargar_ruta)
-        
-        top_row1.addWidget(QLabel("Seleccionar Chofer:")); top_row1.addWidget(self.combo_masivo_chofer); top_row1.addWidget(btn_aplicar_masivo); top_row1.addWidget(btn_mark); top_row1.addWidget(btn_tercerizado); top_row1.addWidget(btn_reimprimir); top_row1.addStretch()
+        top_row1.addWidget(QLabel("Seleccionar Chofer:")); top_row1.addWidget(self.combo_masivo_chofer); top_row1.addWidget(btn_aplicar_masivo); top_row1.addWidget(btn_mark); top_row1.addWidget(btn_tercerizado); top_row1.addStretch()
         top_row2.addWidget(self.txt_filtro_ruta); top_row2.addWidget(btn_reprog); top_row2.addWidget(btn_editar); top_row2.addWidget(btn_historial); top_row2.addWidget(btn_ref)
         self.tabla_ruta = QTableWidget(); self.tabla_ruta.setColumnCount(10); self.tabla_ruta.setHorizontalHeaderLabels(["ID", "Sel.", "Guía", "Proveedor", "Destinatario", "Domicilio", "Localidad", "Bultos/Hs", "Cobro / Obs", "Estado"]); self.tabla_ruta.hideColumn(0); 
         
         header_ruta = self.tabla_ruta.horizontalHeader()
         header_ruta.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
-        self.tabla_ruta.setColumnWidth(1, 40); self.tabla_ruta.setColumnWidth(2, 140); self.tabla_ruta.setColumnWidth(3, 180)
-        self.tabla_ruta.setColumnWidth(4, 250); self.tabla_ruta.setColumnWidth(5, 350); self.tabla_ruta.setColumnWidth(6, 150)
-        self.tabla_ruta.setColumnWidth(7, 90); self.tabla_ruta.setColumnWidth(8, 150); header_ruta.setStretchLastSection(True) 
+        self.tabla_ruta.setColumnWidth(1, 40)   
+        self.tabla_ruta.setColumnWidth(2, 140)  
+        self.tabla_ruta.setColumnWidth(3, 180)  
+        self.tabla_ruta.setColumnWidth(4, 250)  
+        self.tabla_ruta.setColumnWidth(5, 350)  
+        self.tabla_ruta.setColumnWidth(6, 150)  
+        self.tabla_ruta.setColumnWidth(7, 90)   
+        self.tabla_ruta.setColumnWidth(8, 150)  
+        header_ruta.setStretchLastSection(True) 
         
         self.tabla_ruta.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows); self.tabla_ruta.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         l.addLayout(top_row1); l.addLayout(top_row2); l.addWidget(self.tabla_ruta)
@@ -580,31 +582,7 @@ def setup_monitor(self):
         estado = Qt.CheckState.Checked if tabla.item(0, 1).checkState() == Qt.CheckState.Unchecked else Qt.CheckState.Unchecked
         for r in range(rows): tabla.item(r, 1).setCheckState(estado)
         
-    # 🔥 FIX 5: FUNCIÓN QUE JUNTA TODO LO DEL DÍA Y TE ARMA UN PDF GIGANTE NUEVO 🔥
-    def reimprimir_ruta_completa(self):
-        chofer_filtro = self.combo_masivo_chofer.currentText()
-        if not chofer_filtro: 
-            QMessageBox.warning(self, "Atención", "Seleccione un chofer de la lista.")
-            return
-        try:
-            ops = self.session.query(Operacion).filter(
-                Operacion.chofer_asignado == chofer_filtro,
-                text("DATE(fecha_salida) = CURRENT_DATE")
-            ).all()
-            if not ops:
-                QMessageBox.warning(self, "Sin viajes", f"El chofer {chofer_filtro} no tiene ninguna guía asignada en el día de hoy.")
-                return
-            descargas_dir = os.path.join(os.path.expanduser('~'), 'Downloads')
-            if not os.path.exists(descargas_dir): os.makedirs(descargas_dir, exist_ok=True)
-            ruta_pdf = os.path.join(descargas_dir, f"Ruta_COMPLETA_{chofer_filtro}_{datetime.now().strftime('%d-%m-%Y_%H%M')}.pdf")
-            crear_pdf_ruta(ruta_pdf, ops, self.sucursal_actual, chofer_filtro, self.usuario.username, datetime.now().strftime('%d/%m/%Y %H:%M'))
-            try: os.startfile(ruta_pdf)
-            except: pass
-            self.toast.mostrar(f"✅ Hoja de ruta completa generada ({len(ops)} guías)")
-        except Exception as e:
-            self.session.rollback()
-            QMessageBox.critical(self, "Error", f"Ocurrió un error: {e}")
-
+    # 🔥 HOJA DE RUTA: DESCARGA AUTOMÁTICA EN DESCARGAS 🔥
     def generar_pdf_ruta(self, ids_forzados=None, nombre_sufijo=""):
         chofer_filtro = self.combo_masivo_chofer.currentText()
         try:
@@ -621,15 +599,19 @@ def setup_monitor(self):
                 ops_upd = self.session.query(Operacion).filter(Operacion.id.in_(ids)).all()
                 for op in ops_upd: op.chofer_asignado = chofer_filtro; op.estado = Estados.EN_REPARTO; op.fecha_salida = datetime.now(); self.log_movimiento(op, "SALIDA A REPARTO", f"Asignado a {chofer_filtro}")
                 self.session.commit(); self.cargar_ruta()
+            
             ops = self.session.query(Operacion).filter(Operacion.id.in_(ids)).all()
+            
             descargas_dir = os.path.join(os.path.expanduser('~'), 'Downloads')
             if not os.path.exists(descargas_dir): os.makedirs(descargas_dir, exist_ok=True)
             ruta_pdf = os.path.join(descargas_dir, f"Ruta_{chofer_filtro}_{datetime.now().strftime('%d-%m')}{nombre_sufijo}.pdf")
+            
             crear_pdf_ruta(ruta_pdf, ops, self.sucursal_actual, chofer_filtro, self.usuario.username, datetime.now().strftime('%d/%m/%Y %H:%M'))
             try: os.startfile(ruta_pdf)
             except: pass
         except Exception: self.session.rollback()
 
+    # 🔥 TERCERIZADOS: DESCARGA AUTOMÁTICA EN DESCARGAS 🔥
     def generar_pdf_terc(self):
         transporte, ok = QInputDialog.getText(self, "Transporte Tercerizado", "Nombre del Transporte / Empresa:")
         if not ok or not transporte: return
@@ -644,9 +626,11 @@ def setup_monitor(self):
                 if op.estado != Estados.EN_REPARTO: self.log_movimiento(op, "SALIDA A TERCERIZADO", f"Entregado a {transporte}")
                 op.estado = Estados.EN_REPARTO; op.fecha_salida = datetime.now() 
             self.session.commit(); self.cargar_ruta()
+            
             descargas_dir = os.path.join(os.path.expanduser('~'), 'Downloads')
             if not os.path.exists(descargas_dir): os.makedirs(descargas_dir, exist_ok=True)
             ruta_pdf = os.path.join(descargas_dir, f"Remito_{transporte}_{datetime.now().strftime('%d-%m')}.pdf")
+            
             crear_pdf_tercerizados(ruta_pdf, ops, self.sucursal_actual, transporte, self.usuario.username, datetime.now().strftime('%d/%m/%Y %H:%M'))
             try: os.startfile(ruta_pdf)
             except: pass
@@ -664,15 +648,26 @@ def setup_monitor(self):
         btn_pdf_rep = QPushButton("PDF"); btn_pdf_rep.setStyleSheet("background-color: #dc3545 !important; color: white !important;"); btn_pdf_rep.clicked.connect(self.generar_pdf_rep)
         flayout.addWidget(QLabel("Desde:")); flayout.addWidget(self.rep_fecha_desde); flayout.addWidget(QLabel("Hasta:")); flayout.addWidget(self.rep_fecha_hasta); flayout.addWidget(QLabel("Suc:")); flayout.addWidget(self.rep_sucursal); flayout.addWidget(QLabel("Cliente:")); flayout.addWidget(self.rep_cliente); flayout.addWidget(QLabel("Chof:")); flayout.addWidget(self.rep_chofer); flayout.addWidget(QLabel("Est:")); flayout.addWidget(self.rep_estado); flayout.addWidget(QLabel("Fac:")); flayout.addWidget(self.rep_facturado)
         flayout.addWidget(btn_buscar); flayout.addWidget(btn_excel); flayout.addWidget(btn_pdf_rep); filtros.setLayout(flayout)
+        
         self.tabla_reportes = QTableWidget(); self.tabla_reportes.setAlternatingRowColors(True); self.tabla_reportes.setColumnCount(11); 
         self.tabla_reportes.setHorizontalHeaderLabels(["Fecha", "Suc", "Cliente", "Guía", "Chofer", "Destinatario", "Zona", "Estado", "Fac?", "Bultos", "Precio"]); 
-        header_rep = self.tabla_reportes.horizontalHeader(); header_rep.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
-        self.tabla_reportes.setColumnWidth(0, 90); self.tabla_reportes.setColumnWidth(1, 120); self.tabla_reportes.setColumnWidth(2, 140)
-        self.tabla_reportes.setColumnWidth(3, 140); self.tabla_reportes.setColumnWidth(4, 140); self.tabla_reportes.setColumnWidth(5, 250)
-        self.tabla_reportes.setColumnWidth(6, 140); self.tabla_reportes.setColumnWidth(7, 150); self.tabla_reportes.setColumnWidth(8, 90)
-        self.tabla_reportes.setColumnWidth(9, 90); header_rep.setStretchLastSection(True)
+        
+        header_rep = self.tabla_reportes.horizontalHeader(); 
+        header_rep.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
+        self.tabla_reportes.setColumnWidth(0, 90)
+        self.tabla_reportes.setColumnWidth(1, 120)
+        self.tabla_reportes.setColumnWidth(2, 140)
+        self.tabla_reportes.setColumnWidth(3, 140)
+        self.tabla_reportes.setColumnWidth(4, 140)
+        self.tabla_reportes.setColumnWidth(5, 250)
+        self.tabla_reportes.setColumnWidth(6, 140)
+        self.tabla_reportes.setColumnWidth(7, 150)
+        self.tabla_reportes.setColumnWidth(8, 90)
+        self.tabla_reportes.setColumnWidth(9, 90)
+        header_rep.setStretchLastSection(True)
+        
         self.tabla_reportes.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows); self.tabla_reportes.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
-        self.lbl_reporte_total = QLabel("Resultados: 0 | Total Dinero: $ 0.00 | Total Guías: 0"); self.lbl_reporte_total.setStyleSheet("font-size: 16px; font-weight: bold; margin: 10px; padding: 10px; border: 1px solid #ccc;")
+        self.lbl_reporte_total = QLabel("Resultados: 0 | Total Dinero: $ 0.00 | Total Guías: 0"); self.lbl_reporte_total.setStyleSheet("font-size: 16px; font-weight: bold; margin: 10px; padding: 10px; border: 1px solid #ccc;"); 
         layout.addWidget(filtros); layout.addWidget(self.tabla_reportes); layout.addWidget(self.lbl_reporte_total)
         
     def construir_query_reportes(self):
@@ -693,37 +688,46 @@ def setup_monitor(self):
                 self.tabla_reportes.insertRow(row); self.tabla_reportes.setItem(row, 0, QTableWidgetItem(op.fecha_ingreso.strftime("%d/%m/%Y"))); self.tabla_reportes.setItem(row, 1, QTableWidgetItem(op.sucursal)); self.tabla_reportes.setItem(row, 2, QTableWidgetItem(op.proveedor)); self.tabla_reportes.setItem(row, 3, QTableWidgetItem(op.guia_remito or "-")); self.tabla_reportes.setItem(row, 4, QTableWidgetItem(op.chofer_asignado or "-")); self.tabla_reportes.setItem(row, 5, QTableWidgetItem(op.destinatario)); self.tabla_reportes.setItem(row, 6, QTableWidgetItem(op.localidad)); self.tabla_reportes.setItem(row, 7, QTableWidgetItem(op.estado)); 
                 item_fac = QTableWidgetItem("SI" if op.facturado else "NO"); 
                 if op.facturado: item_fac.setForeground(QColor("green")); item_fac.setFont(QFont("Arial", 9, QFont.Weight.Bold))
-                self.tabla_reportes.setItem(row, 8, item_fac); self.tabla_reportes.setItem(row, 9, QTableWidgetItem(str(op.bultos))); self.tabla_reportes.setItem(row, 10, QTableWidgetItem(f"$ {op.monto_servicio:,.2f}")); total_dinero += op.monto_servicio
+                self.tabla_reportes.setItem(row, 8, item_fac); self.tabla_reportes.setItem(row, 9, QTableWidgetItem(str(op.bultos))); self.tabla_reportes.setItem(row, 10, QTableWidgetItem(f"$ {op.monto_servicio}")); total_dinero += op.monto_servicio
             self.lbl_reporte_total.setText(f"Resultados: {total_guias} | Total Dinero: $ {total_dinero:,.2f}")
         except Exception: self.session.rollback()
         
+    # 🔥 REPORTE PDF: DESCARGA AUTOMÁTICA Y FILTROS DETALLADOS 🔥
     def generar_pdf_rep(self):
         try:
             resultados = self.construir_query_reportes()
+            
             descargas_dir = os.path.join(os.path.expanduser('~'), 'Downloads')
             if not os.path.exists(descargas_dir): os.makedirs(descargas_dir, exist_ok=True)
             ruta_pdf = os.path.join(descargas_dir, f"Reporte_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{self.sucursal_actual}.pdf")
+            
             total_dinero = sum([op.monto_servicio for op in resultados])
+            
+            # Recolectamos absolutamente todos los filtros aplicados
             filtro_info = f"Desde: {self.rep_fecha_desde.text()} Hasta: {self.rep_fecha_hasta.text()}"
             if self.rep_sucursal.currentText() != "Todas": filtro_info += f" | SUC: {self.rep_sucursal.currentText()}"
             if self.rep_cliente.currentText() != "Todos": filtro_info += f" | CLI: {self.rep_cliente.currentText()}"
             if self.rep_chofer.currentText() != "Todos": filtro_info += f" | CHOF: {self.rep_chofer.currentText()}"
             if self.rep_estado.currentText() != "Todos": filtro_info += f" | ESTADO: {self.rep_estado.currentText()}"
             if self.rep_facturado.currentText() != "Todos": filtro_info += f" | FAC: {self.rep_facturado.currentText()}"
+            
             crear_pdf_reporte(ruta_pdf, resultados, self.sucursal_actual, self.usuario.username, datetime.now().strftime('%d/%m/%Y %H:%M'), filtro_info, total_dinero)
             try: os.startfile(ruta_pdf)
             except: pass
         except Exception: self.session.rollback()
         
+    # 🔥 EXCEL: DESCARGA AUTOMÁTICA EN DESCARGAS 🔥
     def exportar_reporte_excel(self):
         try:
             import pandas as pd
             resultados = self.construir_query_reportes(); data = []
             for op in resultados: data.append({"Fecha": op.fecha_ingreso, "Sucursal": op.sucursal, "Cliente": op.proveedor, "Guia": op.guia_remito, "Destinatario": op.destinatario, "Estado": op.estado, "Facturado": "SI" if op.facturado else "NO", "Monto": op.monto_servicio})
             df = pd.DataFrame(data)
+            
             descargas_dir = os.path.join(os.path.expanduser('~'), 'Downloads')
             if not os.path.exists(descargas_dir): os.makedirs(descargas_dir, exist_ok=True)
             ruta_excel = os.path.join(descargas_dir, f"Reporte_Gestion_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx")
+            
             df.to_excel(ruta_excel, index=False)
             try: os.startfile(ruta_excel)
             except: pass
@@ -733,10 +737,14 @@ def setup_monitor(self):
         layout = QVBoxLayout(self.tab_crm); lbl_info = QLabel("📲 <b>Contacto con Clientes Recientes</b>"); layout.addWidget(lbl_info)
         top_bar = QHBoxLayout(); btn_refresh = QPushButton("🔄 Cargar Entregas Recientes"); btn_refresh.clicked.connect(self.cargar_crm)
         top_bar.addWidget(btn_refresh); top_bar.addStretch(); layout.addLayout(top_bar)
+        
         self.tabla_crm = QTableWidget(); self.tabla_crm.setColumnCount(5); self.tabla_crm.setHorizontalHeaderLabels(["Fecha Entrega", "Guía", "Cliente (Destinatario)", "Celular", "Acción"])
         self.tabla_crm.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
-        self.tabla_crm.setColumnWidth(0, 150); self.tabla_crm.setColumnWidth(1, 150); self.tabla_crm.setColumnWidth(2, 250)
-        self.tabla_crm.setColumnWidth(3, 150); self.tabla_crm.horizontalHeader().setStretchLastSection(True)
+        self.tabla_crm.setColumnWidth(0, 150)
+        self.tabla_crm.setColumnWidth(1, 150)
+        self.tabla_crm.setColumnWidth(2, 250)
+        self.tabla_crm.setColumnWidth(3, 150)
+        self.tabla_crm.horizontalHeader().setStretchLastSection(True)
         self.tabla_crm.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers); self.tabla_crm.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows); layout.addWidget(self.tabla_crm)
         
     def cargar_crm(self):
@@ -808,7 +816,9 @@ class PantallaCargaMinimalista(QDialog):
         if not pixmap.isNull(): self.lbl_logo.setPixmap(pixmap.scaled(120, 120, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
         else: self.lbl_logo.setText("📦 E.K."); self.lbl_logo.setStyleSheet("font-size: 40px; color: #1565c0; font-weight: bold;")
         self.lbl_logo.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        
         self.lbl_texto = QLabel("Entrando a plataforma espere...")
+        
         self.lbl_texto.setAlignment(Qt.AlignmentFlag.AlignCenter)
         lay_cont.addWidget(self.lbl_logo); lay_cont.addWidget(self.lbl_texto)
         shadow = QGraphicsDropShadowEffect(); shadow.setBlurRadius(20); shadow.setColor(QColor(0, 0, 0, 80)); shadow.setOffset(0, 0)
@@ -822,19 +832,48 @@ class PantallaCargaMinimalista(QDialog):
 class TrackingDialog(QDialog):
     def __init__(self, session, usuario=None):
         super().__init__()
-        self.session = session; self.usuario = usuario
+        self.session = session
+        self.usuario = usuario
         self.setWindowTitle("🔍 Rastreo de Guía (Tracking)")
-        self.setGeometry(400, 200, 600, 500); self.setStyleSheet("background-color: white;")
-        layout = QVBoxLayout(); h = QHBoxLayout()
-        self.in_buscar = QLineEdit(); self.in_buscar.setPlaceholderText("Ingrese N° de Guía o Remito..."); self.in_buscar.returnPressed.connect(self.buscar_tracking)
-        btn_bus = QPushButton("RASTREAR"); btn_bus.setStyleSheet("background-color: #0d6efd; color: white; font-weight: bold;"); btn_bus.clicked.connect(self.buscar_tracking)
-        btn_reset = QPushButton("⚠️ RESETEAR A DEPÓSITO"); btn_reset.setStyleSheet("background-color: #dc3545; color: white; font-weight: bold;"); btn_reset.clicked.connect(self.resetear_guia)
-        if not self.usuario or not self.usuario.es_admin_total: btn_reset.hide()
-        h.addWidget(self.in_buscar); h.addWidget(btn_bus); h.addWidget(btn_reset)
-        self.lbl_info = QLabel("Ingrese una guía para ver el estado."); self.lbl_info.setStyleSheet("font-size: 14px; color: #333; padding: 10px; border: 1px solid #ccc; background: #f8f9fa;"); self.lbl_info.setWordWrap(True)
-        self.tabla = QTableWidget(); self.tabla.setColumnCount(4); self.tabla.setHorizontalHeaderLabels(["Fecha/Hora", "Usuario", "Acción", "Detalle"])
-        self.tabla.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Interactive); self.tabla.setColumnWidth(0, 130); self.tabla.setColumnWidth(1, 100); self.tabla.setColumnWidth(2, 130); self.tabla.horizontalHeader().setStretchLastSection(True)
-        layout.addLayout(h); layout.addWidget(self.lbl_info); layout.addWidget(QLabel("<b>HISTORIAL DE MOVIMIENTOS:</b>")); layout.addWidget(self.tabla); self.setLayout(layout)
+        self.setGeometry(400, 200, 600, 500)
+        self.setStyleSheet("background-color: white;")
+        layout = QVBoxLayout()
+        h = QHBoxLayout()
+        self.in_buscar = QLineEdit()
+        self.in_buscar.setPlaceholderText("Ingrese N° de Guía o Remito...")
+        self.in_buscar.returnPressed.connect(self.buscar_tracking)
+        btn_bus = QPushButton("RASTREAR")
+        btn_bus.setStyleSheet("background-color: #0d6efd; color: white; font-weight: bold;")
+        btn_bus.clicked.connect(self.buscar_tracking)
+        
+        btn_reset = QPushButton("⚠️ RESETEAR A DEPÓSITO")
+        btn_reset.setStyleSheet("background-color: #dc3545; color: white; font-weight: bold;")
+        btn_reset.clicked.connect(self.resetear_guia)
+        if not self.usuario or not self.usuario.es_admin_total:
+            btn_reset.hide()
+            
+        h.addWidget(self.in_buscar)
+        h.addWidget(btn_bus)
+        h.addWidget(btn_reset)
+        
+        self.lbl_info = QLabel("Ingrese una guía para ver el estado.")
+        self.lbl_info.setStyleSheet("font-size: 14px; color: #333; padding: 10px; border: 1px solid #ccc; background: #f8f9fa;")
+        self.lbl_info.setWordWrap(True)
+        self.tabla = QTableWidget()
+        self.tabla.setColumnCount(4)
+        self.tabla.setHorizontalHeaderLabels(["Fecha/Hora", "Usuario", "Acción", "Detalle"])
+        
+        self.tabla.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
+        self.tabla.setColumnWidth(0, 130)
+        self.tabla.setColumnWidth(1, 100)
+        self.tabla.setColumnWidth(2, 130)
+        self.tabla.horizontalHeader().setStretchLastSection(True)
+        
+        layout.addLayout(h)
+        layout.addWidget(self.lbl_info)
+        layout.addWidget(QLabel("<b>HISTORIAL DE MOVIMIENTOS:</b>"))
+        layout.addWidget(self.tabla)
+        self.setLayout(layout)
         
     def resetear_guia(self):
         guia = self.in_buscar.text().strip()
@@ -842,49 +881,130 @@ class TrackingDialog(QDialog):
         op = self.session.query(Operacion).filter(Operacion.guia_remito == guia).first()
         if not op: op = self.session.query(Operacion).filter(Operacion.guia_remito.ilike(f"%{guia}%")).first()
         if not op: return
-        reply = QMessageBox.question(self, "⚠️ ALERTA DE SEGURIDAD EXTREMA", f"¿Está súper seguro de devolver la guía '{op.guia_remito}' a EN DEPOSITO?\n\nEsto borrará de forma permanente TODO su historial de movimientos.", QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+        
+        reply = QMessageBox.question(self, "⚠️ ALERTA DE SEGURIDAD EXTREMA", 
+            f"¿Está súper seguro de devolver la guía '{op.guia_remito}' a EN DEPOSITO?\n\n"
+            "Esto borrará de forma permanente TODO su historial de movimientos de la calle, perderá a su chofer asignado, se le borrará la marca de entregado y de facturado.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+        
         if reply == QMessageBox.StandardButton.Yes:
             try:
                 self.session.execute(text("DELETE FROM historial_movimientos WHERE operacion_id = :id"), {"id": op.id})
-                op.estado = Estados.EN_DEPOSITO; op.chofer_asignado = None; op.fecha_salida = None; op.fecha_entrega = None; op.facturado = False; self.session.commit()
-                QMessageBox.information(self, "Éxito", "Guía reseteada exitosamente."); self.buscar_tracking() 
-            except Exception as e: self.session.rollback(); QMessageBox.critical(self, "Error", f"Fallo al resetear: {str(e)}")
+                op.estado = Estados.EN_DEPOSITO
+                op.chofer_asignado = None
+                op.fecha_salida = None
+                op.fecha_entrega = None
+                op.facturado = False
+                self.session.commit()
+                QMessageBox.information(self, "Éxito", "Guía reseteada y borrada del historial exitosamente.")
+                self.buscar_tracking() 
+            except Exception as e:
+                self.session.rollback()
+                QMessageBox.critical(self, "Error", f"Fallo al resetear la guía: {str(e)}")
     
     def buscar_tracking(self):
-        guia = self.in_buscar.text().strip()
+        guia = self.in_buscar.text().strip(); 
         if not guia: return
         op = self.session.query(Operacion).filter(Operacion.guia_remito == guia).first()
         if not op: op = self.session.query(Operacion).filter(Operacion.guia_remito.ilike(f"%{guia}%")).first()
-        if not op: self.lbl_info.setText("❌ GUÍA NO ENCONTRADA"); self.lbl_info.setStyleSheet("font-size: 16px; color: red; font-weight: bold; padding: 10px; border: 1px solid red;"); self.tabla.setRowCount(0); return
+        if not op: 
+            self.lbl_info.setText("❌ GUÍA NO ENCONTRADA")
+            self.lbl_info.setStyleSheet("font-size: 16px; color: red; font-weight: bold; padding: 10px; border: 1px solid red;")
+            self.tabla.setRowCount(0)
+            return
+            
         self.lbl_info.setStyleSheet("font-size: 14px; color: #333; padding: 10px; border: 1px solid #ccc; background: #f8f9fa;")
+            
         color_estado = "blue"; bg_color = "#e7f1ff"
         if op.estado == Estados.ENTREGADO: color_estado = "#198754"; bg_color = "#d1e7dd"
         elif op.estado == Estados.EN_REPARTO: color_estado = "#856404"; bg_color = "#fff3cd"
-        fac_str = "SÍ" if op.facturado else "NO"; color_fac = "green" if op.facturado else "red"
+        if op.proveedor and op.proveedor.lower() == "jetpaq":
+            fac_str = "NO SE FACTURA (USO INTERNO)"; color_fac = "gray"
+        else:
+            fac_str = "SÍ" if op.facturado else "NO"; color_fac = "green" if op.facturado else "red"
+            
         movs = self.session.query(Historial).filter(Historial.operacion_id == op.id).order_by(Historial.fecha_hora.desc()).all()
+        
         entregado_info = ""
         if op.estado == Estados.ENTREGADO:
             for m in movs:
                 if m.detalle and "Recibio:" in m.detalle:
-                    entregado_info = f"<br><b>ENTREGADO EL:</b> {m.fecha_hora.strftime('%d/%m/%Y %H:%M')}"; break
-        bultos_tot = op.bultos or 1; bultos_fr = getattr(op, 'bultos_frio', 0) or 0; bultos_com = bultos_tot - bultos_fr
-        texto_bultos = f"{bultos_tot} ({bultos_com}C/{bultos_fr}R)" if bultos_fr > 0 else f"{bultos_tot} (Todos Comunes)"
-        info_txt = f"<div style='background-color: {bg_color}; padding: 10px;'><b>GUÍA:</b> {op.guia_remito} <br><b>ESTADO:</b> <span style='color:{color_estado}; font-weight:bold;'>{op.estado.upper()}</span>{entregado_info}<br><b>FACTURACIÓN:</b> <span style='color:{color_fac}; font-weight:bold;'>{fac_str}</span><br><b>DESTINATARIO:</b> {op.destinatario}<br><b>CHOFER:</b> {op.chofer_asignado or 'Sin Asignar'}<br><b>BULTOS:</b> {texto_bultos}</div>"
-        self.lbl_info.setText(info_txt); self.tabla.setRowCount(0)
+                    recibe = m.detalle.split("Recibio:")[1].split("[")[0].split("|")[0].strip()
+                    fecha_ent = m.fecha_hora.strftime("%d/%m/%Y a las %H:%M hs")
+                    entregado_info = f"<br><b>ENTREGADO A:</b> <span style='color:#198754;'>{recibe}</span> <b>EL:</b> {fecha_ent}"
+                    break
+                    
+        bultos_tot = op.bultos or 1
+        bultos_fr = getattr(op, 'bultos_frio', 0) or 0
+        bultos_com = bultos_tot - bultos_fr
+        tipo_c = op.tipo_carga or "COMÚN"
+        
+        if "Flete" in (op.tipo_servicio or ""):
+            texto_bultos = f"{bultos_tot} Horas / Viajes (FLETE)"
+        else:
+            if bultos_fr > 0:
+                texto_bultos = f"{bultos_tot} Totales ({bultos_com} Comunes, {bultos_fr} Refrigerados) | TIPO: {tipo_c}"
+            else:
+                texto_bultos = f"{bultos_tot} (Todos Comunes) | TIPO: {tipo_c}"
+        
+        info_txt = f"<div style='background-color: {bg_color}; padding: 10px;'><b>GUÍA:</b> {op.guia_remito} <br><b>ESTADO ACTUAL:</b> <span style='color:{color_estado}; font-size: 18px; font-weight: bold;'>{op.estado.upper()}</span> {entregado_info} <br><b>FACTURACIÓN:</b> <span style='color:{color_fac}; font-weight: bold;'>{fac_str}</span> <br><b>DESTINATARIO:</b> {op.destinatario} ({op.localidad}) <br><b>CHOFER:</b> {op.chofer_asignado or 'Sin Asignar'} <br><b>📦 BULTOS / CARGA:</b> <span style='color:#d32f2f; font-weight:bold; font-size:15px;'>{texto_bultos}</span> <br><b>SERVICIO:</b> {op.tipo_servicio} <br><b>PESO TOTAL:</b> {op.peso} Kg</div>"
+        self.lbl_info.setText(info_txt)
+        self.tabla.setRowCount(0)
+        
         for r, m in enumerate(movs): 
-            self.tabla.insertRow(r); self.tabla.setItem(r, 0, QTableWidgetItem(m.fecha_hora.strftime("%d/%m/%Y %H:%M"))); self.tabla.setItem(r, 1, QTableWidgetItem(m.usuario)); self.tabla.setItem(r, 2, QTableWidgetItem(m.accion)); self.tabla.setItem(r, 3, QTableWidgetItem(m.detalle or ""))
+            self.tabla.insertRow(r)
+            self.tabla.setItem(r, 0, QTableWidgetItem(m.fecha_hora.strftime("%d/%m/%Y %H:%M")))
+            self.tabla.setItem(r, 1, QTableWidgetItem(m.usuario))
+            self.tabla.setItem(r, 2, QTableWidgetItem(m.accion))
+            
+            detalle_texto = m.detalle or ""
+            if "| GPS:" in detalle_texto:
+                try:
+                    partes = detalle_texto.split("| GPS:")
+                    base_texto = partes[0].strip()
+                    link = partes[1].strip()
+                    lbl = QLabel(f'{base_texto} <a href="{link}" style="color:#d32f2f; text-decoration:none; font-weight:bold; font-size:14px;">📍 VER MAPA</a>')
+                    lbl.setAlignment(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft)
+                    lbl.setOpenExternalLinks(True)
+                    self.tabla.setCellWidget(r, 3, lbl)
+                except:
+                    self.tabla.setItem(r, 3, QTableWidgetItem(detalle_texto))
+            else:
+                self.tabla.setItem(r, 3, QTableWidgetItem(detalle_texto))
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
     apply_stylesheet(app, theme='light_blue.xml') 
     estilo_actual = app.styleSheet()
-    estilo_tablas_blancas = "QTableWidget { background-color: #ffffff !important; gridline-color: #d0d0d0 !important; } QTableWidget::item { background-color: transparent !important; color: #000000 !important; border-bottom: 1px solid #e0e0e0 !important; } QTableWidget::item:selected { background-color: #bbdefb !important; color: #000000 !important; } QHeaderView::section { background-color: #f8f9fa !important; color: #333333 !important; font-weight: bold !important; border: 1px solid #dee2e6 !important; }"
+    estilo_tablas_blancas = """
+    QTableWidget { background-color: #ffffff !important; gridline-color: #d0d0d0 !important; }
+    QTableWidget::item { background-color: transparent !important; color: #000000 !important; border-bottom: 1px solid #e0e0e0 !important; }
+    QTableWidget::item:selected { background-color: #bbdefb !important; color: #000000 !important; }
+    QHeaderView::section { background-color: #f8f9fa !important; color: #333333 !important; font-weight: bold !important; border: 1px solid #dee2e6 !important; }
+    """
     app.setStyleSheet(estilo_actual + estilo_tablas_blancas)
+    
     login = LoginWindow()
     if login.exec() == QDialog.DialogCode.Accepted:
-        splash = PantallaCargaMinimalista(); screen = app.primaryScreen().geometry(); splash.move(int((screen.width() - splash.width()) / 2), int((screen.height() - splash.height()) / 2)); splash.show(); QApplication.processEvents()
+        splash = PantallaCargaMinimalista()
+        screen = app.primaryScreen().geometry()
+        splash.move(int((screen.width() - splash.width()) / 2), int((screen.height() - splash.height()) / 2))
+        splash.show()
+        QApplication.processEvents()
+        
         def terminar_arranque():
             try:
-                global ventana; ventana = PlataformaLogistica(login.usuario_logueado); ventana.cambiar_sucursal(ventana.sucursal_actual); splash.close(); ventana.showMaximized() 
-            except Exception as e: splash.close(); QMessageBox.critical(None, "Error Fatal", f"Error al cargar módulos:\n{traceback.format_exc()}"); sys.exit(1)
-        wake_thread = DBWakeUpThread(); wake_thread.finished_signal.connect(terminar_arranque); wake_thread.start(); sys.exit(app.exec())
+                global ventana
+                ventana = PlataformaLogistica(login.usuario_logueado)
+                ventana.cambiar_sucursal(ventana.sucursal_actual)
+                splash.close()
+                ventana.showMaximized() 
+            except Exception as e:
+                splash.close()
+                msg = QMessageBox(); msg.setIcon(QMessageBox.Icon.Critical); msg.setWindowTitle("Error Fatal"); msg.setText("Error al cargar los módulos."); msg.setDetailedText(traceback.format_exc()); msg.exec()
+                sys.exit(1)
+                
+        wake_thread = DBWakeUpThread()
+        wake_thread.finished_signal.connect(terminar_arranque)
+        wake_thread.start()
+        sys.exit(app.exec())
