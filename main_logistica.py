@@ -302,6 +302,7 @@ class PlataformaLogistica(QMainWindow):
                     elif hasattr(self, 'tab_ingreso') and tabla == self.tab_ingreso.tabla_ingresos: self.tab_ingreso.cargar_movimientos_dia()
                     self.cargar_monitor_global()
         except Exception: self.session.rollback()
+
 def setup_monitor(self):
         layout = QVBoxLayout(self.tab_monitor)
         self.tabs_internas_monitor = QTabWidget()
