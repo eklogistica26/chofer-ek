@@ -165,52 +165,53 @@ class ReciboPago(Base):
     detalle = Column(String(200))
     usuario = Column(String(50))
 
-
-# =======================================================
-# 🔥 NUEVO MÓDULO: FLOTA Y MANTENIMIENTO DE VEHÍCULOS 🔥
-# =======================================================
-
 class Vehiculo(Base):
     __tablename__ = "vehiculos"
     id = Column(Integer, primary_key=True, index=True)
-    sucursal = Column(String(50)) # Mendoza o San Juan
+    sucursal = Column(String(50)) 
     patente = Column(String(20), unique=True, index=True)
     marca = Column(String(50))
     modelo = Column(String(50))
     año = Column(Integer)
     
-    # Lo enlazamos con los Choferes que ya tenés en la base de datos
     chofer_id = Column(Integer, ForeignKey("choferes.id"), nullable=True) 
 
     # Alertas Legales
     vencimiento_seguro = Column(Date, nullable=True)
-    vencimiento_rto = Column(Date, nullable=True) # Nombrado RTO para Mendoza
+    vencimiento_rto = Column(Date, nullable=True) 
     vencimiento_cedula = Column(Date, nullable=True)
+    
+    # 🔥 NUEVO CAMPO: Oblea de GNC 🔥
+    vencimiento_oblea_gnc = Column(Date, nullable=True)
 
     # Alertas Mecánicas
     kilometraje_actual = Column(Integer, default=0)
-    km_proximo_service = Column(Integer, default=0) # Para aceite y distribución
-    km_proximo_neumaticos = Column(Integer, default=0) # Para rotación o cambio
+    km_proximo_service = Column(Integer, default=0) 
+    km_proximo_neumaticos = Column(Integer, default=0) 
     
-    estado = Column(String(50), default="ACTIVO") # ACTIVO, EN TALLER, BAJA
+    estado = Column(String(50), default="ACTIVO") 
     
-    # Relaciones
     chofer = relationship("Chofer", backref="vehiculos")
     mantenimientos = relationship("Mantenimiento", back_populates="vehiculo", cascade="all, delete-orphan")
-
 
 class Mantenimiento(Base):
     __tablename__ = "mantenimientos_flota"
     id = Column(Integer, primary_key=True, index=True)
     vehiculo_id = Column(Integer, ForeignKey("vehiculos.id"))
     fecha = Column(Date, default=datetime.today)
-    
-    # Ejemplo: "Cambio de Aceite", "Distribución", "Renovación RTO", "Frenos"
     tipo_servicio = Column(String(100)) 
-    
-    kilometraje = Column(Integer) # Kilometraje en el momento que se hizo el arreglo
+    kilometraje = Column(Integer) 
     costo = Column(Float, default=0.0)
     taller_proveedor = Column(String(100))
-    detalle = Column(String(255)) # Detalles de repuestos o mano de obra
-    
+    detalle = Column(String(255)) 
     vehiculo = relationship("Vehiculo", back_populates="mantenimientos")
+
+# Parche automático: Agrega la columna de GNC si la tabla ya había sido creada sin ella
+try:
+    Base.metadata.create_all(bind=engine)
+    from sqlalchemy import text
+    with engine.connect() as conn:
+        conn.execute(text("ALTER TABLE vehiculos ADD COLUMN vencimiento_oblea_gnc DATE"))
+        conn.commit()
+except Exception as e:
+    pass

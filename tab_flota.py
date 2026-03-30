@@ -4,14 +4,13 @@ from datetime import datetime, timedelta
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, 
                              QComboBox, QPushButton, QTableWidget, QTableWidgetItem, 
                              QHeaderView, QMessageBox, QDateEdit, QDialog, QFormLayout, 
-                             QSpinBox, QDoubleSpinBox, QAbstractItemView, QTextEdit)
+                             QSpinBox, QDoubleSpinBox, QAbstractItemView, QTextEdit, QCheckBox)
 from PyQt6.QtCore import Qt, QDate
 from PyQt6.QtGui import QColor, QFont
 from sqlalchemy import text
 
 from database import Vehiculo, Mantenimiento, Chofer
 
-# --- ESTILOS ---
 ESTILO_TABLAS_BLANCAS = """
 QTableWidget { background-color: #ffffff !important; gridline-color: #d0d0d0 !important; }
 QTableWidget::item { background-color: transparent !important; color: #000000 !important; border-bottom: 1px solid #e0e0e0 !important; }
@@ -27,7 +26,6 @@ class TabFlota(QWidget):
     def setup_ui(self):
         layout = QVBoxLayout(self)
         
-        # Barra superior de filtros y acciones
         top_bar = QHBoxLayout()
         self.filtro_sucursal = QComboBox()
         self.filtro_sucursal.addItems(["Todas", "Mendoza", "San Juan"])
@@ -37,6 +35,7 @@ class TabFlota(QWidget):
         self.filtro_sucursal.currentTextChanged.connect(self.cargar_vehiculos)
 
         self.filtro_chofer = QComboBox()
+        self.filtro_chofer.setMinimumWidth(250) # 🔥 ANCHO AMPLIADO 🔥
         self.filtro_chofer.addItem("Todos")
         self.filtro_chofer.currentTextChanged.connect(self.cargar_vehiculos)
         
@@ -47,9 +46,13 @@ class TabFlota(QWidget):
         btn_editar = QPushButton("✏️ Editar Vehículo")
         btn_editar.clicked.connect(self.editar_vehiculo)
         
-        btn_mantenimiento = QPushButton("🔧 Registrar Service / Gasto")
+        btn_mantenimiento = QPushButton("🔧 Registrar Service")
         btn_mantenimiento.setStyleSheet("background-color: #17a2b8; color: white; font-weight: bold;")
         btn_mantenimiento.clicked.connect(self.registrar_mantenimiento)
+        
+        btn_pdf = QPushButton("📄 Imprimir Reporte")
+        btn_pdf.setStyleSheet("background-color: #6f42c1; color: white; font-weight: bold;")
+        btn_pdf.clicked.connect(self.generar_pdf_flota)
         
         btn_historial = QPushButton("📜 Ver Historial")
         btn_historial.clicked.connect(self.ver_historial)
@@ -57,9 +60,6 @@ class TabFlota(QWidget):
         btn_eliminar = QPushButton("🗑️ Eliminar")
         btn_eliminar.setStyleSheet("background-color: #dc3545; color: white; font-weight: bold;")
         btn_eliminar.clicked.connect(self.eliminar_vehiculo)
-        
-        btn_ref = QPushButton("🔄 Actualizar")
-        btn_ref.clicked.connect(self.cargar_vehiculos)
 
         top_bar.addWidget(QLabel("Sucursal:"))
         top_bar.addWidget(self.filtro_sucursal)
@@ -69,17 +69,16 @@ class TabFlota(QWidget):
         top_bar.addWidget(btn_nuevo)
         top_bar.addWidget(btn_editar)
         top_bar.addWidget(btn_mantenimiento)
+        top_bar.addWidget(btn_pdf)
         top_bar.addWidget(btn_historial)
         top_bar.addWidget(btn_eliminar)
-        top_bar.addWidget(btn_ref)
 
         layout.addLayout(top_bar)
 
-        # Referencias de color
         legend_layout = QHBoxLayout()
         lbl_ok = QLabel("🟢 OK")
         lbl_ok.setStyleSheet("background-color: #d4edda; padding: 5px; border-radius: 3px;")
-        lbl_warn = QLabel("🟡 PRÓXIMO A VENCER (< 15 días / < 1000 km)")
+        lbl_warn = QLabel("🟡 PRÓX. A VENCER (< 15 días / < 1000 km)")
         lbl_warn.setStyleSheet("background-color: #fff3cd; padding: 5px; border-radius: 3px;")
         lbl_danger = QLabel("🔴 VENCIDO / REQUIERE SERVICE")
         lbl_danger.setStyleSheet("background-color: #f8d7da; padding: 5px; border-radius: 3px;")
@@ -90,12 +89,11 @@ class TabFlota(QWidget):
         legend_layout.addStretch()
         layout.addLayout(legend_layout)
 
-        # Tabla Principal
         self.tabla = QTableWidget()
-        self.tabla.setColumnCount(10)
+        self.tabla.setColumnCount(11) # Agregada columna GNC
         self.tabla.setHorizontalHeaderLabels([
             "ID", "Sucursal", "Chofer", "Patente", "Marca/Modelo", 
-            "KM Actual", "Próx. Service", "Venc. Seguro", "Venc. RTO", "Estado"
+            "KM Actual", "Próx. Service", "Venc. Seguro", "Venc. RTO", "Venc. GNC", "Estado"
         ])
         self.tabla.hideColumn(0)
         self.tabla.setStyleSheet(ESTILO_TABLAS_BLANCAS)
@@ -104,19 +102,67 @@ class TabFlota(QWidget):
         
         header = self.tabla.horizontalHeader()
         header.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
-        self.tabla.setColumnWidth(1, 100)
-        self.tabla.setColumnWidth(2, 150)
-        self.tabla.setColumnWidth(3, 100)
-        self.tabla.setColumnWidth(4, 200)
-        self.tabla.setColumnWidth(5, 100)
-        self.tabla.setColumnWidth(6, 100)
-        self.tabla.setColumnWidth(7, 120)
-        self.tabla.setColumnWidth(8, 120)
+        self.tabla.setColumnWidth(1, 90)
+        self.tabla.setColumnWidth(2, 220) # 🔥 ANCHO COLUMNA CHOFER AMPLIADO 🔥
+        self.tabla.setColumnWidth(3, 90)
+        self.tabla.setColumnWidth(4, 180)
+        self.tabla.setColumnWidth(5, 90)
+        self.tabla.setColumnWidth(6, 90)
+        self.tabla.setColumnWidth(7, 90)
+        self.tabla.setColumnWidth(8, 90)
+        self.tabla.setColumnWidth(9, 90)
         header.setStretchLastSection(True)
 
         layout.addWidget(self.tabla)
         self.actualizar_choferes_filtro()
         self.cargar_vehiculos()
+
+    def generar_pdf_flota(self):
+        try:
+            from reportlab.lib.pagesizes import landscape, A4
+            from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+            from reportlab.lib import colors
+            from reportlab.lib.styles import getSampleStyleSheet
+            
+            descargas_dir = os.path.join(os.path.expanduser('~'), 'Downloads')
+            if not os.path.exists(descargas_dir): os.makedirs(descargas_dir, exist_ok=True)
+            ruta_pdf = os.path.join(descargas_dir, f"Reporte_Flota_{datetime.now().strftime('%Y%m%d_%H%M')}.pdf")
+            
+            doc = SimpleDocTemplate(ruta_pdf, pagesize=landscape(A4))
+            elements = []
+            styles = getSampleStyleSheet()
+            elements.append(Paragraph("Reporte de Flota y Mantenimiento", styles['Title']))
+            elements.append(Spacer(1, 12))
+            
+            data = [["Patente", "Marca/Modelo", "Chofer", "KM Actual", "Seguro", "RTO", "Oblea GNC", "Estado General"]]
+            for r in range(self.tabla.rowCount()):
+                data.append([
+                    self.tabla.item(r, 3).text(),
+                    self.tabla.item(r, 4).text(),
+                    self.tabla.item(r, 2).text(),
+                    self.tabla.item(r, 5).text(),
+                    self.tabla.item(r, 7).text(),
+                    self.tabla.item(r, 8).text(),
+                    self.tabla.item(r, 9).text(),
+                    self.tabla.item(r, 10).text()
+                ])
+                
+            t = Table(data)
+            t.setStyle(TableStyle([
+                ('BACKGROUND', (0,0), (-1,0), colors.HexColor("#1565c0")),
+                ('TEXTCOLOR', (0,0), (-1,0), colors.white),
+                ('ALIGN', (0,0), (-1,-1), 'CENTER'),
+                ('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold'),
+                ('BOTTOMPADDING', (0,0), (-1,0), 10),
+                ('BACKGROUND', (0,1), (-1,-1), colors.white),
+                ('GRID', (0,0), (-1,-1), 1, colors.black),
+                ('FONTSIZE', (0,1), (-1,-1), 9)
+            ]))
+            elements.append(t)
+            doc.build(elements)
+            os.startfile(ruta_pdf)
+        except Exception as e:
+            QMessageBox.critical(self, "Error PDF", f"Error al generar PDF: {e}")
 
     def actualizar_choferes_filtro(self):
         self.filtro_chofer.blockSignals(True)
@@ -161,26 +207,22 @@ class TabFlota(QWidget):
                 font_p = QFont(); font_p.setBold(True)
                 item_patente.setFont(font_p)
                 self.tabla.setItem(row, 3, item_patente)
-                
                 self.tabla.setItem(row, 4, QTableWidgetItem(f"{v.marca} {v.modelo} ({v.año})"))
                 self.tabla.setItem(row, 5, QTableWidgetItem(f"{v.kilometraje_actual:,} km"))
                 
-                # --- SISTEMA DE ALERTAS ---
-                color_fila = QColor("#ffffff") # Blanco por defecto
+                color_fila = QColor("#ffffff")
                 motivo_alerta = []
 
-                # 1. Alerta de Kilometraje (Service)
                 km_prox = v.km_proximo_service or 0
                 item_service = QTableWidgetItem(f"{km_prox:,} km")
                 if km_prox > 0:
                     if v.kilometraje_actual >= km_prox:
-                        color_fila = QColor("#f8d7da") # Rojo
+                        color_fila = QColor("#f8d7da")
                         motivo_alerta.append("SERVICE VENCIDO")
                     elif (km_prox - v.kilometraje_actual) <= 1000:
-                        if color_fila != QColor("#f8d7da"): color_fila = QColor("#fff3cd") # Amarillo
+                        if color_fila != QColor("#f8d7da"): color_fila = QColor("#fff3cd")
                 self.tabla.setItem(row, 6, item_service)
 
-                # 2. Alerta de Seguro
                 venc_seg = v.vencimiento_seguro.strftime("%d/%m/%Y") if v.vencimiento_seguro else "No cargado"
                 item_seguro = QTableWidgetItem(venc_seg)
                 if v.vencimiento_seguro:
@@ -191,7 +233,6 @@ class TabFlota(QWidget):
                         if color_fila != QColor("#f8d7da"): color_fila = QColor("#fff3cd")
                 self.tabla.setItem(row, 7, item_seguro)
 
-                # 3. Alerta de RTO
                 venc_rto = v.vencimiento_rto.strftime("%d/%m/%Y") if v.vencimiento_rto else "No cargado"
                 item_rto = QTableWidgetItem(venc_rto)
                 if v.vencimiento_rto:
@@ -202,21 +243,30 @@ class TabFlota(QWidget):
                         if color_fila != QColor("#f8d7da"): color_fila = QColor("#fff3cd")
                 self.tabla.setItem(row, 8, item_rto)
 
-                # Estado final
+                # ALERTA DE OBLEA GNC
+                venc_gnc = v.vencimiento_oblea_gnc.strftime("%d/%m/%Y") if v.vencimiento_oblea_gnc else "N/A"
+                item_gnc = QTableWidgetItem(venc_gnc)
+                if v.vencimiento_oblea_gnc:
+                    if v.vencimiento_oblea_gnc <= hoy:
+                        color_fila = QColor("#f8d7da")
+                        motivo_alerta.append("GNC VENCIDO")
+                    elif v.vencimiento_oblea_gnc <= hoy + margen_dias:
+                        if color_fila != QColor("#f8d7da"): color_fila = QColor("#fff3cd")
+                self.tabla.setItem(row, 9, item_gnc)
+
                 txt_estado = "ACTIVO"
                 if v.estado != "ACTIVO":
                     txt_estado = v.estado
-                    color_fila = QColor("#e2e3e5") # Gris si está en taller o baja
+                    color_fila = QColor("#e2e3e5")
                 elif color_fila == QColor("#ffffff"):
-                    color_fila = QColor("#d4edda") # Verde si está todo OK
+                    color_fila = QColor("#d4edda")
                     
                 if motivo_alerta:
                     txt_estado += f" ({', '.join(motivo_alerta)})"
                 
-                self.tabla.setItem(row, 9, QTableWidgetItem(txt_estado))
+                self.tabla.setItem(row, 10, QTableWidgetItem(txt_estado))
 
-                # Aplicar color a toda la fila
-                for col in range(10):
+                for col in range(11):
                     item = self.tabla.item(row, col)
                     if item:
                         item.setBackground(color_fila)
@@ -270,11 +320,7 @@ class TabFlota(QWidget):
         v_id = self.obtener_id_seleccionado()
         if not v_id: return
         vehiculo = self.main.session.query(Vehiculo).get(v_id)
-        
-        reply = QMessageBox.question(self, "Confirmar Eliminación", 
-            f"¿Seguro que desea eliminar permanentemente el vehículo {vehiculo.patente}?\nEsto también borrará su historial de mantenimiento.",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
-            
+        reply = QMessageBox.question(self, "Confirmar Eliminación", f"¿Seguro que desea eliminar permanentemente el vehículo {vehiculo.patente}?\nEsto también borrará su historial de mantenimiento.", QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
         if reply == QMessageBox.StandardButton.Yes:
             try:
                 self.main.session.delete(vehiculo)
@@ -284,17 +330,13 @@ class TabFlota(QWidget):
                 self.main.session.rollback()
                 QMessageBox.critical(self, "Error", f"No se pudo eliminar: {str(e)}")
 
-# ========================================================
-# DIÁLOGOS DE FORMULARIOS PARA FLOTA
-# ========================================================
-
 class DialogoVehiculo(QDialog):
     def __init__(self, session, sucursal_defecto, vehiculo=None, parent=None):
         super().__init__(parent)
         self.session = session
         self.vehiculo = vehiculo
         self.setWindowTitle("Editar Vehículo" if vehiculo else "Nuevo Vehículo")
-        self.setMinimumWidth(400)
+        self.setMinimumWidth(450)
         self.setup_ui(sucursal_defecto)
         if vehiculo:
             self.cargar_datos()
@@ -309,6 +351,7 @@ class DialogoVehiculo(QDialog):
         self.in_sucursal.currentTextChanged.connect(self.actualizar_choferes)
 
         self.in_chofer = QComboBox()
+        self.in_chofer.setMinimumWidth(250) # 🔥 ANCHO AMPLIADO 🔥
         self.actualizar_choferes()
 
         self.in_patente = QLineEdit()
@@ -333,6 +376,13 @@ class DialogoVehiculo(QDialog):
         self.in_rto = QDateEdit(QDate.currentDate())
         self.in_rto.setCalendarPopup(True)
         
+        # 🔥 CAMPO GNC 🔥
+        self.check_gnc = QCheckBox("Vehículo con equipo de GNC")
+        self.in_gnc = QDateEdit(QDate.currentDate())
+        self.in_gnc.setCalendarPopup(True)
+        self.in_gnc.setEnabled(False)
+        self.check_gnc.toggled.connect(self.in_gnc.setEnabled)
+        
         self.in_estado = QComboBox()
         self.in_estado.addItems(["ACTIVO", "EN TALLER", "BAJA"])
 
@@ -346,6 +396,7 @@ class DialogoVehiculo(QDialog):
         form.addRow("Próximo Service (Aceite) a los KM:", self.in_km_prox_service)
         form.addRow("Vencimiento Seguro:", self.in_seguro)
         form.addRow("Vencimiento RTO:", self.in_rto)
+        form.addRow(self.check_gnc, self.in_gnc)
         form.addRow("Estado:", self.in_estado)
 
         btn_guardar = QPushButton("💾 Guardar Vehículo")
@@ -366,22 +417,22 @@ class DialogoVehiculo(QDialog):
     def cargar_datos(self):
         self.in_sucursal.setCurrentText(self.vehiculo.sucursal)
         self.actualizar_choferes()
-        
         if self.vehiculo.chofer_id:
             idx = self.in_chofer.findData(self.vehiculo.chofer_id)
             if idx >= 0: self.in_chofer.setCurrentIndex(idx)
-            
         self.in_patente.setText(self.vehiculo.patente)
         self.in_marca.setText(self.vehiculo.marca)
         self.in_modelo.setText(self.vehiculo.modelo)
         self.in_anio.setValue(self.vehiculo.año or datetime.now().year)
         self.in_km_actual.setValue(self.vehiculo.kilometraje_actual or 0)
         self.in_km_prox_service.setValue(self.vehiculo.km_proximo_service or 0)
+        if self.vehiculo.vencimiento_seguro: self.in_seguro.setDate(self.vehiculo.vencimiento_seguro)
+        if self.vehiculo.vencimiento_rto: self.in_rto.setDate(self.vehiculo.vencimiento_rto)
         
-        if self.vehiculo.vencimiento_seguro:
-            self.in_seguro.setDate(self.vehiculo.vencimiento_seguro)
-        if self.vehiculo.vencimiento_rto:
-            self.in_rto.setDate(self.vehiculo.vencimiento_rto)
+        # Cargar GNC
+        if self.vehiculo.vencimiento_oblea_gnc:
+            self.check_gnc.setChecked(True)
+            self.in_gnc.setDate(self.vehiculo.vencimiento_oblea_gnc)
             
         self.in_estado.setCurrentText(self.vehiculo.estado)
 
@@ -390,7 +441,6 @@ class DialogoVehiculo(QDialog):
         if not patente:
             QMessageBox.warning(self, "Error", "La patente es obligatoria.")
             return
-            
         try:
             if not self.vehiculo:
                 v_existente = self.session.query(Vehiculo).filter(Vehiculo.patente == patente).first()
@@ -410,6 +460,13 @@ class DialogoVehiculo(QDialog):
             self.vehiculo.km_proximo_service = self.in_km_prox_service.value()
             self.vehiculo.vencimiento_seguro = self.in_seguro.date().toPyDate()
             self.vehiculo.vencimiento_rto = self.in_rto.date().toPyDate()
+            
+            # Guardar GNC
+            if self.check_gnc.isChecked():
+                self.vehiculo.vencimiento_oblea_gnc = self.in_gnc.date().toPyDate()
+            else:
+                self.vehiculo.vencimiento_oblea_gnc = None
+                
             self.vehiculo.estado = self.in_estado.currentText()
 
             self.session.commit()
@@ -417,7 +474,6 @@ class DialogoVehiculo(QDialog):
         except Exception as e:
             self.session.rollback()
             QMessageBox.critical(self, "Error", f"No se pudo guardar: {str(e)}")
-
 
 class DialogoMantenimiento(QDialog):
     def __init__(self, session, vehiculo, parent=None):
@@ -440,6 +496,7 @@ class DialogoMantenimiento(QDialog):
             "Cambio de Aceite / Filtros",
             "Cambio de Distribución",
             "Renovación RTO",
+            "Renovación Oblea GNC",
             "Frenos",
             "Neumáticos",
             "Reparación Mecánica General",
@@ -449,7 +506,6 @@ class DialogoMantenimiento(QDialog):
         self.in_km = QSpinBox()
         self.in_km.setRange(0, 2000000)
         self.in_km.setValue(self.vehiculo.kilometraje_actual or 0)
-        self.in_km.setToolTip("Si ingresa un KM mayor al actual del vehículo, se actualizará automáticamente.")
 
         self.in_costo = QDoubleSpinBox()
         self.in_costo.setRange(0, 100000000)
@@ -460,9 +516,10 @@ class DialogoMantenimiento(QDialog):
         self.in_detalle = QTextEdit()
         self.in_detalle.setMaximumHeight(80)
 
-        # Checkbox rápidos
         self.check_actualizar_rto = QPushButton("🔄 Actualizar RTO a un año desde hoy")
         self.check_actualizar_rto.setCheckable(True)
+        self.check_actualizar_gnc = QPushButton("🔄 Actualizar Oblea GNC a un año desde hoy")
+        self.check_actualizar_gnc.setCheckable(True)
         self.check_actualizar_service = QPushButton("🔄 Sumar 10.000km para próximo Service")
         self.check_actualizar_service.setCheckable(True)
 
@@ -476,6 +533,7 @@ class DialogoMantenimiento(QDialog):
         layout.addLayout(form)
         layout.addWidget(QLabel("<b>Acciones Automáticas:</b>"))
         layout.addWidget(self.check_actualizar_rto)
+        layout.addWidget(self.check_actualizar_gnc)
         layout.addWidget(self.check_actualizar_service)
 
         btn_guardar = QPushButton("🔧 Guardar Historial")
@@ -488,6 +546,7 @@ class DialogoMantenimiento(QDialog):
 
     def sugerir_acciones(self, texto):
         self.check_actualizar_rto.setChecked("RTO" in texto)
+        self.check_actualizar_gnc.setChecked("GNC" in texto)
         self.check_actualizar_service.setChecked("Aceite" in texto)
 
     def guardar(self):
@@ -503,12 +562,14 @@ class DialogoMantenimiento(QDialog):
             )
             self.session.add(m)
 
-            # Actualizaciones automáticas sobre el vehículo maestro
             if self.in_km.value() > self.vehiculo.kilometraje_actual:
                 self.vehiculo.kilometraje_actual = self.in_km.value()
 
             if self.check_actualizar_rto.isChecked():
                 self.vehiculo.vencimiento_rto = (datetime.now() + timedelta(days=365)).date()
+                
+            if self.check_actualizar_gnc.isChecked():
+                self.vehiculo.vencimiento_oblea_gnc = (datetime.now() + timedelta(days=365)).date()
                 
             if self.check_actualizar_service.isChecked():
                 self.vehiculo.km_proximo_service = self.in_km.value() + 10000
@@ -518,7 +579,6 @@ class DialogoMantenimiento(QDialog):
         except Exception as e:
             self.session.rollback()
             QMessageBox.critical(self, "Error", f"No se pudo guardar: {str(e)}")
-
 
 class DialogoHistorialMantenimiento(QDialog):
     def __init__(self, session, vehiculo, parent=None):
@@ -531,7 +591,6 @@ class DialogoHistorialMantenimiento(QDialog):
 
     def setup_ui(self):
         layout = QVBoxLayout(self)
-        
         self.tabla = QTableWidget()
         self.tabla.setColumnCount(6)
         self.tabla.setHorizontalHeaderLabels(["Fecha", "Tipo", "KM", "Costo", "Taller", "Detalle"])
@@ -564,5 +623,4 @@ class DialogoHistorialMantenimiento(QDialog):
                 self.tabla.setItem(i, 3, QTableWidgetItem(f"$ {m.costo:,.2f}"))
                 self.tabla.setItem(i, 4, QTableWidgetItem(m.taller_proveedor))
                 self.tabla.setItem(i, 5, QTableWidgetItem(m.detalle))
-        except:
-            pass
+        except: pass

@@ -86,13 +86,10 @@ class PlataformaLogistica(QMainWindow):
         global Operacion, Historial, Tarifa, Chofer, ClienteRetiro, ClientePrincipal, DestinoFrecuente, Estados, Urgencia, TarifaDHL, HistorialTarifas, ReciboPago
         from database import Operacion, Historial, Tarifa, Chofer, ClienteRetiro, ClientePrincipal, DestinoFrecuente, Estados, Urgencia, TarifaDHL, HistorialTarifas, ReciboPago
         
-        # 🔥 IMPORTACIONES DE LOS ARCHIVOS DIVIDIDOS + PESTAÑA FLOTA 🔥
         global TabIngreso, TabRendicion, TabFacturacion, TabConfiguracion, TabFlota
-        from tab_ingreso import TabIngreso
-        from tab_rendicion import TabRendicion
-        from tab_facturacion import TabFacturacion
+        from vistas_operativas import TabIngreso, TabRendicion, TabFacturacion
         from vista_configuracion import TabConfiguracion
-        from tab_flota import TabFlota
+        from tab_flota import TabFlota # 🔥 IMPORTAMOS LA NUEVA PESTAÑA 🔥
         
         global ToastNotification, ConfirmarEntregaDialog, ReprogramarAdminDialog, HistorialHojasRutaDialog, EditarOperacionDialog, CambiarFechaDialog, TrackingDialog
         from dialogos import ToastNotification, ConfirmarEntregaDialog, ReprogramarAdminDialog, HistorialHojasRutaDialog, EditarOperacionDialog, CambiarFechaDialog, TrackingDialog
@@ -121,8 +118,8 @@ class PlataformaLogistica(QMainWindow):
                 self.tab_ingreso.cargar_movimientos_dia()
             elif "Ruta" in nombre_tab: self.cargar_ruta()
             elif "Rendición" in nombre_tab: self.tab_rendicion.cargar_rendicion()
-            elif "Flota" in nombre_tab: self.tab_flota.cargar_vehiculos() # 🔥 CARGA FLOTA 🔥
             elif "Estadísticas" in nombre_tab: self.cargar_estadisticas()
+            elif "Flota" in nombre_tab: self.tab_flota.cargar_vehiculos() # 🔥 CARGA LOS DATOS AL ABRIR LA PESTAÑA 🔥
             elif "CRM" in nombre_tab: self.cargar_crm()
         finally:
             QApplication.restoreOverrideCursor()
@@ -168,17 +165,13 @@ class PlataformaLogistica(QMainWindow):
         
         self.tab_monitor = QWidget(); self.tab_ruta = QWidget(); self.tab_reportes = QWidget(); self.tab_crm = QWidget(); self.tab_stats = QWidget(); 
         self.tab_ingreso = TabIngreso(self); self.tab_rendicion = TabRendicion(self); self.tab_cierre = TabFacturacion(self); self.tab_config = TabConfiguracion(self) 
-        self.tab_flota = TabFlota(self) # 🔥 INSTANCIA DE LA PESTAÑA FLOTA 🔥
+        self.tab_flota = TabFlota(self) # 🔥 INSTANCIAMOS LA PESTAÑA FLOTA 🔥
         
         if getattr(self.usuario, 'ver_monitor', True): self.tabs.addTab(self.tab_monitor, "📊 MONITOR GLOBAL")
         if getattr(self.usuario, 'ver_ingreso', True): self.tabs.addTab(self.tab_ingreso, "1. INGRESO")
         if getattr(self.usuario, 'ver_ruta', True): self.tabs.addTab(self.tab_ruta, "2. Hoja de Ruta")
         
         if self.usuario.ver_rendicion: self.tabs.addTab(self.tab_rendicion, "3. Rendición")
-        
-        # 🔥 PESTAÑA AGREGADA A LA INTERFAZ 🔥
-        self.tabs.addTab(self.tab_flota, "🚚 Flota / Mantenimiento")
-
         if self.usuario.ver_reportes: self.tabs.addTab(self.tab_reportes, "4. Reportes"); self.setup_reportes()
         
         if self.usuario.ver_facturacion: 
@@ -186,7 +179,12 @@ class PlataformaLogistica(QMainWindow):
             if hasattr(self.tab_cierre, 'tabla_cierre'): self.tab_cierre.tabla_cierre.setItemDelegate(PintorCeldasDelegate(self.tab_cierre.tabla_cierre))
                 
         if self.usuario.ver_crm: self.tabs.addTab(self.tab_crm, "💬 CRM / Contacto"); self.setup_crm()
+        
         if self.usuario.ver_estadisticas: self.tabs.addTab(self.tab_stats, "📈 Estadísticas"); self.setup_estadisticas()
+        
+        # 🔥 UBICADA EXACTAMENTE ENTRE ESTADÍSTICAS Y CONFIGURACIÓN 🔥
+        self.tabs.addTab(self.tab_flota, "🚚 Flota / Mantenimiento")
+
         if self.usuario.ver_configuracion: self.tabs.addTab(self.tab_config, "⚙️ Configuración")
         
         self.setup_monitor(); self.setup_ruta(); self.setStatusBar(QStatusBar())
@@ -304,13 +302,17 @@ class PlataformaLogistica(QMainWindow):
                     elif hasattr(self, 'tab_ingreso') and tabla == self.tab_ingreso.tabla_ingresos: self.tab_ingreso.cargar_movimientos_dia()
                     self.cargar_monitor_global()
         except Exception: self.session.rollback()
-
-    def setup_monitor(self):
+def setup_monitor(self):
         layout = QVBoxLayout(self.tab_monitor)
         self.tabs_internas_monitor = QTabWidget()
         tab_tabla = QWidget(); layout_tabla = QVBoxLayout(tab_tabla); top_bar = QHBoxLayout()
         self.mon_date = QDateEdit(QDate.currentDate()); self.mon_date.setCalendarPopup(True); self.mon_date.dateChanged.connect(self.cargar_monitor_global)
-        self.mon_chofer_combo = QComboBox(); self.mon_chofer_combo.addItem("Todos"); self.mon_chofer_combo.currentTextChanged.connect(self.cargar_monitor_global)
+        
+        self.mon_chofer_combo = QComboBox()
+        self.mon_chofer_combo.setMinimumWidth(250) # 🔥 LISTA DE CHOFER ENSANCHADA 🔥
+        self.mon_chofer_combo.addItem("Todos")
+        self.mon_chofer_combo.currentTextChanged.connect(self.cargar_monitor_global)
+        
         btn_refresh = QPushButton("🔄 Actualizar Ahora"); btn_refresh.clicked.connect(lambda: {self.cargar_monitor_global(), self.cargar_novedades()})
         top_bar.addWidget(QLabel("Fecha:")); top_bar.addWidget(self.mon_date); top_bar.addWidget(QLabel("Chofer:")); top_bar.addWidget(self.mon_chofer_combo); top_bar.addWidget(btn_refresh); top_bar.addStretch()
         
@@ -437,13 +439,15 @@ class PlataformaLogistica(QMainWindow):
 
     def setup_ruta(self):
         l = QVBoxLayout(self.tab_ruta); top_row1 = QHBoxLayout(); top_row2 = QHBoxLayout()
-        self.combo_masivo_chofer = QComboBox(); self.combo_masivo_chofer.setMinimumWidth(150)
+        
+        self.combo_masivo_chofer = QComboBox()
+        self.combo_masivo_chofer.setMinimumWidth(250) # 🔥 LISTA DE CHOFER ENSANCHADA 🔥
+        
         self.txt_filtro_ruta = QLineEdit(); self.txt_filtro_ruta.setPlaceholderText("🔎 Filtrar por Guía, Cliente, Destino..."); self.txt_filtro_ruta.textChanged.connect(self.filtrar_tabla_ruta)
         btn_aplicar_masivo = QPushButton("ASIGNAR GUÍAS"); btn_aplicar_masivo.clicked.connect(self.asignar_chofer_masivo)
         btn_mark = QPushButton("☑️ Seleccionar Todo"); btn_mark.clicked.connect(lambda: self.toggle_seleccion_todo(self.tabla_ruta))
         btn_tercerizado = QPushButton("🚚 TERCERIZADOS"); btn_tercerizado.clicked.connect(self.generar_pdf_terc)
         
-        # 🔥 FIX 5: BOTÓN PARA REIMPRIMIR LA HOJA CON LO VIEJO Y LO NUEVO 🔥
         btn_reimprimir = QPushButton("🖨️ REIMPRIMIR RUTA DE HOY")
         btn_reimprimir.setStyleSheet("background-color: #6f42c1 !important; color: white !important;")
         btn_reimprimir.clicked.connect(self.reimprimir_ruta_completa)
@@ -679,7 +683,13 @@ class PlataformaLogistica(QMainWindow):
     def setup_reportes(self):
         layout = QVBoxLayout(self.tab_reportes); filtros = QGroupBox("Filtros"); flayout = QHBoxLayout()
         self.rep_fecha_desde = QDateEdit(QDate.currentDate().addDays(-30)); self.rep_fecha_hasta = QDateEdit(QDate.currentDate()); self.rep_fecha_desde.setCalendarPopup(True); self.rep_fecha_hasta.setCalendarPopup(True)
-        self.rep_sucursal = QComboBox(); self.rep_sucursal.addItems(["Todas", "Mendoza", "San Juan"]); self.rep_chofer = QComboBox(); self.rep_chofer.addItem("Todos"); 
+        
+        self.rep_sucursal = QComboBox(); self.rep_sucursal.addItems(["Todas", "Mendoza", "San Juan"]); 
+        
+        self.rep_chofer = QComboBox()
+        self.rep_chofer.setMinimumWidth(250) # 🔥 LISTA DE CHOFER ENSANCHADA 🔥
+        self.rep_chofer.addItem("Todos")
+        
         self.rep_cliente = QComboBox(); self.rep_cliente.addItem("Todos"); self.rep_cliente.addItems(self.lista_proveedores)
         self.rep_estado = QComboBox(); self.rep_estado.addItem("Todos"); self.rep_estado.addItems(Estados.LISTA_TODOS)
         self.rep_facturado = QComboBox(); self.rep_facturado.addItems(["Todos", "Facturado", "NO Facturado"]) 
