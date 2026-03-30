@@ -86,7 +86,7 @@ class PlataformaLogistica(QMainWindow):
         global Operacion, Historial, Tarifa, Chofer, ClienteRetiro, ClientePrincipal, DestinoFrecuente, Estados, Urgencia, TarifaDHL, HistorialTarifas, ReciboPago
         from database import Operacion, Historial, Tarifa, Chofer, ClienteRetiro, ClientePrincipal, DestinoFrecuente, Estados, Urgencia, TarifaDHL, HistorialTarifas, ReciboPago
         
-        # 🔥 ACTUALIZACIÓN DE IMPORTACIONES PARA USAR LOS NUEVOS ARCHIVOS 🔥
+        # 🔥 IMPORTANTE: Ahora usamos los archivos divididos 🔥
         global TabIngreso, TabRendicion, TabFacturacion, TabConfiguracion
         from tab_ingreso import TabIngreso
         from tab_rendicion import TabRendicion
@@ -297,136 +297,6 @@ class PlataformaLogistica(QMainWindow):
                     elif hasattr(self, 'tab_ingreso') and tabla == self.tab_ingreso.tabla_ingresos: self.tab_ingreso.cargar_movimientos_dia()
                     self.cargar_monitor_global()
         except Exception: self.session.rollback()
-
-    def setup_monitor(self):
-        layout = QVBoxLayout(self.tab_monitor)
-        self.tabs_internas_monitor = QTabWidget()
-        tab_tabla = QWidget(); layout_tabla = QVBoxLayout(tab_tabla); top_bar = QHBoxLayout()
-        self.mon_date = QDateEdit(QDate.currentDate()); self.mon_date.setCalendarPopup(True); self.mon_date.dateChanged.connect(self.cargar_monitor_global)
-        self.mon_chofer_combo = QComboBox(); self.mon_chofer_combo.addItem("Todos"); self.mon_chofer_combo.currentTextChanged.connect(self.cargar_monitor_global)
-        btn_refresh = QPushButton("🔄 Actualizar Ahora"); btn_refresh.clicked.connect(lambda: {self.cargar_monitor_global(), self.cargar_novedades()})
-        top_bar.addWidget(QLabel("Fecha:")); top_bar.addWidget(self.mon_date); top_bar.addWidget(QLabel("Chofer:")); top_bar.addWidget(self.mon_chofer_combo); top_bar.addWidget(btn_refresh); top_bar.addStretch()
-        
-        self.tabla_monitor = QTableWidget(); self.tabla_monitor.setColumnCount(8); 
-        self.tabla_monitor.setHorizontalHeaderLabels(["Estado", "Guía", "Cliente", "Destinatario", "Domicilio / Novedad", "Zona", "Bultos", "Chofer"])
-        self.pintor = PintorCeldasDelegate(self.tabla_monitor); self.tabla_monitor.setItemDelegate(self.pintor)
-        
-        header = self.tabla_monitor.horizontalHeader()
-        header.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
-        self.tabla_monitor.setColumnWidth(0, 130)  
-        self.tabla_monitor.setColumnWidth(1, 140)  
-        self.tabla_monitor.setColumnWidth(2, 180)  
-        self.tabla_monitor.setColumnWidth(3, 250)  
-        self.tabla_monitor.setColumnWidth(4, 350)  
-        self.tabla_monitor.setColumnWidth(5, 150)  
-        self.tabla_monitor.setColumnWidth(6, 80)   
-        header.setStretchLastSection(True)         
-        
-        self.tabla_monitor.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows); self.tabla_monitor.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
-        legend = QHBoxLayout()
-        def create_filter_btn(texto, filtro_val, color_bg):
-            btn = QPushButton(texto); btn.setStyleSheet(f"background-color: {color_bg} !important; color: #000000 !important; font-weight: bold !important; border-radius: 4px !important; padding: 8px 12px !important; border: 1px solid #ccc !important;")
-            btn.clicked.connect(lambda: self.aplicar_filtro_monitor(filtro_val)); return btn
-        legend.addWidget(create_filter_btn("🔵 EN DEPOSITO", "EN DEPOSITO", "#e3f2fd")); legend.addWidget(create_filter_btn("🟡 EN REPARTO", Estados.EN_REPARTO, "#fff3cd")); legend.addWidget(create_filter_btn("🟣 REPROGRAMADO", "REPROGRAMADO", "#e2d9f3")); legend.addWidget(create_filter_btn("🟢 ENTREGADO", Estados.ENTREGADO, "#d4edda")); legend.addWidget(create_filter_btn("⚪ VER TODOS", None, "#ffffff")); legend.addStretch()
-        layout_tabla.addLayout(top_bar); layout_tabla.addWidget(self.tabla_monitor); layout_tabla.addLayout(legend)
-        tab_novedades = QWidget(); layout_novedades = QVBoxLayout(tab_novedades)
-        btn_ref_nov = QPushButton("🔄 Actualizar Novedades"); btn_ref_nov.clicked.connect(self.cargar_novedades)
-        self.lista_novedades = QListWidget(); self.lista_novedades.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection); self.lista_novedades.setStyleSheet("font-size: 14px; padding: 10px;")
-        layout_novedades.addWidget(btn_ref_nov); layout_novedades.addWidget(self.lista_novedades)
-        self.tabs_internas_monitor.addTab(tab_tabla, "📋 Listado de Guías"); self.tabs_internas_monitor.addTab(tab_novedades, "🔔 Últimas Novedades y Auditoría"); layout.addWidget(self.tabs_internas_monitor)
-
-    def aplicar_filtro_monitor(self, filtro):
-        self.filtro_monitor = filtro; self.cargar_monitor_global()
-
-    def cargar_novedades(self):
-        try:
-            self.lista_novedades.clear()
-            sql = text("SELECT h.fecha_hora, h.detalle, o.guia_remito, h.usuario, h.accion FROM historial_movimientos h JOIN operaciones o ON h.operacion_id = o.id WHERE o.sucursal = :s ORDER BY h.fecha_hora DESC LIMIT 100")
-            logs = self.session.execute(sql, {"s": self.sucursal_actual}).fetchall()
-            for log in logs:
-                hora = log[0].strftime("%d/%m %H:%M:%S") if log[0] else ""
-                guia = log[2] or "S/G"; detalle = log[1] or ""; usuario = log[3]; accion = log[4] or ""
-                texto = f"{hora} | {guia} | {usuario} | {accion}: {detalle}"
-                item = QListWidgetItem() 
-                if "Reprogramado" in detalle or "Motivo" in detalle or "No Entregado" in detalle or "REPROGRAMADO" in accion: 
-                    item.setBackground(QColor("#f8d7da")); item.setForeground(QColor("#721c24")); item.setFont(QFont("Arial", 10, QFont.Weight.Bold)); item.setText(f"⚠️ {texto}")
-                elif "Recibio" in detalle or "ENTREGA" in accion or "ENTREGADO" in accion: 
-                    item.setBackground(QColor("#d4edda")); item.setForeground(QColor("#155724")); item.setText(f"✅ {texto}")
-                elif "REPARTO" in accion or "TERCERIZADO" in accion:
-                    item.setBackground(QColor("#fff3cd")); item.setForeground(QColor("#856404")); item.setText(f"🚚 {texto}")
-                elif "INGRESO" in accion:
-                    item.setBackground(QColor("#e2e3e5")); item.setForeground(QColor("#383d41")); item.setText(f"📥 {texto}")
-                else: item.setText(f"ℹ️ {texto}")
-                self.lista_novedades.addItem(item)
-        except Exception: self.session.rollback()
-
-    def cargar_monitor_global(self):
-        try:
-            self.tabla_monitor.blockSignals(True); self.tabla_monitor.setUpdatesEnabled(False); self.tabla_monitor.setRowCount(0); QApplication.processEvents()
-            fecha_sel = self.mon_date.date().toPyDate(); chofer_sel = self.mon_chofer_combo.currentText()
-            query = self.session.query(Operacion).filter(
-                (Operacion.fecha_ingreso == fecha_sel) | 
-                (text("DATE(fecha_salida) = :f").bindparams(f=fecha_sel)) |
-                (text("DATE(fecha_entrega) = :f").bindparams(f=fecha_sel)) |
-                (Operacion.id.in_(self.session.query(Historial.operacion_id).filter(text("DATE(fecha_hora) = :f").bindparams(f=fecha_sel))))
-            ).filter(Operacion.sucursal == self.sucursal_actual)
-            
-            if chofer_sel != "Todos": query = query.filter(Operacion.chofer_asignado == chofer_sel)
-            ops = query.order_by(Operacion.id.desc()).all()
-            if not ops: self.tabla_monitor.setUpdatesEnabled(True); self.tabla_monitor.blockSignals(False); return
-            all_op_ids = [op.id for op in ops]; estados_deposito = ["EN DEPOSITO", "EN DEPÓSITO"]
-            op_ids_deposito = [op.id for op in ops if (op.estado or "").upper() in estados_deposito]
-            reprogramados_set = set()
-            if op_ids_deposito:
-                hist_records = self.session.query(Historial.operacion_id).filter(Historial.operacion_id.in_(op_ids_deposito), Historial.accion.ilike('%REPROGRAMADO%')).all()
-                reprogramados_set = {r[0] for r in hist_records}
-            gps_dict = {}
-            if all_op_ids:
-                gps_records = self.session.query(Historial.operacion_id, Historial.detalle).filter(Historial.operacion_id.in_(all_op_ids), Historial.detalle.like('%| GPS:%')).order_by(Historial.id.asc()).all()
-                for op_id, detalle in gps_records: gps_dict[op_id] = detalle 
-                    
-            for r, op in enumerate(ops):
-                estado_visual = op.estado; bg_color = QColor("#ffffff"); txt_color_main = QColor("#000000") 
-                if op.estado == Estados.ENTREGADO: bg_color = QColor("#d4edda"); txt_color_estado = QColor("#155724")
-                elif op.estado == Estados.EN_REPARTO: bg_color = QColor("#fff3cd"); txt_color_estado = QColor("#856404")
-                elif (op.estado or "").upper() in estados_deposito:
-                    if op.id in reprogramados_set: bg_color = QColor("#e2d9f3"); txt_color_estado = QColor("#4b0082"); estado_visual = "REPROGRAMADO"
-                    else: bg_color = QColor("#e3f2fd"); txt_color_estado = QColor("#0c5460"); estado_visual = "EN DEPOSITO"
-                if self.filtro_monitor:
-                    if self.filtro_monitor == "REPROGRAMADO" and estado_visual != "REPROGRAMADO": continue
-                    elif self.filtro_monitor == "EN DEPOSITO" and estado_visual != "EN DEPOSITO": continue
-                    elif self.filtro_monitor not in ["REPROGRAMADO", "EN DEPOSITO"] and op.estado != self.filtro_monitor: continue
-                
-                row_idx = self.tabla_monitor.rowCount(); self.tabla_monitor.insertRow(row_idx)
-                guia_texto = op.guia_remito or "-"
-                if op.tipo_servicio and "Retiro" in op.tipo_servicio: guia_texto = f"🔄 {guia_texto}"
-                elif op.tipo_servicio and "Flete" in op.tipo_servicio: guia_texto = f"⏱️ {guia_texto}"
-                
-                self.tabla_monitor.setItem(row_idx, 0, QTableWidgetItem(estado_visual)); self.tabla_monitor.setItem(row_idx, 1, QTableWidgetItem(guia_texto)); self.tabla_monitor.setItem(row_idx, 2, QTableWidgetItem(op.proveedor)); self.tabla_monitor.setItem(row_idx, 3, QTableWidgetItem(op.destinatario))
-                extra = ""
-                if op.es_contra_reembolso and op.monto_recaudacion: extra += f"Cobrar ${op.monto_recaudacion} "
-                if op.info_intercambio: extra += op.info_intercambio
-                domicilio_full = op.domicilio
-                if extra: domicilio_full += f" | Obs: {extra}"
-                detalle_gps = gps_dict.get(op.id)
-                if detalle_gps:
-                    try:
-                        link = detalle_gps.split("| GPS:")[1].strip()
-                        dom_html = f'<div style="background-color:transparent;">{domicilio_full} <a href="{link}" style="color:#d32f2f; text-decoration:none; font-weight:bold; font-size:13px;">[📍 MAPA]</a></div>'
-                        lbl = QLabel(dom_html); lbl.setAlignment(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft); lbl.setOpenExternalLinks(True); lbl.setStyleSheet("background-color: transparent; padding-left: 5px;") 
-                        self.tabla_monitor.setCellWidget(row_idx, 4, lbl); self.tabla_monitor.setItem(row_idx, 4, QTableWidgetItem("")) 
-                    except: self.tabla_monitor.setItem(row_idx, 4, QTableWidgetItem(domicilio_full))
-                else: self.tabla_monitor.setItem(row_idx, 4, QTableWidgetItem(domicilio_full))
-                self.tabla_monitor.setItem(row_idx, 5, QTableWidgetItem(op.localidad)); self.tabla_monitor.setItem(row_idx, 6, QTableWidgetItem(str(op.bultos))); self.tabla_monitor.setItem(row_idx, 7, QTableWidgetItem(op.chofer_asignado or "-"))
-                brush_bg = QBrush(bg_color)
-                for col_idx in range(8):
-                    it = self.tabla_monitor.item(row_idx, col_idx)
-                    if it:
-                        it.setBackground(brush_bg)
-                        if col_idx == 0: font = QFont(); font.setBold(True); it.setFont(font); it.setForeground(txt_color_estado)
-                        else: it.setForeground(txt_color_main)
-            self.tabla_monitor.setUpdatesEnabled(True); self.tabla_monitor.blockSignals(False)
-        except Exception: self.session.rollback(); self.tabla_monitor.setUpdatesEnabled(True); self.tabla_monitor.blockSignals(False)
 def setup_monitor(self):
         layout = QVBoxLayout(self.tab_monitor)
         self.tabs_internas_monitor = QTabWidget()
@@ -576,15 +446,9 @@ def setup_monitor(self):
         
         header_ruta = self.tabla_ruta.horizontalHeader()
         header_ruta.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
-        self.tabla_ruta.setColumnWidth(1, 40)   
-        self.tabla_ruta.setColumnWidth(2, 140)  
-        self.tabla_ruta.setColumnWidth(3, 180)  
-        self.tabla_ruta.setColumnWidth(4, 250)  
-        self.tabla_ruta.setColumnWidth(5, 350)  
-        self.tabla_ruta.setColumnWidth(6, 150)  
-        self.tabla_ruta.setColumnWidth(7, 90)   
-        self.tabla_ruta.setColumnWidth(8, 150)  
-        header_ruta.setStretchLastSection(True) 
+        self.tabla_ruta.setColumnWidth(1, 40); self.tabla_ruta.setColumnWidth(2, 140); self.tabla_ruta.setColumnWidth(3, 180)
+        self.tabla_ruta.setColumnWidth(4, 250); self.tabla_ruta.setColumnWidth(5, 350); self.tabla_ruta.setColumnWidth(6, 150)
+        self.tabla_ruta.setColumnWidth(7, 90); self.tabla_ruta.setColumnWidth(8, 150); header_ruta.setStretchLastSection(True) 
         
         self.tabla_ruta.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows); self.tabla_ruta.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         l.addLayout(top_row1); l.addLayout(top_row2); l.addWidget(self.tabla_ruta)
