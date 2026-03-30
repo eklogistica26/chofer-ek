@@ -86,11 +86,13 @@ class PlataformaLogistica(QMainWindow):
         global Operacion, Historial, Tarifa, Chofer, ClienteRetiro, ClientePrincipal, DestinoFrecuente, Estados, Urgencia, TarifaDHL, HistorialTarifas, ReciboPago
         from database import Operacion, Historial, Tarifa, Chofer, ClienteRetiro, ClientePrincipal, DestinoFrecuente, Estados, Urgencia, TarifaDHL, HistorialTarifas, ReciboPago
         
-        global TabIngreso, TabRendicion, TabFacturacion, TabConfiguracion
+        # 🔥 IMPORTACIONES DE LOS ARCHIVOS DIVIDIDOS + PESTAÑA FLOTA 🔥
+        global TabIngreso, TabRendicion, TabFacturacion, TabConfiguracion, TabFlota
         from tab_ingreso import TabIngreso
         from tab_rendicion import TabRendicion
         from tab_facturacion import TabFacturacion
         from vista_configuracion import TabConfiguracion
+        from tab_flota import TabFlota
         
         global ToastNotification, ConfirmarEntregaDialog, ReprogramarAdminDialog, HistorialHojasRutaDialog, EditarOperacionDialog, CambiarFechaDialog, TrackingDialog
         from dialogos import ToastNotification, ConfirmarEntregaDialog, ReprogramarAdminDialog, HistorialHojasRutaDialog, EditarOperacionDialog, CambiarFechaDialog, TrackingDialog
@@ -119,6 +121,7 @@ class PlataformaLogistica(QMainWindow):
                 self.tab_ingreso.cargar_movimientos_dia()
             elif "Ruta" in nombre_tab: self.cargar_ruta()
             elif "Rendición" in nombre_tab: self.tab_rendicion.cargar_rendicion()
+            elif "Flota" in nombre_tab: self.tab_flota.cargar_vehiculos() # 🔥 CARGA FLOTA 🔥
             elif "Estadísticas" in nombre_tab: self.cargar_estadisticas()
             elif "CRM" in nombre_tab: self.cargar_crm()
         finally:
@@ -165,12 +168,17 @@ class PlataformaLogistica(QMainWindow):
         
         self.tab_monitor = QWidget(); self.tab_ruta = QWidget(); self.tab_reportes = QWidget(); self.tab_crm = QWidget(); self.tab_stats = QWidget(); 
         self.tab_ingreso = TabIngreso(self); self.tab_rendicion = TabRendicion(self); self.tab_cierre = TabFacturacion(self); self.tab_config = TabConfiguracion(self) 
+        self.tab_flota = TabFlota(self) # 🔥 INSTANCIA DE LA PESTAÑA FLOTA 🔥
         
         if getattr(self.usuario, 'ver_monitor', True): self.tabs.addTab(self.tab_monitor, "📊 MONITOR GLOBAL")
         if getattr(self.usuario, 'ver_ingreso', True): self.tabs.addTab(self.tab_ingreso, "1. INGRESO")
         if getattr(self.usuario, 'ver_ruta', True): self.tabs.addTab(self.tab_ruta, "2. Hoja de Ruta")
         
         if self.usuario.ver_rendicion: self.tabs.addTab(self.tab_rendicion, "3. Rendición")
+        
+        # 🔥 PESTAÑA AGREGADA A LA INTERFAZ 🔥
+        self.tabs.addTab(self.tab_flota, "🚚 Flota / Mantenimiento")
+
         if self.usuario.ver_reportes: self.tabs.addTab(self.tab_reportes, "4. Reportes"); self.setup_reportes()
         
         if self.usuario.ver_facturacion: 
@@ -435,6 +443,7 @@ class PlataformaLogistica(QMainWindow):
         btn_mark = QPushButton("☑️ Seleccionar Todo"); btn_mark.clicked.connect(lambda: self.toggle_seleccion_todo(self.tabla_ruta))
         btn_tercerizado = QPushButton("🚚 TERCERIZADOS"); btn_tercerizado.clicked.connect(self.generar_pdf_terc)
         
+        # 🔥 FIX 5: BOTÓN PARA REIMPRIMIR LA HOJA CON LO VIEJO Y LO NUEVO 🔥
         btn_reimprimir = QPushButton("🖨️ REIMPRIMIR RUTA DE HOY")
         btn_reimprimir.setStyleSheet("background-color: #6f42c1 !important; color: white !important;")
         btn_reimprimir.clicked.connect(self.reimprimir_ruta_completa)
@@ -1035,4 +1044,4 @@ if __name__ == "__main__":
         wake_thread = DBWakeUpThread()
         wake_thread.finished_signal.connect(terminar_arranque)
         wake_thread.start()
-        sys.exit(app.exec())  
+        sys.exit(app.exec())

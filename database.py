@@ -101,7 +101,6 @@ class ClientePrincipal(Base):
     nombre = Column(String(100), unique=True)
     email_reportes = Column(String(150), nullable=True)
     
-    # 🔥 LOS NUEVOS 5 PODERES PARA CADA EMPRESA 🔥
     es_facturable = Column(Boolean, default=True)
     enviar_mail = Column(Boolean, default=False)
     exige_remito = Column(Boolean, default=False)
@@ -165,3 +164,53 @@ class ReciboPago(Base):
     monto = Column(Float, default=0.0)
     detalle = Column(String(200))
     usuario = Column(String(50))
+
+
+# =======================================================
+# 🔥 NUEVO MÓDULO: FLOTA Y MANTENIMIENTO DE VEHÍCULOS 🔥
+# =======================================================
+
+class Vehiculo(Base):
+    __tablename__ = "vehiculos"
+    id = Column(Integer, primary_key=True, index=True)
+    sucursal = Column(String(50)) # Mendoza o San Juan
+    patente = Column(String(20), unique=True, index=True)
+    marca = Column(String(50))
+    modelo = Column(String(50))
+    año = Column(Integer)
+    
+    # Lo enlazamos con los Choferes que ya tenés en la base de datos
+    chofer_id = Column(Integer, ForeignKey("choferes.id"), nullable=True) 
+
+    # Alertas Legales
+    vencimiento_seguro = Column(Date, nullable=True)
+    vencimiento_rto = Column(Date, nullable=True) # Nombrado RTO para Mendoza
+    vencimiento_cedula = Column(Date, nullable=True)
+
+    # Alertas Mecánicas
+    kilometraje_actual = Column(Integer, default=0)
+    km_proximo_service = Column(Integer, default=0) # Para aceite y distribución
+    km_proximo_neumaticos = Column(Integer, default=0) # Para rotación o cambio
+    
+    estado = Column(String(50), default="ACTIVO") # ACTIVO, EN TALLER, BAJA
+    
+    # Relaciones
+    chofer = relationship("Chofer", backref="vehiculos")
+    mantenimientos = relationship("Mantenimiento", back_populates="vehiculo", cascade="all, delete-orphan")
+
+
+class Mantenimiento(Base):
+    __tablename__ = "mantenimientos_flota"
+    id = Column(Integer, primary_key=True, index=True)
+    vehiculo_id = Column(Integer, ForeignKey("vehiculos.id"))
+    fecha = Column(Date, default=datetime.today)
+    
+    # Ejemplo: "Cambio de Aceite", "Distribución", "Renovación RTO", "Frenos"
+    tipo_servicio = Column(String(100)) 
+    
+    kilometraje = Column(Integer) # Kilometraje en el momento que se hizo el arreglo
+    costo = Column(Float, default=0.0)
+    taller_proveedor = Column(String(100))
+    detalle = Column(String(255)) # Detalles de repuestos o mano de obra
+    
+    vehiculo = relationship("Vehiculo", back_populates="mantenimientos")
