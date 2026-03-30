@@ -4,7 +4,7 @@ from PyQt6.QtWidgets import (QApplication, QWidget, QVBoxLayout, QHBoxLayout, QL
                              QComboBox, QPushButton, QTableWidget, QTableWidgetItem, 
                              QHeaderView, QMessageBox, QDateEdit, QGroupBox, 
                              QFormLayout, QSpinBox, QDoubleSpinBox, QRadioButton, 
-                             QButtonGroup, QFileDialog, QCheckBox, QStyledItemDelegate, QScrollArea, QCompleter)
+                             QButtonGroup, QFileDialog, QCheckBox, QStyledItemDelegate, QScrollArea, QCompleter, QAbstractItemView)
 from PyQt6.QtCore import Qt, QDate, QTimer
 from PyQt6.QtGui import QColor, QFont, QBrush
 from sqlalchemy import text
