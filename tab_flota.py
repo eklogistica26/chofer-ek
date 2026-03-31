@@ -28,15 +28,15 @@ class TabFlota(QWidget):
         
         top_bar = QHBoxLayout()
         self.filtro_sucursal = QComboBox()
-        self.filtro_sucursal.setMinimumWidth(250)
         self.filtro_sucursal.addItems(["Todas", "Mendoza", "San Juan"])
+        self.filtro_sucursal.setMinimumWidth(250) # 🔥 ANCHO SUCURSAL AMPLIADO 🔥
         if not getattr(self.main.usuario, 'es_admin_total', False):
             self.filtro_sucursal.setCurrentText(self.main.sucursal_actual)
             self.filtro_sucursal.setEnabled(False)
         self.filtro_sucursal.currentTextChanged.connect(self.cargar_vehiculos)
 
         self.filtro_chofer = QComboBox()
-        self.filtro_chofer.setMinimumWidth(250) # 🔥 ANCHO AMPLIADO 🔥
+        self.filtro_chofer.setMinimumWidth(250) 
         self.filtro_chofer.addItem("Todos")
         self.filtro_chofer.currentTextChanged.connect(self.cargar_vehiculos)
         
@@ -91,7 +91,7 @@ class TabFlota(QWidget):
         layout.addLayout(legend_layout)
 
         self.tabla = QTableWidget()
-        self.tabla.setColumnCount(11) # Agregada columna GNC
+        self.tabla.setColumnCount(11)
         self.tabla.setHorizontalHeaderLabels([
             "ID", "Sucursal", "Chofer", "Patente", "Marca/Modelo", 
             "KM Actual", "Próx. Service", "Venc. Seguro", "Venc. RTO", "Venc. GNC", "Estado"
@@ -104,7 +104,7 @@ class TabFlota(QWidget):
         header = self.tabla.horizontalHeader()
         header.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
         self.tabla.setColumnWidth(1, 90)
-        self.tabla.setColumnWidth(2, 220) # 🔥 ANCHO COLUMNA CHOFER AMPLIADO 🔥
+        self.tabla.setColumnWidth(2, 220) 
         self.tabla.setColumnWidth(3, 90)
         self.tabla.setColumnWidth(4, 180)
         self.tabla.setColumnWidth(5, 90)
@@ -303,11 +303,14 @@ class TabFlota(QWidget):
     def registrar_mantenimiento(self):
         v_id = self.obtener_id_seleccionado()
         if not v_id: return
-        vehiculo = self.main.session.query(Vehiculo).get(v_id)
-        if vehiculo:
-            dlg = DialogoMantenimiento(self.main.session, vehiculo, parent=self)
-            if dlg.exec() == QDialog.DialogCode.Accepted:
-                self.cargar_vehiculos()
+        try:
+            vehiculo = self.main.session.query(Vehiculo).get(v_id)
+            if vehiculo:
+                dlg = DialogoMantenimiento(self.main.session, vehiculo, parent=self)
+                if dlg.exec() == QDialog.DialogCode.Accepted:
+                    self.cargar_vehiculos()
+        except Exception as e:
+            QMessageBox.critical(self, "Error Interno", f"Ocurrió un error al abrir el servicio:\n{str(e)}")
 
     def ver_historial(self):
         v_id = self.obtener_id_seleccionado()
@@ -352,7 +355,7 @@ class DialogoVehiculo(QDialog):
         self.in_sucursal.currentTextChanged.connect(self.actualizar_choferes)
 
         self.in_chofer = QComboBox()
-        self.in_chofer.setMinimumWidth(250) # 🔥 ANCHO AMPLIADO 🔥
+        self.in_chofer.setMinimumWidth(250)
         self.actualizar_choferes()
 
         self.in_patente = QLineEdit()
@@ -377,7 +380,6 @@ class DialogoVehiculo(QDialog):
         self.in_rto = QDateEdit(QDate.currentDate())
         self.in_rto.setCalendarPopup(True)
         
-        # 🔥 CAMPO GNC 🔥
         self.check_gnc = QCheckBox("Vehículo con equipo de GNC")
         self.in_gnc = QDateEdit(QDate.currentDate())
         self.in_gnc.setCalendarPopup(True)
@@ -430,7 +432,6 @@ class DialogoVehiculo(QDialog):
         if self.vehiculo.vencimiento_seguro: self.in_seguro.setDate(self.vehiculo.vencimiento_seguro)
         if self.vehiculo.vencimiento_rto: self.in_rto.setDate(self.vehiculo.vencimiento_rto)
         
-        # Cargar GNC
         if self.vehiculo.vencimiento_oblea_gnc:
             self.check_gnc.setChecked(True)
             self.in_gnc.setDate(self.vehiculo.vencimiento_oblea_gnc)
@@ -462,7 +463,6 @@ class DialogoVehiculo(QDialog):
             self.vehiculo.vencimiento_seguro = self.in_seguro.date().toPyDate()
             self.vehiculo.vencimiento_rto = self.in_rto.date().toPyDate()
             
-            # Guardar GNC
             if self.check_gnc.isChecked():
                 self.vehiculo.vencimiento_oblea_gnc = self.in_gnc.date().toPyDate()
             else:
@@ -492,6 +492,7 @@ class DialogoMantenimiento(QDialog):
         self.in_fecha = QDateEdit(QDate.currentDate())
         self.in_fecha.setCalendarPopup(True)
         
+        # 🔥 CONCEPTOS DEL EXCEL AGREGADOS 🔥
         self.in_tipo = QComboBox()
         self.in_tipo.addItems([
             "Cambio de Aceite / Filtros",
@@ -504,17 +505,18 @@ class DialogoMantenimiento(QDialog):
             "Neumáticos (Cambio / Alineación / Balanceo)",
             "Reparación Mecánica General",
             "Limpieza y Estética",
-            "Otro Gastos"
+            "Otros Gastos"
         ])
         
         self.in_km = QSpinBox()
         self.in_km.setRange(0, 2000000)
         self.in_km.setValue(self.vehiculo.kilometraje_actual or 0)
 
+        # 🔥 ACÁ ESTABA EL ERROR SILENCIOSO QUE BLOQUEABA LA VENTANA 🔥
         self.in_costo = QDoubleSpinBox()
         self.in_costo.setRange(0, 100000000)
         self.in_costo.setPrefix("$ ")
-        self.in_costo.setGroupSeparator(",")
+        self.in_costo.setGroupSeparatorShown(True) # Ahora funciona a la perfección
 
         self.in_taller = QLineEdit()
         self.in_detalle = QTextEdit()
@@ -561,8 +563,8 @@ class DialogoMantenimiento(QDialog):
                 tipo_servicio=self.in_tipo.currentText(),
                 kilometraje=self.in_km.value(),
                 costo=self.in_costo.value(),
-                taller_proveedor=self.in_taller.text().strip(),
-                detalle=self.in_detalle.toPlainText().strip()
+                taller_proveedor=self.in_taller.text().strip().upper(),
+                detalle=self.in_detalle.toPlainText().strip().upper()
             )
             self.session.add(m)
 
