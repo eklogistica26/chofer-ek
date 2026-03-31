@@ -296,6 +296,8 @@ def lista_viajes():
     chofer = session.get('chofer')
     if not chofer: return redirect(url_for('index'))
     
+    chofer_lower = chofer.lower()
+    
     mensajes_html = ""
     mensajes = session.pop('_flashes', [])
     for categoria, mensaje in mensajes:
@@ -356,6 +358,23 @@ def lista_viajes():
             </div>
             """
             
+    # 🔥 CONDICIONES DE LOS BOTONES: KM PARA TODOS MENOS MIGUEL, ESCÁNER SOLO PARA GASTÓN 🔥
+    btn_escaner = ""
+    if "gaston" in chofer_lower or "gastón" in chofer_lower:
+        btn_escaner = """
+        <a href="/scan" class="btn btn-orange" style="display:flex; align-items:center; justify-content:center; gap:10px; margin-bottom: 10px;">
+            <span style="font-size:1.2rem;">📷</span> ESCANEAR CÓDIGO DE BARRAS
+        </a>
+        """
+        
+    btn_km = ""
+    if "miguel nuñez" not in chofer_lower and "miguel nunez" not in chofer_lower:
+        btn_km = """
+        <a href="/update_km" class="btn" style="background-color: #17a2b8; color: white; display:flex; align-items:center; justify-content:center; gap:10px; margin-bottom: 10px;">
+            <span style="font-size:1.2rem;">🚗</span> ACTUALIZAR KILÓMETROS
+        </a>
+        """
+            
     html = f"""
     <!DOCTYPE html>
     <html>
@@ -372,9 +391,10 @@ def lista_viajes():
                 <a href="/guardia" class="btn btn-red" style="display:flex; align-items:center; justify-content:center; gap:10px; margin-bottom: 10px;">
                     <span style="font-size:1.2rem;">🚨</span> CARGAR GUÍA DE GUARDIA
                 </a>
-                <a href="/update_km" class="btn" style="background-color: #17a2b8; color: white; display:flex; align-items:center; justify-content:center; gap:10px;">
-                    <span style="font-size:1.2rem;">🚗</span> ACTUALIZAR KILÓMETROS
-                </a>
+                
+                {btn_escaner}
+                {btn_km}
+                
             </div>
 
             {cards_html}
@@ -929,6 +949,70 @@ def gestion(id_op):
             
             window.onload = obtenerGPS;
         </script>
+    </body>
+    </html>
+    """
+    return render_template_string(html)
+
+# 🔥 RUTA DEL ESCÁNER AÑADIDA (SOLO GASTÓN PUEDE VER EL BOTÓN) 🔥
+@app.route('/scan', methods=['GET', 'POST'])
+def scan():
+    if 'chofer' not in session:
+        return redirect(url_for('index'))
+        
+    if request.method == 'POST':
+        codigo = request.form.get('codigo_guia')
+        if codigo:
+            chofer_nombre = session['chofer']
+            engine = get_db()
+            try:
+                query = text("""
+                    SELECT id FROM operaciones 
+                    WHERE (guia_remito = :codigo OR CAST(id AS TEXT) = :codigo)
+                    AND chofer_asignado = :chofer
+                    AND estado IN ('EN REPARTO', 'PENDIENTE')
+                """)
+                result = engine.execute(query, {"codigo": codigo.strip(), "chofer": chofer_nombre}).fetchone()
+                
+                if result:
+                    return redirect(url_for('gestion', id_op=result[0]))
+                else:
+                    flash(f"❌ La guía '{codigo}' no se encontró en tu ruta activa.", "error")
+            except Exception as e:
+                flash("❌ Error de base de datos.", "error")
+            finally:
+                engine.close()
+                
+        return redirect(url_for('scan'))
+
+    html = f"""
+    <!DOCTYPE html>
+    <html lang="es">
+    {HTML_HEAD}
+    <body style="background-color: #333; color: white;">
+        <div class="header" style="background-color: #F57C00;">
+            <div style="width:100%; text-align:center;">📷 Lector de Guías</div>
+        </div>
+        
+        <div class="container" style="display:flex; flex-direction:column; justify-content:center; align-items:center; height:80vh;">
+            {% with messages = get_flashed_messages(with_categories=true) %}
+              {% if messages %}
+                {% for category, message in messages %}
+                  <div class="alert alert-error" style="width: 100%;">
+                    {{{{ message }}}}
+                  </div>
+                {% endfor %}
+              {% endif %}
+            {% endwith %}
+
+            <form method="POST" style="width: 100%; max-width: 400px; display: flex; flex-direction: column; align-items: center;">
+                <p style="text-align: center; color: #ccc;">Haz clic en el recuadro abajo y usa tu lector láser, o escribe el número a mano:</p>
+                <input type="text" name="codigo_guia" placeholder="Pistolear aquí..." autofocus required autocomplete="off" style="text-align:center; font-size:20px; font-weight:bold; padding:20px;">
+                <button type="submit" class="btn btn-green">BUSCAR GUÍA</button>
+            </form>
+            <br><br>
+            <a href="/viajes" class="btn btn-grey" style="width:100%; max-width:400px;">⬅ Volver a Mi Ruta</a>
+        </div>
     </body>
     </html>
     """
