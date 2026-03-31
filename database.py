@@ -52,6 +52,7 @@ class Usuario(Base):
     ver_crm = Column(Boolean, default=True)          
     ver_estadisticas = Column(Boolean, default=True) 
     ver_configuracion = Column(Boolean, default=False)
+    ver_flota = Column(Boolean, default=True) # 🔥 NUEVO PERMISO DE FLOTA 🔥
 
 class Tarifa(Base):
     __tablename__ = "tarifas"
@@ -187,10 +188,10 @@ class Vehiculo(Base):
     kilometraje_actual = Column(Integer, default=0)
     km_proximo_service = Column(Integer, default=0) 
     
-    km_proximo_neumaticos = Column(Integer, default=0) # Obsoleto visualmente, mantenido por seguridad DB
+    km_proximo_neumaticos = Column(Integer, default=0) 
     km_proximo_distribucion = Column(Integer, default=0) 
-    km_proximo_alineacion = Column(Integer, default=0) # NUEVO: Alineación y balanceo (20k)
-    km_proximo_poli_v = Column(Integer, default=0)     # NUEVO: Correa Poli V (60k)
+    km_proximo_alineacion = Column(Integer, default=0) 
+    km_proximo_poli_v = Column(Integer, default=0)     
     
     falla_reportada = Column(String(255), nullable=True)
     
