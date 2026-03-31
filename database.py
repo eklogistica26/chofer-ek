@@ -211,3 +211,12 @@ class Mantenimiento(Base):
     taller_proveedor = Column(String(100))
     detalle = Column(String(255)) 
     vehiculo = relationship("Vehiculo", back_populates="mantenimientos")
+
+# 🔥 AUTO-PARCHE (PONERLO, ABRIR EL PROGRAMA Y DESPUÉS BORRARLO) 🔥
+try:
+    from sqlalchemy import text
+    _e, _s = get_session()
+    _s.execute(text("ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS ver_flota BOOLEAN DEFAULT TRUE;"))
+    _s.commit()
+    _s.close()
+except: pass
