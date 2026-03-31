@@ -221,7 +221,10 @@ class TabIngreso(QWidget):
         self.btn_dhl.clicked.connect(self.importar_txt_dhl)
         if self.main.sucursal_actual != "San Juan": self.btn_dhl.hide()
         
+        # 🔥 SOLUCIÓN AL CORTE EN PANTALLAS CHICAS 🔥
         panel_izquierdo = QWidget()
+        panel_izquierdo.setMinimumWidth(420) # Obliga a que siempre tenga un tamaño legible
+        panel_izquierdo.setMaximumWidth(480) # Evita que se estire demasiado en monitores gigantes
         layout_izquierdo = QVBoxLayout(panel_izquierdo)
         layout_izquierdo.setContentsMargins(0, 0, 5, 0)
         layout_izquierdo.addWidget(self.scroll_izq) 
@@ -253,8 +256,10 @@ class TabIngreso(QWidget):
         self.tabla_ingresos.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows); self.tabla_ingresos.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         lay_botones_tabla = QHBoxLayout(); btn_del = QPushButton("🗑️ ELIMINAR"); btn_del.clicked.connect(lambda: self.main.eliminar_fila(self.tabla_ingresos, Operacion)); btn_edit_ingreso = QPushButton("✏️ EDITAR"); btn_edit_ingreso.clicked.connect(lambda: self.main.abrir_edicion(self.tabla_ingresos)); lay_botones_tabla.addWidget(btn_edit_ingreso); lay_botones_tabla.addWidget(btn_del); col_der.addLayout(h_header_ingreso); col_der.addWidget(self.tabla_ingresos); col_der.addLayout(lay_botones_tabla)
         
-        l.addWidget(panel_izquierdo, 30) 
-        l.addLayout(col_der, 70) 
+        # 🔥 LE SACAMOS EL PORCENTAJE (30/70) Y LO DEJAMOS AUTOMÁTICO 🔥
+        l.addWidget(panel_izquierdo) 
+        l.addLayout(col_der, 1) # La tabla absorbe todo el espacio sobrante
+        
         self.configurar_autocompletado_global()
         self.actualizar_interfaz_peso()
 
@@ -265,7 +270,6 @@ class TabIngreso(QWidget):
             self.mapa_destinos_global.clear()
             for i, d in enumerate(destinos):
                 if i % 100 == 0: QApplication.processEvents() 
-                # 🔥 FORZAMOS MAYÚSCULAS EN EL AUTOCOMPLETADO 🔥
                 texto_completer = f"{d.destinatario.upper()} - {d.domicilio.upper()} [{d.proveedor.upper()}]"
                 if texto_completer not in nombres_completos:
                     nombres_completos.append(texto_completer)
@@ -336,7 +340,6 @@ class TabIngreso(QWidget):
             if destinos:
                 self.in_destinos_frecuentes.setEnabled(True)
                 for d in destinos: 
-                    # 🔥 FORZAMOS MAYÚSCULAS EN EL COMBO 🔥
                     self.in_destinos_frecuentes.addItem(f"{d.id} - {d.destinatario.upper()}", d.id)
             else: self.in_destinos_frecuentes.setEnabled(False); self.in_destinos_frecuentes.addItem("(Sin destinos guardados)")
         except Exception: self.main.session.rollback()
@@ -363,7 +366,6 @@ class TabIngreso(QWidget):
         except Exception: self.main.session.rollback()
 
     def llenar_campos_con_objeto(self, destino_db):
-        # 🔥 TODO EN MAYÚSCULAS 🔥
         self.in_dest.setText(destino_db.destinatario.upper()); self.in_dom.setText(destino_db.domicilio.upper()); self.in_cel.setText(destino_db.celular or ""); self.in_loc_combo.setCurrentText(destino_db.localidad.upper())
         estilo_flash = "background-color: #d1e7dd; color: #0f5132; font-weight: bold; border: 2px solid #198754; border-radius: 4px;"
         self.in_dest.setStyleSheet(estilo_flash); self.in_dom.setStyleSheet(estilo_flash); self.in_loc_combo.setStyleSheet(estilo_flash); self.in_prov.setStyleSheet(estilo_flash)
@@ -379,7 +381,6 @@ class TabIngreso(QWidget):
         if not self.in_loc_combo.currentText(): QMessageBox.warning(self, "Falta Dato", "Seleccione una Zona."); return
         try:
             servicio = self.in_serv.currentText()
-            # 🔥 CONVERSIÓN FINAL A MAYÚSCULAS ANTES DE GUARDAR 🔥
             loc = self.in_loc_combo.currentText().strip().upper()
             peso_manual = self.in_peso_manual.value()
             prov = self.in_prov.currentText().strip().upper()
@@ -458,10 +459,11 @@ class TabIngreso(QWidget):
                 if row % 10 == 0: QApplication.processEvents()
                 self.tabla_ingresos.insertRow(row); self.tabla_ingresos.setItem(row, 0, QTableWidgetItem(str(op.id)))
                 icon_srv = "🚚" if "Entrega" in op.tipo_servicio else ("🔄" if "Retiro" in op.tipo_servicio else "⏱️"); srv_txt = "Flete" if "Flete" in op.tipo_servicio else ("Retiro" if "Retiro" in op.tipo_servicio else "Entrega")
-                # 🔥 MOSTRAR TODO EN MAYÚSCULAS EN LA TABLA 🔥
                 self.tabla_ingresos.setItem(row, 1, QTableWidgetItem(f"{icon_srv} {srv_txt.upper()}")); self.tabla_ingresos.setItem(row, 2, QTableWidgetItem(op.guia_remito.upper())); self.tabla_ingresos.setItem(row, 3, QTableWidgetItem(op.proveedor.upper())); self.tabla_ingresos.setItem(row, 4, QTableWidgetItem(op.destinatario.upper())); self.tabla_ingresos.setItem(row, 5, QTableWidgetItem(op.domicilio.upper())); self.tabla_ingresos.setItem(row, 6, QTableWidgetItem(op.localidad.upper()))
-                det_b = str(op.bultos)
-                if op.bultos_frio and op.bultos_frio > 0 and op.bultos_frio < op.bultos: det_b += f" ({op.bultos-op.bultos_frio}C/{op.bultos_frio}R)"
-                elif bultos_frio == bultos_tot: det_b += " (R)"
+                bultos_tot = op.bultos or 1
+                bultos_fr = op.bultos_frio or 0
+                det_b = str(bultos_tot)
+                if bultos_fr > 0 and bultos_fr < bultos_tot: det_b += f" ({bultos_tot-bultos_fr}C/{bultos_fr}R)"
+                elif bultos_fr == bultos_tot: det_b += " (R)"
                 self.tabla_ingresos.setItem(row, 7, QTableWidgetItem(det_b))
         except Exception: self.main.session.rollback()
