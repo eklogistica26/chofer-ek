@@ -210,13 +210,3 @@ class Mantenimiento(Base):
     taller_proveedor = Column(String(100))
     detalle = Column(String(255)) 
     vehiculo = relationship("Vehiculo", back_populates="mantenimientos")
-
-# 🔥 AUTO-PARCHE (BORRAR DESPUÉS DE ABRIR EL PROGRAMA 1 VEZ) 🔥
-try:
-    from sqlalchemy import text
-    _e, _s = get_session()
-    _s.execute(text("ALTER TABLE vehiculos ADD COLUMN IF NOT EXISTS km_proximo_alineacion INTEGER DEFAULT 0;"))
-    _s.execute(text("ALTER TABLE vehiculos ADD COLUMN IF NOT EXISTS km_proximo_poli_v INTEGER DEFAULT 0;"))
-    _s.commit()
-    _s.close()
-except: pass
