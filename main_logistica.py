@@ -94,7 +94,7 @@ class PlataformaLogistica(QMainWindow):
         from tab_flota import TabFlota
         
         global ToastNotification, ConfirmarEntregaDialog, ReprogramarAdminDialog, HistorialHojasRutaDialog, EditarOperacionDialog, CambiarFechaDialog, TrackingDialog
-        from dialogos import ToastNotification, ConfirmarEntregaDialog, ReprogramarAdminDialog, HistorialHojasRutaDialog, EditarOperacionDialog, CambiarFechaDialog, TrackingDialog
+        from dialogos import ToastNotification, ConfirmarEntregaDialog, ReprogramarAdminDialog, HistorialHojasRutaDialog, EditarOperacionDialog, CambiarFechaDialog
         
         global crear_pdf_ruta, crear_pdf_tercerizados, crear_pdf_reporte
         from utilidades import crear_pdf_ruta, crear_pdf_tercerizados, crear_pdf_reporte
