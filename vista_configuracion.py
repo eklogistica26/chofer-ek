@@ -93,7 +93,7 @@ class EditarUsuarioDialog(QDialog):
     def __init__(self, usuario, parent=None):
         super().__init__(parent)
         self.setWindowTitle(f"✏️ Editar Permisos: {usuario.username}")
-        self.setGeometry(400, 200, 500, 350)
+        self.setGeometry(400, 200, 500, 400)
         layout = QVBoxLayout(self)
 
         form = QFormLayout()
@@ -123,10 +123,15 @@ class EditarUsuarioDialog(QDialog):
         self.chk_crm = QCheckBox("💬 CRM Contacto"); self.chk_crm.setChecked(usuario.ver_crm)
         self.chk_est = QCheckBox("📈 Estadísticas"); self.chk_est.setChecked(usuario.ver_estadisticas)
         self.chk_cfg = QCheckBox("⚙️ Configuración"); self.chk_cfg.setChecked(usuario.ver_configuracion)
+        
+        # 🔥 ACÁ AGREGAMOS EL TILDE DE FLOTA AL EDITAR USUARIO 🔥
+        self.chk_flo = QCheckBox("🚚 Flota"); self.chk_flo.setChecked(getattr(usuario, 'ver_flota', True))
 
         grid.addWidget(self.chk_mon, 0, 0); grid.addWidget(self.chk_ing, 0, 1); grid.addWidget(self.chk_rut, 0, 2)
         grid.addWidget(self.chk_ren, 1, 0); grid.addWidget(self.chk_rep, 1, 1); grid.addWidget(self.chk_fac, 1, 2)
         grid.addWidget(self.chk_crm, 2, 0); grid.addWidget(self.chk_est, 2, 1); grid.addWidget(self.chk_cfg, 2, 2)
+        grid.addWidget(self.chk_flo, 3, 0)
+        
         gb_perms.setLayout(grid)
         layout.addWidget(gb_perms)
 
@@ -142,7 +147,7 @@ class EditarUsuarioDialog(QDialog):
             "admin": self.chk_admin.isChecked(), "mon": self.chk_mon.isChecked(), "ing": self.chk_ing.isChecked(),
             "rut": self.chk_rut.isChecked(), "ren": self.chk_ren.isChecked(), "rep": self.chk_rep.isChecked(),
             "fac": self.chk_fac.isChecked(), "crm": self.chk_crm.isChecked(), "est": self.chk_est.isChecked(),
-            "cfg": self.chk_cfg.isChecked()
+            "cfg": self.chk_cfg.isChecked(), "flo": self.chk_flo.isChecked()
         }
 
 class TabConfiguracion(QWidget):
@@ -216,7 +221,6 @@ class TabConfiguracion(QWidget):
         self.tabla_proveedores = QTableWidget(); self.tabla_proveedores.setColumnCount(4); self.tabla_proveedores.hideColumn(0)
         self.tabla_proveedores.setHorizontalHeaderLabels(["ID", "Empresa / Proveedor", "Email de Reportes", "Poderes Activos"])
         
-        # 🔥 MODO EXCEL PARA TABLA DE PROVEEDORES 🔥
         header_prov = self.tabla_proveedores.horizontalHeader()
         header_prov.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
         self.tabla_proveedores.setColumnWidth(1, 200)
@@ -272,7 +276,6 @@ class TabConfiguracion(QWidget):
         self.tabla_destinos.setHorizontalHeaderLabels(["ID", "SUC", "DESTINATARIO", "DOMICILIO", "CELULAR", "ZONA"])
         self.tabla_destinos.verticalHeader().setVisible(False)
         
-        # 🔥 MODO EXCEL PARA TABLA DE DESTINOS FIJOS 🔥
         header = self.tabla_destinos.horizontalHeader()
         header.setSectionResizeMode(0, QHeaderView.ResizeMode.Fixed); self.tabla_destinos.setColumnWidth(0, 50)
         header.setSectionResizeMode(1, QHeaderView.ResizeMode.Fixed); self.tabla_destinos.setColumnWidth(1, 50)
@@ -425,7 +428,6 @@ class TabConfiguracion(QWidget):
         h_btn_t.addWidget(btn); h_btn_t.addWidget(btn_hist_t); gb.setLayout(f); l_gen.addWidget(gb); l_gen.addLayout(h_btn_t)
         self.tabla_tarifas = QTableWidget(); self.tabla_tarifas.setColumnCount(4); self.tabla_tarifas.hideColumn(0); self.tabla_tarifas.setHorizontalHeaderLabels(["ID", "Zona", "Común", "Refrigerado"]); 
         
-        # 🔥 MODO EXCEL PARA TABLA DE TARIFAS 🔥
         self.tabla_tarifas.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
         self.tabla_tarifas.setColumnWidth(1, 200)
         self.tabla_tarifas.setColumnWidth(2, 100)
@@ -562,7 +564,6 @@ class TabConfiguracion(QWidget):
         self.tabla_choferes = QTableWidget(); self.tabla_choferes.setColumnCount(5); self.tabla_choferes.hideColumn(0)
         self.tabla_choferes.setHorizontalHeaderLabels(["ID", "Nombre", "Sucursal", "DNI (Clave)", "Celular (WSP)"])
         
-        # 🔥 MODO EXCEL PARA TABLA DE CHOFERES 🔥
         self.tabla_choferes.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
         self.tabla_choferes.setColumnWidth(1, 150)
         self.tabla_choferes.setColumnWidth(2, 100)
@@ -644,7 +645,6 @@ class TabConfiguracion(QWidget):
         gb.setLayout(f); l.addWidget(gb); l.addWidget(btn)
         self.tabla_clientes = QTableWidget(); self.tabla_clientes.setColumnCount(3); self.tabla_clientes.hideColumn(0); self.tabla_clientes.setHorizontalHeaderLabels(["ID", "Cliente", "Domicilio"]); 
         
-        # 🔥 MODO EXCEL PARA TABLA DE CLIENTES RETIRO 🔥
         self.tabla_clientes.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
         self.tabla_clientes.setColumnWidth(1, 200)
         self.tabla_clientes.horizontalHeader().setStretchLastSection(True)
@@ -671,9 +671,14 @@ class TabConfiguracion(QWidget):
         self.chk_est = QCheckBox("📈 Estadísticas")
         self.chk_cfg = QCheckBox("⚙️ Configuración")
         
+        # 🔥 ACÁ AGREGAMOS EL TILDE DE FLOTA AL CREAR USUARIO 🔥
+        self.chk_flo = QCheckBox("🚚 Flota"); self.chk_flo.setChecked(True)
+        
         grid.addWidget(self.chk_mon, 0, 0); grid.addWidget(self.chk_ing, 0, 1); grid.addWidget(self.chk_rut, 0, 2)
         grid.addWidget(self.chk_ren, 1, 0); grid.addWidget(self.chk_rep, 1, 1); grid.addWidget(self.chk_fac, 1, 2)
         grid.addWidget(self.chk_crm, 2, 0); grid.addWidget(self.chk_est, 2, 1); grid.addWidget(self.chk_cfg, 2, 2)
+        grid.addWidget(self.chk_flo, 3, 0)
+        
         gb_checks.setLayout(grid)
 
         f.addRow("Usuario:", self.u_user); f.addRow("Pass:", self.u_pass); f.addRow("Sucursal:", self.u_suc); f.addRow("", self.chk_admin)
@@ -685,7 +690,6 @@ class TabConfiguracion(QWidget):
         self.tabla_usuarios = QTableWidget(); self.tabla_usuarios.setColumnCount(5); self.tabla_usuarios.hideColumn(0)
         self.tabla_usuarios.setHorizontalHeaderLabels(["ID", "Usuario", "Sucursal", "Admin?", "Permisos Habilitados"])
         
-        # 🔥 MODO EXCEL PARA TABLA DE USUARIOS 🔥
         self.tabla_usuarios.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
         self.tabla_usuarios.setColumnWidth(1, 150)
         self.tabla_usuarios.setColumnWidth(2, 100)
@@ -712,7 +716,7 @@ class TabConfiguracion(QWidget):
             usr = Usuario(username=u, password=p, sucursal_asignada=self.u_suc.currentText(), es_admin_total=self.chk_admin.isChecked(), 
                           ver_monitor=self.chk_mon.isChecked(), ver_ingreso=self.chk_ing.isChecked(), ver_ruta=self.chk_rut.isChecked(),
                           ver_rendicion=self.chk_ren.isChecked(), ver_reportes=self.chk_rep.isChecked(), ver_facturacion=self.chk_fac.isChecked(), 
-                          ver_crm=self.chk_crm.isChecked(), ver_estadisticas=self.chk_est.isChecked(), ver_configuracion=self.chk_cfg.isChecked())
+                          ver_crm=self.chk_crm.isChecked(), ver_estadisticas=self.chk_est.isChecked(), ver_configuracion=self.chk_cfg.isChecked(), ver_flota=self.chk_flo.isChecked())
             self.main.session.add(usr); self.main.session.commit(); QMessageBox.information(self, "Éxito", "Usuario creado."); self.u_user.clear(); self.u_pass.clear(); self.cargar_usuarios_tabla()
         except Exception as e: self.main.session.rollback(); QMessageBox.warning(self, "Error", "El usuario ya existe.")
             
@@ -732,7 +736,7 @@ class TabConfiguracion(QWidget):
                         usr.username = d['user']; usr.password = d['pass']; usr.sucursal_asignada = d['suc']; usr.es_admin_total = d['admin']
                         usr.ver_monitor = d['mon']; usr.ver_ingreso = d['ing']; usr.ver_ruta = d['rut']
                         usr.ver_rendicion = d['ren']; usr.ver_reportes = d['rep']; usr.ver_facturacion = d['fac']
-                        usr.ver_crm = d['crm']; usr.ver_estadisticas = d['est']; usr.ver_configuracion = d['cfg']
+                        usr.ver_crm = d['crm']; usr.ver_estadisticas = d['est']; usr.ver_configuracion = d['cfg']; usr.ver_flota = d['flo']
                         self.main.session.commit(); self.cargar_usuarios_tabla()
                         QMessageBox.information(self, "Éxito", "Usuario editado correctamente.")
                     else:
@@ -755,6 +759,7 @@ class TabConfiguracion(QWidget):
                 if u.ver_crm: perms.append("CRM")
                 if u.ver_estadisticas: perms.append("Est")
                 if u.ver_configuracion: perms.append("Cfg")
+                if getattr(u, 'ver_flota', True): perms.append("Flota") # Acá te lo muestra en la tablita resumen
                 self.tabla_usuarios.setItem(r, 4, QTableWidgetItem(", ".join(perms)))
         except Exception: self.main.session.rollback()
         

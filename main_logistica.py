@@ -184,16 +184,17 @@ class PlataformaLogistica(QMainWindow):
         if self.usuario.ver_crm: self.tabs.addTab(self.tab_crm, "💬 CRM / Contacto"); self.setup_crm()
         if self.usuario.ver_estadisticas: self.tabs.addTab(self.tab_stats, "📈 Estadísticas"); self.setup_estadisticas()
         
-        self.tabs.addTab(self.tab_flota, "🚚 Flota / Mantenimiento")
+        # 🔥 ACÁ ESTÁ LA MODIFICACIÓN PARA QUE LEA EL PERMISO DE FLOTA 🔥
+        if getattr(self.usuario, 'ver_flota', True): 
+            if getattr(self.usuario, 'ver_flota', True): self.tabs.addTab(self.tab_flota, "🚚 Flota / Mantenimiento")
         
         if self.usuario.ver_configuracion: self.tabs.addTab(self.tab_config, "⚙️ Configuración")
         
         self.setup_monitor(); self.setup_ruta(); self.setStatusBar(QStatusBar())
 
+    # 🔥 ACÁ ESTÁ EL CÓDIGO NUEVO DEL MANUAL YA CONECTADO 🔥
     def mostrar_ayuda_inteligente(self):
-        # Averigua en qué pestaña está parado el usuario (0=Monitor, 1=Ingreso, etc)
         indice_actual = self.tabs.currentIndex()
-        # Abre el manual automáticamente en ese tema
         dlg = ManualAyudaDialog(indice_pestana_actual=indice_actual, parent=self)
         dlg.exec()
     
@@ -438,7 +439,7 @@ class PlataformaLogistica(QMainWindow):
             self.tabla_monitor.setUpdatesEnabled(True); self.tabla_monitor.blockSignals(False)
         except Exception: self.session.rollback(); self.tabla_monitor.setUpdatesEnabled(True); self.tabla_monitor.blockSignals(False)
 
-    def setup_ruta(self):
+def setup_ruta(self):
         l = QVBoxLayout(self.tab_ruta); top_row1 = QHBoxLayout(); top_row2 = QHBoxLayout()
         
         self.combo_masivo_chofer = QComboBox()
