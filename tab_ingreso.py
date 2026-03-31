@@ -53,7 +53,6 @@ class TabIngreso(QWidget):
 
     def setup_ui(self):
         l = QHBoxLayout(self)
-        
         self.scroll_izq = QScrollArea()
         self.scroll_izq.setWidgetResizable(True)
         self.scroll_izq.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
@@ -74,7 +73,6 @@ class TabIngreso(QWidget):
         self.in_fecha = QDateEdit(QDate.currentDate())
         self.in_fecha.setCalendarPopup(True)
         self.in_fecha.setEnabled(getattr(self.main.usuario, 'es_admin_total', False))
-        
         self.in_fecha.dateChanged.connect(self.cargar_movimientos_dia)
         
         self.lbl_guia = QLabel("Guía / Remito:"); self.in_guia = QLineEdit()
@@ -91,7 +89,6 @@ class TabIngreso(QWidget):
         self.in_destinos_frecuentes.setEditable(True)
         self.in_destinos_frecuentes.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon)
         self.in_destinos_frecuentes.setMinimumContentsLength(25)
-        
         self.in_destinos_frecuentes.completer().setFilterMode(Qt.MatchFlag.MatchContains)
         self.in_destinos_frecuentes.currentIndexChanged.connect(self.llenar_datos_destino)
         
@@ -185,7 +182,6 @@ class TabIngreso(QWidget):
         self.widget_carga_flete.hide()
         
         self.bg_tipo.buttonClicked.connect(self.cambiar_interfaz_tipo)
-        
         ly_tipo_principal.addWidget(self.widget_carga_normal)
         ly_tipo_principal.addWidget(self.widget_carga_flete)
         gb_tipo.setLayout(ly_tipo_principal)
@@ -213,7 +209,6 @@ class TabIngreso(QWidget):
         col_izq.addWidget(gb_tipo)
         col_izq.addWidget(self.group_cr)
         col_izq.addStretch() 
-        
         self.scroll_izq.setWidget(self.widget_izq)
         
         btn_add = QPushButton("GUARDAR EN DEPOSITO")
@@ -233,9 +228,8 @@ class TabIngreso(QWidget):
         layout_izquierdo.addWidget(btn_add)         
         layout_izquierdo.addWidget(self.btn_dhl)    
         
-        col_der = QVBoxLayout(); h_header_ingreso = QHBoxLayout(); h_header_ingreso.addWidget(QLabel("<b>EN DEPOSITO (Mostrando hasta la Fecha Seleccionada):</b>"))
+        col_der = QVBoxLayout(); h_header_ingreso = QHBoxLayout(); h_header_ingreso.addWidget(QLabel("<b>EN DEPOSITO:</b>"))
         btn_ref_ingreso = QPushButton("🔄 Actualizar")
-        btn_ref_ingreso.setToolTip("Actualizar Tabla")
         btn_ref_ingreso.clicked.connect(self.cargar_movimientos_dia)
         h_header_ingreso.addWidget(btn_ref_ingreso); h_header_ingreso.addStretch()
         
@@ -261,7 +255,6 @@ class TabIngreso(QWidget):
         
         l.addWidget(panel_izquierdo, 30) 
         l.addLayout(col_der, 70) 
-        
         self.configurar_autocompletado_global()
         self.actualizar_interfaz_peso()
 
@@ -270,136 +263,82 @@ class TabIngreso(QWidget):
             destinos = self.main.session.query(DestinoFrecuente).filter(DestinoFrecuente.sucursal == self.main.sucursal_actual).all()
             nombres_completos = []
             self.mapa_destinos_global.clear()
-            
             for i, d in enumerate(destinos):
                 if i % 100 == 0: QApplication.processEvents() 
-                texto_completer = f"{d.destinatario} - {d.domicilio} [{d.proveedor}]"
+                # 🔥 FORZAMOS MAYÚSCULAS EN EL AUTOCOMPLETADO 🔥
+                texto_completer = f"{d.destinatario.upper()} - {d.domicilio.upper()} [{d.proveedor.upper()}]"
                 if texto_completer not in nombres_completos:
                     nombres_completos.append(texto_completer)
                     self.mapa_destinos_global[texto_completer] = d
-                    
             if hasattr(self, 'in_dest') and isinstance(self.in_dest, QLineEdit):
                 completer = QCompleter(nombres_completos)
                 completer.setCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
                 completer.setFilterMode(Qt.MatchFlag.MatchContains)
-                
                 vista_lista = completer.popup()
                 vista_lista.setMinimumWidth(600)
-                vista_lista.setStyleSheet("""
-                    QListView { background-color: #ffffff; border: 1px solid #999; font-size: 14px; outline: none; }
-                    QListView::item { padding: 10px; border-bottom: 1px solid #ddd; }
-                    QListView::item:selected { background-color: #bbdefb; color: black; border-bottom: 1px solid #90caf9; }
-                """)
-                
+                vista_lista.setStyleSheet("QListView { background-color: #ffffff; border: 1px solid #999; font-size: 14px; outline: none; } QListView::item { padding: 10px; border-bottom: 1px solid #ddd; } QListView::item:selected { background-color: #bbdefb; color: black; border-bottom: 1px solid #90caf9; }")
                 self.in_dest.setCompleter(completer)
                 completer.activated.connect(self.autollenar_desde_completer_global)
-        except Exception:
-            self.main.session.rollback()
+        except Exception: self.main.session.rollback()
 
     def autollenar_desde_completer_global(self, texto):
         try:
             if texto in self.mapa_destinos_global:
                 destino_db = self.mapa_destinos_global[texto]
-                
                 self.in_prov.blockSignals(True) 
-                self.in_prov.setCurrentText(destino_db.proveedor)
+                self.in_prov.setCurrentText(destino_db.proveedor.upper())
                 self.in_prov.blockSignals(False)
-                
                 self.cargar_destinos_frecuentes_combo(destino_db.proveedor)
                 self.actualizar_interfaz_peso()
-                
                 self.in_dest.blockSignals(True)
-                self.in_dest.setText(destino_db.destinatario)
+                self.in_dest.setText(destino_db.destinatario.upper())
                 self.in_dest.blockSignals(False)
-                
-                self.in_dom.setText(destino_db.domicilio)
+                self.in_dom.setText(destino_db.domicilio.upper())
                 self.in_cel.setText(destino_db.celular or "")
-                self.in_loc_combo.setCurrentText(destino_db.localidad)
-                
+                self.in_loc_combo.setCurrentText(destino_db.localidad.upper())
                 estilo_flash = "background-color: #d1e7dd; color: #0f5132; font-weight: bold; border: 2px solid #198754; border-radius: 4px;"
-                self.in_dest.setStyleSheet(estilo_flash)
-                self.in_dom.setStyleSheet(estilo_flash)
-                self.in_loc_combo.setStyleSheet(estilo_flash)
-                self.in_prov.setStyleSheet(estilo_flash)
-                
+                self.in_dest.setStyleSheet(estilo_flash); self.in_dom.setStyleSheet(estilo_flash); self.in_loc_combo.setStyleSheet(estilo_flash); self.in_prov.setStyleSheet(estilo_flash)
                 QTimer.singleShot(1500, self.restaurar_estilo_inputs)
-        except Exception:
-            self.main.session.rollback()
+        except Exception: self.main.session.rollback()
 
     def actualizar_interfaz_peso(self):
         prov = self.in_prov.currentText().upper()
-        if "DHL" in prov:
-            self.lbl_peso.show()
-            self.in_peso_manual.show()
-        else:
-            self.lbl_peso.hide()
-            self.in_peso_manual.hide()
-            self.in_peso_manual.setValue(0.0)
+        if "DHL" in prov: self.lbl_peso.show(); self.in_peso_manual.show()
+        else: self.lbl_peso.hide(); self.in_peso_manual.hide(); self.in_peso_manual.setValue(0.0)
 
     def cambiar_interfaz_tipo(self):
-        if self.radio_comb.isChecked(): 
-            self.widget_simple.hide()
-            self.widget_comb.show()
-            self.chk_contingencia.show()
+        if self.radio_comb.isChecked(): self.widget_simple.hide(); self.widget_comb.show(); self.chk_contingencia.show()
         else: 
-            self.widget_simple.show()
-            self.widget_comb.hide()
-            if self.radio_frio.isChecked():
-                self.chk_contingencia.show()
-            else:
-                self.chk_contingencia.hide()
-                self.chk_contingencia.setChecked(False)
+            self.widget_simple.show(); self.widget_comb.hide()
+            if self.radio_frio.isChecked(): self.chk_contingencia.show()
+            else: self.chk_contingencia.hide(); self.chk_contingencia.setChecked(False)
 
     def actualizar_interfaz_retiro(self, texto):
-        is_flete = texto.startswith("Flete")
-        is_retiro = texto.startswith("Retiro")
-        
-        if is_retiro:
-            self.lbl_guia.hide(); self.in_guia.hide()
-            self.lbl_cli_ret.show(); self.in_cliente_retiro.show()
-            self.in_guia.clear()
-        elif is_flete:
-            self.lbl_guia.hide(); self.in_guia.hide()
-            self.lbl_cli_ret.hide(); self.in_cliente_retiro.hide()
-            self.in_guia.clear()
-        else: 
-            self.lbl_guia.show(); self.in_guia.show()
-            self.lbl_cli_ret.hide(); self.in_cliente_retiro.hide()
-
-        if is_flete:
-            self.widget_carga_normal.hide()
-            self.widget_carga_flete.show()
-            self.group_cr.hide() 
-            self.chk_cr.setChecked(False) 
-        else:
-            self.widget_carga_normal.show()
-            self.widget_carga_flete.hide()
-            self.group_cr.show()
+        is_flete = texto.startswith("Flete"); is_retiro = texto.startswith("Retiro")
+        if is_retiro: self.lbl_guia.hide(); self.in_guia.hide(); self.lbl_cli_ret.show(); self.in_cliente_retiro.show(); self.in_guia.clear()
+        elif is_flete: self.lbl_guia.hide(); self.in_guia.hide(); self.lbl_cli_ret.hide(); self.in_cliente_retiro.hide(); self.in_guia.clear()
+        else: self.lbl_guia.show(); self.in_guia.show(); self.lbl_cli_ret.hide(); self.in_cliente_retiro.hide()
+        if is_flete: self.widget_carga_normal.hide(); self.widget_carga_flete.show(); self.group_cr.hide(); self.chk_cr.setChecked(False) 
+        else: self.widget_carga_normal.show(); self.widget_carga_flete.hide(); self.group_cr.show()
 
     def cargar_datos_cliente(self):
         try:
             idx = self.in_cliente_retiro.currentIndex()
             if idx <= 0: return
             id_cli = self.in_cliente_retiro.itemData(idx); c = self.main.session.query(ClienteRetiro).get(id_cli)
-            if c: self.in_dest.setText(c.nombre); self.in_dom.setText(c.domicilio); self.in_cel.setText(c.celular); self.in_loc_combo.setCurrentText(c.localidad)
+            if c: self.in_dest.setText(c.nombre.upper()); self.in_dom.setText(c.domicilio.upper()); self.in_cel.setText(c.celular); self.in_loc_combo.setCurrentText(c.localidad.upper())
         except Exception: self.main.session.rollback()
 
     def cargar_destinos_frecuentes_combo(self, proveedor_texto):
         try:
             self.in_destinos_frecuentes.clear(); self.in_destinos_frecuentes.addItem("--- Destinos Guardados ---")
-            if proveedor_texto == "JetPaq": 
-                self.in_destinos_frecuentes.setEnabled(False); self.in_destinos_frecuentes.addItem("(Manual para JetPaq)")
-                return
-            
             destinos = self.main.session.query(DestinoFrecuente).filter(DestinoFrecuente.proveedor == proveedor_texto, DestinoFrecuente.sucursal == self.main.sucursal_actual).order_by(DestinoFrecuente.destinatario).all()
-            
             if destinos:
                 self.in_destinos_frecuentes.setEnabled(True)
                 for d in destinos: 
-                    self.in_destinos_frecuentes.addItem(f"{d.id} - {d.destinatario}", d.id)
-            else: 
-                self.in_destinos_frecuentes.setEnabled(False); self.in_destinos_frecuentes.addItem("(Sin destinos guardados)")
-                
+                    # 🔥 FORZAMOS MAYÚSCULAS EN EL COMBO 🔥
+                    self.in_destinos_frecuentes.addItem(f"{d.id} - {d.destinatario.upper()}", d.id)
+            else: self.in_destinos_frecuentes.setEnabled(False); self.in_destinos_frecuentes.addItem("(Sin destinos guardados)")
         except Exception: self.main.session.rollback()
 
     def buscar_destino_por_codigo(self):
@@ -424,10 +363,10 @@ class TabIngreso(QWidget):
         except Exception: self.main.session.rollback()
 
     def llenar_campos_con_objeto(self, destino_db):
-        self.in_dest.setText(destino_db.destinatario); self.in_dom.setText(destino_db.domicilio); self.in_cel.setText(destino_db.celular or ""); self.in_loc_combo.setCurrentText(destino_db.localidad)
+        # 🔥 TODO EN MAYÚSCULAS 🔥
+        self.in_dest.setText(destino_db.destinatario.upper()); self.in_dom.setText(destino_db.domicilio.upper()); self.in_cel.setText(destino_db.celular or ""); self.in_loc_combo.setCurrentText(destino_db.localidad.upper())
         estilo_flash = "background-color: #d1e7dd; color: #0f5132; font-weight: bold; border: 2px solid #198754; border-radius: 4px;"
-        self.in_dest.setStyleSheet(estilo_flash); self.in_dom.setStyleSheet(estilo_flash); self.in_loc_combo.setStyleSheet(estilo_flash)
-        self.in_prov.setStyleSheet(estilo_flash)
+        self.in_dest.setStyleSheet(estilo_flash); self.in_dom.setStyleSheet(estilo_flash); self.in_loc_combo.setStyleSheet(estilo_flash); self.in_prov.setStyleSheet(estilo_flash)
         QTimer.singleShot(800, self.restaurar_estilo_inputs)
 
     def restaurar_estilo_inputs(self): 
@@ -438,152 +377,55 @@ class TabIngreso(QWidget):
         if not self.in_dest.text().strip(): QMessageBox.warning(self, "Falta Dato", "Falta el Destinatario."); return
         if not self.in_dom.text().strip(): QMessageBox.warning(self, "Falta Dato", "Falta el Domicilio."); return
         if not self.in_loc_combo.currentText(): QMessageBox.warning(self, "Falta Dato", "Seleccione una Zona."); return
-        
         try:
             servicio = self.in_serv.currentText()
-            
-            # 🔥 TODO A MAYÚSCULAS PARA ESTANDARIZAR LA BASE DE DATOS 🔥
+            # 🔥 CONVERSIÓN FINAL A MAYÚSCULAS ANTES DE GUARDAR 🔥
             loc = self.in_loc_combo.currentText().strip().upper()
             peso_manual = self.in_peso_manual.value()
             prov = self.in_prov.currentText().strip().upper()
             guia_final = self.in_guia.text().strip().upper()
-
             if prov and prov != "JETPAQ" and guia_final and "Flete" not in servicio:
-                existe = self.main.session.query(Operacion).filter(
-                    Operacion.guia_remito == guia_final,
-                    Operacion.proveedor == prov
-                ).first()
-                if existe:
-                    QMessageBox.warning(self, "Guía Duplicada", f"⚠️ ¡ALTO!\n\nEl remito/guía '{guia_final}' ya fue ingresado previamente para el cliente '{prov}'.\n\nNo se puede ingresar dos veces el mismo paquete.")
-                    return
-            
+                existe = self.main.session.query(Operacion).filter(Operacion.guia_remito == guia_final, Operacion.proveedor == prov).first()
+                if existe: QMessageBox.warning(self, "Guía Duplicada", f"⚠️ ¡ALTO!\n\nEl remito/guía '{guia_final}' ya fue ingresado previamente para el cliente '{prov}'."); return
             if "Flete" in servicio:
-                c_comun = 0
-                c_frio = 0
-                bultos_total = 2 if self.radio_ida_vuelta.isChecked() else 1
-                tipo_carga_txt = "FLETE (IDA Y VUELTA)" if bultos_total == 2 else "FLETE (SOLO IDA)"
-                precio = self.in_precio_flete.value()
-                tiene_cr = False
-                monto_cr = 0.0
-                info_cr = ""
+                c_comun = 0; c_frio = 0; bultos_total = 2 if self.radio_ida_vuelta.isChecked() else 1; tipo_carga_txt = "FLETE (IDA Y VUELTA)" if bultos_total == 2 else "FLETE (SOLO IDA)"; precio = self.in_precio_flete.value(); tiene_cr = False; monto_cr = 0.0; info_cr = ""
             else:
-                if self.radio_comb.isChecked(): 
-                    c_comun = self.in_cant_comun.value()
-                    c_frio = self.in_cant_frio.value()
-                    bultos_total = c_comun + c_frio
-                    tipo_carga_txt = "COMBINADO"
+                if self.radio_comb.isChecked(): c_comun = self.in_cant_comun.value(); c_frio = self.in_cant_frio.value(); bultos_total = c_comun + c_frio; tipo_carga_txt = "COMBINADO"
                 else:
                     bultos_total = self.in_bultos_simple.value()
-                    if self.radio_frio.isChecked(): 
-                        c_frio = bultos_total
-                        c_comun = 0
-                        tipo_carga_txt = "REFRIGERADO"
-                    else: 
-                        c_frio = 0
-                        c_comun = bultos_total
-                        tipo_carga_txt = "COMUN"
-                        
-                if bultos_total == 0: 
-                    QMessageBox.warning(self, "Error", "Debe ingresar al menos 1 bulto."); return
-                
+                    if self.radio_frio.isChecked(): c_frio = bultos_total; c_comun = 0; tipo_carga_txt = "REFRIGERADO"
+                    else: c_frio = 0; c_comun = bultos_total; tipo_carga_txt = "COMUN"
+                if bultos_total == 0: QMessageBox.warning(self, "Error", "Debe ingresar al menos 1 bulto."); return
                 precio = self.main.obtener_precio(loc, c_comun, c_frio, proveedor=prov, peso=peso_manual, bultos_totales=bultos_total)
-                if self.chk_contingencia.isChecked():
-                    precio += self.in_monto_contingencia.value()
-                    tipo_carga_txt += " (+Contingencia)"
-                    
-                tiene_cr = self.chk_cr.isChecked()
-                monto_cr = self.in_monto_recaudar.value() if tiene_cr else 0.0
-                # 🔥 MAYÚSCULA TAMBIÉN AL INTERCAMBIO 🔥
-                info_cr = self.in_info_intercambio.text().strip().upper() if tiene_cr else ""
-            
+                if self.chk_contingencia.isChecked(): precio += self.in_monto_contingencia.value(); tipo_carga_txt += " (+Contingencia)"
+                tiene_cr = self.chk_cr.isChecked(); monto_cr = self.in_monto_recaudar.value() if tiene_cr else 0.0; info_cr = self.in_info_intercambio.text().strip().upper() if tiene_cr else ""
             if ("Retiro" in servicio or "Flete" in servicio) and not guia_final: 
-                now = datetime.now(); c_year = now.strftime('%Y'); c_month = now.strftime('%m')
-                prefijo = "RETIRO" if "Retiro" in servicio else "FLETE"
-                ops_auto = self.main.session.query(Operacion.guia_remito).filter(Operacion.guia_remito.like(f"{prefijo} {c_year}-%")).all()
-                max_seq = 0
+                now = datetime.now(); c_year = now.strftime('%Y'); c_month = now.strftime('%m'); prefijo = "RETIRO" if "Retiro" in servicio else "FLETE"; ops_auto = self.main.session.query(Operacion.guia_remito).filter(Operacion.guia_remito.like(f"{prefijo} {c_year}-%")).all(); max_seq = 0
                 for r_op in ops_auto:
                     if r_op[0]:
                         try: seq = int(r_op[0].split('-')[-1]); max_seq = max(max_seq, seq)
                         except: pass
                 guia_final = f"{prefijo} {c_year}-{c_month}-{max_seq + 1:03d}"
-            
-            # 🔥 OBLIGAMOS A MAYÚSCULAS ANTES DE GUARDAR 🔥
-            dest_texto = self.in_dest.text().strip().upper()
-            dom_texto = self.in_dom.text().strip().upper()
-            cel_texto = self.in_cel.text().strip()
-            
-            mensaje_toast = "✅ GUARDADO EN DEPÓSITO CORRECTAMENTE"
-            
+            dest_texto = self.in_dest.text().strip().upper(); dom_texto = self.in_dom.text().strip().upper(); cel_texto = self.in_cel.text().strip(); mensaje_toast = "✅ GUARDADO EN DEPÓSITO CORRECTAMENTE"
             if prov and prov != "JETPAQ" and dest_texto and dom_texto:
-                existe_dest = self.main.session.query(DestinoFrecuente).filter(
-                    DestinoFrecuente.proveedor == prov, 
-                    DestinoFrecuente.sucursal == self.main.sucursal_actual, 
-                    DestinoFrecuente.destinatario == dest_texto,
-                    DestinoFrecuente.domicilio == dom_texto
-                ).first()
-                
+                existe_dest = self.main.session.query(DestinoFrecuente).filter(DestinoFrecuente.proveedor == prov, DestinoFrecuente.sucursal == self.main.sucursal_actual, DestinoFrecuente.destinatario == dest_texto, DestinoFrecuente.domicilio == dom_texto).first()
                 if not existe_dest:
-                    nuevo_dest = DestinoFrecuente(
-                        proveedor=prov, sucursal=self.main.sucursal_actual,
-                        destinatario=dest_texto, domicilio=dom_texto,
-                        localidad=loc, celular=cel_texto
-                    )
-                    self.main.session.add(nuevo_dest)
-                    self.main.session.flush() 
-                else:
-                    mensaje_toast = "✅ GUARDADO (Destino ya existía, se evitó duplicarlo)"
-            
+                    nuevo_dest = DestinoFrecuente(proveedor=prov, sucursal=self.main.sucursal_actual, destinatario=dest_texto, domicilio=dom_texto, localidad=loc, celular=cel_texto)
+                    self.main.session.add(nuevo_dest); self.main.session.flush() 
+                else: mensaje_toast = "✅ GUARDADO (Destino ya existía, se evitó duplicarlo)"
             op = Operacion(fecha_ingreso=self.in_fecha.date().toPyDate(), sucursal=self.main.sucursal_actual, guia_remito=guia_final, proveedor=prov, destinatario=dest_texto, celular=cel_texto, domicilio=dom_texto, localidad=loc, bultos=bultos_total, bultos_frio=c_frio, peso=peso_manual, tipo_carga=tipo_carga_txt, tipo_urgencia=Urgencia.CLASICO, monto_servicio=precio, es_contra_reembolso=tiene_cr, monto_recaudacion=monto_cr, info_intercambio=info_cr, tipo_servicio=servicio)
-            self.main.session.add(op)
-            self.main.session.flush()
-            self.main.log_movimiento(op, "INGRESO A DEPOSITO", "Carga inicial en sistema")
-            self.main.session.commit()
-            
+            self.main.session.add(op); self.main.session.flush(); self.main.log_movimiento(op, "INGRESO A DEPOSITO", "Carga inicial en sistema"); self.main.session.commit()
             try:
                 if "Retiro" in servicio: 
-                    descargas_dir = os.path.join(os.path.expanduser('~'), 'Downloads')
-                    os.makedirs(descargas_dir, exist_ok=True)
-                    ruta_pdf = os.path.join(descargas_dir, f"Comprobante_Retiro_{op.guia_remito or op.id}.pdf")
-                    crear_pdf_retiro(ruta_pdf, op)
+                    descargas_dir = os.path.join(os.path.expanduser('~'), 'Downloads'); os.makedirs(descargas_dir, exist_ok=True); ruta_pdf = os.path.join(descargas_dir, f"Comprobante_Retiro_{op.guia_remito or op.id}.pdf"); crear_pdf_retiro(ruta_pdf, op)
                     try: os.startfile(ruta_pdf)
                     except: pass
-            except Exception as e_pdf:
-                print("Aviso interno: Falló la creación del PDF, pero la BD guardó bien.", e_pdf)
-            
-            if hasattr(self.main, 'cargar_ruta'):
-                self.main.cargar_ruta()
-                
-            self.in_guia.clear()
-            self.in_dest.clear()
-            self.in_cel.clear()
-            self.in_dom.clear()                 
-            self.in_monto_recaudar.setValue(0)
-            self.in_info_intercambio.clear()
-            self.chk_cr.setChecked(False)
-            self.in_cliente_retiro.setCurrentIndex(0)
-            self.in_bultos_simple.setValue(1)
-            self.in_peso_manual.setValue(0)
-            self.in_precio_flete.setValue(0)
-            self.radio_ida.setChecked(True)
-            self.in_cant_comun.setValue(1)
-            self.in_cant_frio.setValue(1)
-            self.radio_comun.setChecked(True)
-            self.cambiar_interfaz_tipo()
-            self.chk_contingencia.setChecked(False)
-            self.in_monto_contingencia.setValue(1500.0)
-            
-            self.cargar_destinos_frecuentes_combo(prov) 
-            self.cargar_movimientos_dia()
-            self.in_destinos_frecuentes.setCurrentIndex(0)
-            
-            self.configurar_autocompletado_global()
-            self.main.toast.mostrar(mensaje_toast)
-            
+            except Exception: pass
+            if hasattr(self.main, 'cargar_ruta'): self.main.cargar_ruta()
+            self.in_guia.clear(); self.in_dest.clear(); self.in_cel.clear(); self.in_dom.clear(); self.in_monto_recaudar.setValue(0); self.in_info_intercambio.clear(); self.chk_cr.setChecked(False); self.in_cliente_retiro.setCurrentIndex(0); self.in_bultos_simple.setValue(1); self.in_peso_manual.setValue(0); self.in_precio_flete.setValue(0); self.radio_ida.setChecked(True); self.in_cant_comun.setValue(1); self.in_cant_frio.setValue(1); self.radio_comun.setChecked(True); self.cambiar_interfaz_tipo(); self.chk_contingencia.setChecked(False); self.in_monto_contingencia.setValue(1500.0)
+            self.cargar_destinos_frecuentes_combo(prov); self.cargar_movimientos_dia(); self.in_destinos_frecuentes.setCurrentIndex(0); self.configurar_autocompletado_global(); self.main.toast.mostrar(mensaje_toast)
             if hasattr(self.main, 'cargar_monitor_global'): self.main.cargar_monitor_global()
-            
-        except Exception as e: 
-            self.main.session.rollback()
-            QMessageBox.warning(self, "Micro-corte", "La conexión parpadeó. Intenta de nuevo.")
+        except Exception: self.main.session.rollback(); QMessageBox.warning(self, "Micro-corte", "La conexión parpadeó. Intenta de nuevo.")
 
     def importar_txt_dhl(self):
         filepath, _ = QFileDialog.getOpenFileName(self, "Seleccionar TXT de DHL", "", "Text Files (*.txt);;All Files (*)")
@@ -600,7 +442,6 @@ class TabIngreso(QWidget):
                     if i % 15 == 0: QApplication.processEvents() 
                     if d['guia'] in set_existentes: omitidas += 1; continue
                     peso_txt = d.get('peso', 0.0); bultos_txt = d['bultos']; precio = self.main.obtener_precio(self.main.sucursal_actual, bultos_txt, 0, proveedor="DHL", peso=peso_txt, bultos_totales=bultos_txt)
-                    # Forzamos MAYÚSCULAS también al importar DHL
                     op = Operacion(fecha_ingreso=d['fecha_ingreso'], sucursal=self.main.sucursal_actual, guia_remito=d['guia'], proveedor="DHL", destinatario=d['destinatario'][:100].upper(), domicilio=d['domicilio'][:150].upper(), localidad=self.main.sucursal_actual.upper(), celular=d['celular'][:50], bultos=bultos_txt, bultos_frio=0, peso=peso_txt, tipo_carga="COMUN", tipo_urgencia=Urgencia.CLASICO, monto_servicio=precio, estado=Estados.EN_DEPOSITO, tipo_servicio="Entrega (Reparto)")
                     self.main.session.add(op); hist = Historial(operacion=op, usuario=self.main.usuario.username, accion="INGRESO IMPORTADO", detalle="Carga masiva por TXT DHL"); self.main.session.add(hist); agregadas += 1
                 self.main.session.commit(); QApplication.restoreOverrideCursor(); self.main.setWindowTitle(f"E.K. LOGISTICA (NUBE) - Usuario: {self.main.usuario.username.upper()}")
@@ -611,24 +452,16 @@ class TabIngreso(QWidget):
     def cargar_movimientos_dia(self):
         try:
             self.tabla_ingresos.setRowCount(0)
-            estados_deposito = [Estados.EN_DEPOSITO, 'EN DEPOSITO', 'En Depósito', 'En Deposito', 'EN DEPÓSITO']
-            
             fecha_filtro = self.in_fecha.date().toPyDate()
-            
-            ops = self.main.session.query(Operacion).filter(
-                Operacion.estado.in_(estados_deposito), 
-                Operacion.sucursal == self.main.sucursal_actual,
-                text("DATE(COALESCE(fecha_salida, fecha_ingreso)) <= :f").bindparams(f=fecha_filtro)
-            ).order_by(Operacion.id.desc()).all()
-            
+            ops = self.main.session.query(Operacion).filter(Operacion.estado.in_([Estados.EN_DEPOSITO, 'EN DEPÓSITO']), Operacion.sucursal == self.main.sucursal_actual, text("DATE(COALESCE(fecha_salida, fecha_ingreso)) <= :f").bindparams(f=fecha_filtro)).order_by(Operacion.id.desc()).all()
             for row, op in enumerate(ops):
                 if row % 10 == 0: QApplication.processEvents()
                 self.tabla_ingresos.insertRow(row); self.tabla_ingresos.setItem(row, 0, QTableWidgetItem(str(op.id)))
-                icon_srv = "🚚" if "Entrega" in op.tipo_servicio else ("🔄" if "Retiro" in op.tipo_servicio else "⏱️")
-                srv_txt = "Flete" if "Flete" in op.tipo_servicio else ("Retiro" if "Retiro" in op.tipo_servicio else "Entrega")
-                self.tabla_ingresos.setItem(row, 1, QTableWidgetItem(f"{icon_srv} {srv_txt}")); self.tabla_ingresos.setItem(row, 2, QTableWidgetItem(op.guia_remito)); self.tabla_ingresos.setItem(row, 3, QTableWidgetItem(op.proveedor)); self.tabla_ingresos.setItem(row, 4, QTableWidgetItem(op.destinatario)); self.tabla_ingresos.setItem(row, 5, QTableWidgetItem(op.domicilio)); self.tabla_ingresos.setItem(row, 6, QTableWidgetItem(op.localidad))
+                icon_srv = "🚚" if "Entrega" in op.tipo_servicio else ("🔄" if "Retiro" in op.tipo_servicio else "⏱️"); srv_txt = "Flete" if "Flete" in op.tipo_servicio else ("Retiro" if "Retiro" in op.tipo_servicio else "Entrega")
+                # 🔥 MOSTRAR TODO EN MAYÚSCULAS EN LA TABLA 🔥
+                self.tabla_ingresos.setItem(row, 1, QTableWidgetItem(f"{icon_srv} {srv_txt.upper()}")); self.tabla_ingresos.setItem(row, 2, QTableWidgetItem(op.guia_remito.upper())); self.tabla_ingresos.setItem(row, 3, QTableWidgetItem(op.proveedor.upper())); self.tabla_ingresos.setItem(row, 4, QTableWidgetItem(op.destinatario.upper())); self.tabla_ingresos.setItem(row, 5, QTableWidgetItem(op.domicilio.upper())); self.tabla_ingresos.setItem(row, 6, QTableWidgetItem(op.localidad.upper()))
                 det_b = str(op.bultos)
                 if op.bultos_frio and op.bultos_frio > 0 and op.bultos_frio < op.bultos: det_b += f" ({op.bultos-op.bultos_frio}C/{op.bultos_frio}R)"
-                elif op.bultos_frio == op.bultos: det_b += " (R)"
+                elif bultos_frio == bultos_tot: det_b += " (R)"
                 self.tabla_ingresos.setItem(row, 7, QTableWidgetItem(det_b))
         except Exception: self.main.session.rollback()
