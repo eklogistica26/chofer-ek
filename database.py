@@ -180,14 +180,20 @@ class Vehiculo(Base):
     vencimiento_seguro = Column(Date, nullable=True)
     vencimiento_rto = Column(Date, nullable=True) 
     vencimiento_cedula = Column(Date, nullable=True)
-    
-    # Oblea de GNC
     vencimiento_oblea_gnc = Column(Date, nullable=True)
+    
+    # 🔥 NUEVAS ALERTAS LEGALES 🔥
+    vencimiento_matafuegos = Column(Date, nullable=True)
+    vencimiento_carnet = Column(Date, nullable=True)
 
     # Alertas Mecánicas
     kilometraje_actual = Column(Integer, default=0)
     km_proximo_service = Column(Integer, default=0) 
+    
+    # 🔥 NUEVAS ALERTAS MECÁNICAS Y DE APP 🔥
     km_proximo_neumaticos = Column(Integer, default=0) 
+    km_proximo_distribucion = Column(Integer, default=0) 
+    falla_reportada = Column(String(255), nullable=True)
     
     estado = Column(String(50), default="ACTIVO") 
     
@@ -205,3 +211,15 @@ class Mantenimiento(Base):
     taller_proveedor = Column(String(100))
     detalle = Column(String(255)) 
     vehiculo = relationship("Vehiculo", back_populates="mantenimientos")
+
+# 🔥 AUTO-PARCHE INVISIBLE PARA CREAR COLUMNAS NUEVAS SIN ROMPER NADA 🔥
+try:
+    from sqlalchemy import text
+    _e, _s = get_session()
+    _s.execute(text("ALTER TABLE vehiculos ADD COLUMN IF NOT EXISTS vencimiento_matafuegos DATE;"))
+    _s.execute(text("ALTER TABLE vehiculos ADD COLUMN IF NOT EXISTS vencimiento_carnet DATE;"))
+    _s.execute(text("ALTER TABLE vehiculos ADD COLUMN IF NOT EXISTS km_proximo_distribucion INTEGER DEFAULT 0;"))
+    _s.execute(text("ALTER TABLE vehiculos ADD COLUMN IF NOT EXISTS falla_reportada VARCHAR(255);"))
+    _s.commit()
+    _s.close()
+except: pass
