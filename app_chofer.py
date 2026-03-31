@@ -349,7 +349,7 @@ def lista_viajes():
                 </div>
                 <div style="background: #f0f7ff; padding: 10px; border-radius: 6px; font-size: 0.85rem; color: #444; margin-bottom: 15px; border-left: 4px solid #1976D2;">
                     🏢 Cliente: <b>{v[7]}</b><br>
-                    📦 Guía: <b>{v[1]}</b> &nbsp;|&nbsp; Bultos: {v[5]}
+                    📦 Guía: <b>{v[1]}</b>  |  Bultos: {v[5]}
                 </div>
                 <div style="display:flex; gap:10px;">
                     <a href="{mapa_url}" target="_blank" class="btn btn-outline" style="flex:1; margin-top:0;">🗺️ Mapa</a>
@@ -954,7 +954,7 @@ def gestion(id_op):
     """
     return render_template_string(html)
 
-# 🔥 RUTA DEL ESCÁNER AÑADIDA (SOLO GASTÓN PUEDE VER EL BOTÓN) 🔥
+# 🔥 RUTA DEL ESCÁNER AÑADIDA CON LLAVES ESCAPADAS PARA JINJA 🔥
 @app.route('/scan', methods=['GET', 'POST'])
 def scan():
     if 'chofer' not in session:
@@ -981,7 +981,8 @@ def scan():
             except Exception as e:
                 flash("❌ Error de base de datos.", "error")
             finally:
-                engine.close()
+                if engine:
+                    engine.close()
                 
         return redirect(url_for('scan'))
 
@@ -995,15 +996,15 @@ def scan():
         </div>
         
         <div class="container" style="display:flex; flex-direction:column; justify-content:center; align-items:center; height:80vh;">
-            {% with messages = get_flashed_messages(with_categories=true) %}
-              {% if messages %}
-                {% for category, message in messages %}
+            {{% with messages = get_flashed_messages(with_categories=true) %}}
+              {{% if messages %}}
+                {{% for category, message in messages %}}
                   <div class="alert alert-error" style="width: 100%;">
                     {{{{ message }}}}
                   </div>
-                {% endfor %}
-              {% endif %}
-            {% endwith %}
+                {{% endfor %}}
+              {{% endif %}}
+            {{% endwith %}}
 
             <form method="POST" style="width: 100%; max-width: 400px; display: flex; flex-direction: column; align-items: center;">
                 <p style="text-align: center; color: #ccc;">Haz clic en el recuadro abajo y usa tu lector láser, o escribe el número a mano:</p>
