@@ -4,6 +4,7 @@ import re
 import math
 import traceback
 import urllib.parse
+from manual_ayuda import ManualAyudaDialog
 from datetime import datetime
 
 from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, 
@@ -190,12 +191,11 @@ class PlataformaLogistica(QMainWindow):
         self.setup_monitor(); self.setup_ruta(); self.setStatusBar(QStatusBar())
 
     def mostrar_ayuda_inteligente(self):
-        d = QDialog(self)
-        d.setWindowTitle("📖 Manual de Usuario")
-        d.setGeometry(300, 150, 850, 600)
-        btn = QPushButton("ENTENDIDO / CERRAR")
-        btn.clicked.connect(d.accept)
-        l = QVBoxLayout(d); l.addWidget(btn); d.exec()
+        # Averigua en qué pestaña está parado el usuario (0=Monitor, 1=Ingreso, etc)
+        indice_actual = self.tabs.currentIndex()
+        # Abre el manual automáticamente en ese tema
+        dlg = ManualAyudaDialog(indice_pestana_actual=indice_actual, parent=self)
+        dlg.exec()
     
     def abrir_tracking(self): 
         d = TrackingDialog(self.session, getattr(self, 'usuario', None)); d.exec()
