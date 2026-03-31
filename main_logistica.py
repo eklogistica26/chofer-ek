@@ -184,15 +184,13 @@ class PlataformaLogistica(QMainWindow):
         if self.usuario.ver_crm: self.tabs.addTab(self.tab_crm, "💬 CRM / Contacto"); self.setup_crm()
         if self.usuario.ver_estadisticas: self.tabs.addTab(self.tab_stats, "📈 Estadísticas"); self.setup_estadisticas()
         
-        # 🔥 ACÁ ESTÁ LA MODIFICACIÓN PARA QUE LEA EL PERMISO DE FLOTA 🔥
         if getattr(self.usuario, 'ver_flota', True): 
-            if getattr(self.usuario, 'ver_flota', True): self.tabs.addTab(self.tab_flota, "🚚 Flota / Mantenimiento")
+            self.tabs.addTab(self.tab_flota, "🚚 Flota / Mantenimiento")
         
         if self.usuario.ver_configuracion: self.tabs.addTab(self.tab_config, "⚙️ Configuración")
         
         self.setup_monitor(); self.setup_ruta(); self.setStatusBar(QStatusBar())
 
-    # 🔥 ACÁ ESTÁ EL CÓDIGO NUEVO DEL MANUAL YA CONECTADO 🔥
     def mostrar_ayuda_inteligente(self):
         indice_actual = self.tabs.currentIndex()
         dlg = ManualAyudaDialog(indice_pestana_actual=indice_actual, parent=self)
@@ -438,7 +436,6 @@ class PlataformaLogistica(QMainWindow):
                         else: it.setForeground(txt_color_main)
             self.tabla_monitor.setUpdatesEnabled(True); self.tabla_monitor.blockSignals(False)
         except Exception: self.session.rollback(); self.tabla_monitor.setUpdatesEnabled(True); self.tabla_monitor.blockSignals(False)
-
 def setup_ruta(self):
         l = QVBoxLayout(self.tab_ruta); top_row1 = QHBoxLayout(); top_row2 = QHBoxLayout()
         
@@ -688,7 +685,7 @@ def setup_ruta(self):
         self.rep_sucursal = QComboBox(); self.rep_sucursal.addItems(["Todas", "Mendoza", "San Juan"]); 
         
         self.rep_chofer = QComboBox()
-        self.rep_chofer.setMinimumWidth(250) # 🔥 LISTA DE CHOFER ENSANCHADA 🔥
+        self.rep_chofer.setMinimumWidth(250) 
         self.rep_chofer.addItem("Todos")
         
         self.rep_cliente = QComboBox(); self.rep_cliente.addItem("Todos"); self.rep_cliente.addItems(self.lista_proveedores)
