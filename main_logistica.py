@@ -436,7 +436,7 @@ class PlataformaLogistica(QMainWindow):
                         else: it.setForeground(txt_color_main)
             self.tabla_monitor.setUpdatesEnabled(True); self.tabla_monitor.blockSignals(False)
         except Exception: self.session.rollback(); self.tabla_monitor.setUpdatesEnabled(True); self.tabla_monitor.blockSignals(False)
-def setup_ruta(self):
+    def setup_ruta(self):
         l = QVBoxLayout(self.tab_ruta); top_row1 = QHBoxLayout(); top_row2 = QHBoxLayout()
         
         self.combo_masivo_chofer = QComboBox()
