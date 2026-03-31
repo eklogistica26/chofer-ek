@@ -81,7 +81,6 @@ class TabFlota(QWidget):
 
         layout.addLayout(top_bar)
 
-        # 🔥 OPCIÓN 2: PANTALLA DIVIDIDA CON QSPLITTER 🔥
         self.splitter = QSplitter(Qt.Orientation.Horizontal)
         
         # --- TABLA IZQUIERDA (Resumen) ---
@@ -117,7 +116,6 @@ class TabFlota(QWidget):
         self.lbl_vehiculo_tit.setStyleSheet("font-size: 18px; font-weight: bold; color: #333; margin-bottom: 10px;")
         lay_rad.addWidget(self.lbl_vehiculo_tit)
         
-        # Sub-panel Alerta Falla App
         self.panel_falla = QWidget()
         lay_falla = QVBoxLayout(self.panel_falla)
         self.lbl_falla_txt = QLabel("Sin fallas reportadas.")
@@ -132,7 +130,6 @@ class TabFlota(QWidget):
         self.panel_falla.hide()
         lay_rad.addWidget(self.panel_falla)
         
-        # Sub-panel Desgaste Mecánico (Barras)
         gb_mec = QGroupBox("Desgaste Mecánico (Progreso)")
         lay_mec = QFormLayout(gb_mec)
         
@@ -151,7 +148,6 @@ class TabFlota(QWidget):
         lay_mec.addRow("Neumáticos (40k):", self.pb_neumaticos)
         lay_rad.addWidget(gb_mec)
         
-        # Sub-panel Legales
         gb_leg = QGroupBox("Vencimientos Legales")
         lay_leg = QFormLayout(gb_leg)
         self.lbl_seguro = QLabel("-")
@@ -226,7 +222,6 @@ class TabFlota(QWidget):
                 color_fila = QColor("#ffffff")
                 alertas = []
 
-                # Evaluaciones rápidas para alertas
                 if v.km_proximo_service and v.kilometraje_actual >= v.km_proximo_service: alertas.append("ACEITE")
                 if v.km_proximo_distribucion and v.kilometraje_actual >= v.km_proximo_distribucion: alertas.append("DISTRIBUCIÓN")
                 if v.km_proximo_neumaticos and v.kilometraje_actual >= v.km_proximo_neumaticos: alertas.append("NEUMÁTICOS")
@@ -271,7 +266,9 @@ class TabFlota(QWidget):
         v = self.main.session.query(Vehiculo).get(v_id)
         if not v: return
         
-        self.lbl_vehiculo_tit.setText(f"🚗 {v.marca} {v.modelo} - {v.patente}")
+        # 🔥 ACÁ AGREGUÉ EL CHOFER AL TÍTULO DE LA RADIOGRAFÍA 🔥
+        nombre_chofer = v.chofer.nombre if v.chofer else "Sin Asignar"
+        self.lbl_vehiculo_tit.setText(f"🚗 {v.marca} {v.modelo} - {v.patente}  |  👤 Chofer: {nombre_chofer}")
         
         if v.falla_reportada:
             self.panel_falla.show()
@@ -286,7 +283,6 @@ class TabFlota(QWidget):
                 pb.setValue(0); pb.setFormat("No cargado"); pb.setStyleSheet("QProgressBar { background-color: #e9ecef; color: #666; text-align: center;}")
                 return
             
-            # Calculamos porcentaje
             km_faltantes = prox_km - km_actual
             if km_faltantes <= 0:
                 pb.setValue(100); pb.setFormat(f"¡VENCIDO! (Se pasó {abs(km_faltantes):,} km)")
