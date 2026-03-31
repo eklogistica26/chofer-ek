@@ -204,7 +204,7 @@ class TabFacturacion(QWidget):
         dlg = AgregarCargoDialog(proveedores, self)
         if dlg.exec() == QDialog.DialogCode.Accepted:
             try:
-                op = Operacion(fecha_ingreso=datetime.now(), sucursal=self.cierre_sucursal.currentText() if self.cierre_sucursal.currentText() != "Todas" else self.main.sucursal_actual, guia_remito="CARGO-FIJO", proveedor=dlg.in_prov.currentText(), destinatario=dlg.in_concepto.text(), domicilio="-", localidad="-", bultos=1, bultos_frio=0, peso=0.0, tipo_carga="COMUN", monto_servicio=dlg.in_monto.value(), estado=Estados.ENTREGADO, facturado=False, tipo_servicio="Cargo Extra")
+                op = Operacion(fecha_ingreso=datetime.now(), sucursal=self.cierre_sucursal.currentText() if self.cierre_sucursal.currentText() != "Todas" else self.main.sucursal_actual, guia_remito="CARGO-FIJO", proveedor=dlg.in_prov.currentText().upper(), destinatario=dlg.in_concepto.text().upper(), domicilio="-", localidad="-", bultos=1, bultos_frio=0, peso=0.0, tipo_carga="COMUN", monto_servicio=dlg.in_monto.value(), estado=Estados.ENTREGADO, facturado=False, tipo_servicio="Cargo Extra")
                 self.main.session.add(op); self.main.session.commit(); self.main.toast.mostrar("✅ Cargo extra agregado."); self.calcular_cierre()
             except Exception: self.main.session.rollback(); QMessageBox.warning(self, "Error", "No se pudo guardar.")
 
@@ -214,7 +214,7 @@ class TabFacturacion(QWidget):
         prov = self.tabla_ctacte.item(r, 0).text(); dlg = CargarPagoDialog(prov, self)
         if dlg.exec() == QDialog.DialogCode.Accepted:
             try:
-                pago = ReciboPago(proveedor=prov, monto=dlg.in_monto.value(), detalle=dlg.in_detalle.text(), usuario=self.main.usuario.username)
+                pago = ReciboPago(proveedor=prov, monto=dlg.in_monto.value(), detalle=dlg.in_detalle.text().upper(), usuario=self.main.usuario.username)
                 self.main.session.add(pago); self.main.session.commit(); self.main.toast.mostrar("✅ Pago registrado."); self.cargar_ctas_ctes()
             except Exception: self.main.session.rollback()
 
@@ -251,6 +251,13 @@ class TabFacturacion(QWidget):
         except Exception: self.main.session.rollback()
 
     def calcular_cierre(self):
+        # 🔥 FIX 4: LIMPIEZA DE BD INVISIBLE PARA "CARGAS Y ENCOMIENDAS" 🔥
+        try:
+            self.main.session.execute(text("UPDATE operaciones SET proveedor = 'CARGAS Y ENCOMIENDAS (AEROTRANSPORTADORA)' WHERE proveedor ILIKE '%Carga y Encomienda%' AND proveedor NOT ILIKE '%(AEROTRANSPORTADORA)%'"))
+            self.main.session.commit()
+        except:
+            self.main.session.rollback()
+            
         mes = self.cierre_mes.currentIndex() + 1
         anio = self.cierre_anio.value()
         prov = self.cierre_prov.currentText().strip()

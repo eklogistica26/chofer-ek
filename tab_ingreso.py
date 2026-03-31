@@ -441,13 +441,14 @@ class TabIngreso(QWidget):
         
         try:
             servicio = self.in_serv.currentText()
-            loc = self.in_loc_combo.currentText().strip()
+            
+            # 🔥 TODO A MAYÚSCULAS PARA ESTANDARIZAR LA BASE DE DATOS 🔥
+            loc = self.in_loc_combo.currentText().strip().upper()
             peso_manual = self.in_peso_manual.value()
-            prov = self.in_prov.currentText()
-            guia_final = self.in_guia.text().strip()
+            prov = self.in_prov.currentText().strip().upper()
+            guia_final = self.in_guia.text().strip().upper()
 
-            # 🔥 FIX 3: ANTI-DUPLICADOS POR CLIENTE 🔥
-            if prov and prov != "JetPaq" and guia_final and "Flete" not in servicio:
+            if prov and prov != "JETPAQ" and guia_final and "Flete" not in servicio:
                 existe = self.main.session.query(Operacion).filter(
                     Operacion.guia_remito == guia_final,
                     Operacion.proveedor == prov
@@ -492,11 +493,12 @@ class TabIngreso(QWidget):
                     
                 tiene_cr = self.chk_cr.isChecked()
                 monto_cr = self.in_monto_recaudar.value() if tiene_cr else 0.0
-                info_cr = self.in_info_intercambio.text() if tiene_cr else ""
+                # 🔥 MAYÚSCULA TAMBIÉN AL INTERCAMBIO 🔥
+                info_cr = self.in_info_intercambio.text().strip().upper() if tiene_cr else ""
             
             if ("Retiro" in servicio or "Flete" in servicio) and not guia_final: 
                 now = datetime.now(); c_year = now.strftime('%Y'); c_month = now.strftime('%m')
-                prefijo = "Retiro" if "Retiro" in servicio else "FLETE"
+                prefijo = "RETIRO" if "Retiro" in servicio else "FLETE"
                 ops_auto = self.main.session.query(Operacion.guia_remito).filter(Operacion.guia_remito.like(f"{prefijo} {c_year}-%")).all()
                 max_seq = 0
                 for r_op in ops_auto:
@@ -505,18 +507,19 @@ class TabIngreso(QWidget):
                         except: pass
                 guia_final = f"{prefijo} {c_year}-{c_month}-{max_seq + 1:03d}"
             
-            dest_texto = self.in_dest.text().strip()
-            dom_texto = self.in_dom.text().strip()
+            # 🔥 OBLIGAMOS A MAYÚSCULAS ANTES DE GUARDAR 🔥
+            dest_texto = self.in_dest.text().strip().upper()
+            dom_texto = self.in_dom.text().strip().upper()
             cel_texto = self.in_cel.text().strip()
             
             mensaje_toast = "✅ GUARDADO EN DEPÓSITO CORRECTAMENTE"
             
-            if prov and prov != "JetPaq" and dest_texto and dom_texto:
+            if prov and prov != "JETPAQ" and dest_texto and dom_texto:
                 existe_dest = self.main.session.query(DestinoFrecuente).filter(
                     DestinoFrecuente.proveedor == prov, 
                     DestinoFrecuente.sucursal == self.main.sucursal_actual, 
-                    DestinoFrecuente.destinatario.ilike(dest_texto),
-                    DestinoFrecuente.domicilio.ilike(dom_texto)
+                    DestinoFrecuente.destinatario == dest_texto,
+                    DestinoFrecuente.domicilio == dom_texto
                 ).first()
                 
                 if not existe_dest:
@@ -536,7 +539,6 @@ class TabIngreso(QWidget):
             self.main.log_movimiento(op, "INGRESO A DEPOSITO", "Carga inicial en sistema")
             self.main.session.commit()
             
-            # 🔥 FIX 2: CÁPSULA DE SEGURIDAD PARA EL PDF (Evita el Micro-corte visual) 🔥
             try:
                 if "Retiro" in servicio: 
                     descargas_dir = os.path.join(os.path.expanduser('~'), 'Downloads')
@@ -598,7 +600,8 @@ class TabIngreso(QWidget):
                     if i % 15 == 0: QApplication.processEvents() 
                     if d['guia'] in set_existentes: omitidas += 1; continue
                     peso_txt = d.get('peso', 0.0); bultos_txt = d['bultos']; precio = self.main.obtener_precio(self.main.sucursal_actual, bultos_txt, 0, proveedor="DHL", peso=peso_txt, bultos_totales=bultos_txt)
-                    op = Operacion(fecha_ingreso=d['fecha_ingreso'], sucursal=self.main.sucursal_actual, guia_remito=d['guia'], proveedor="DHL", destinatario=d['destinatario'][:100], domicilio=d['domicilio'][:150], localidad=self.main.sucursal_actual, celular=d['celular'][:50], bultos=bultos_txt, bultos_frio=0, peso=peso_txt, tipo_carga="COMUN", tipo_urgencia=Urgencia.CLASICO, monto_servicio=precio, estado=Estados.EN_DEPOSITO, tipo_servicio="Entrega (Reparto)")
+                    # Forzamos MAYÚSCULAS también al importar DHL
+                    op = Operacion(fecha_ingreso=d['fecha_ingreso'], sucursal=self.main.sucursal_actual, guia_remito=d['guia'], proveedor="DHL", destinatario=d['destinatario'][:100].upper(), domicilio=d['domicilio'][:150].upper(), localidad=self.main.sucursal_actual.upper(), celular=d['celular'][:50], bultos=bultos_txt, bultos_frio=0, peso=peso_txt, tipo_carga="COMUN", tipo_urgencia=Urgencia.CLASICO, monto_servicio=precio, estado=Estados.EN_DEPOSITO, tipo_servicio="Entrega (Reparto)")
                     self.main.session.add(op); hist = Historial(operacion=op, usuario=self.main.usuario.username, accion="INGRESO IMPORTADO", detalle="Carga masiva por TXT DHL"); self.main.session.add(hist); agregadas += 1
                 self.main.session.commit(); QApplication.restoreOverrideCursor(); self.main.setWindowTitle(f"E.K. LOGISTICA (NUBE) - Usuario: {self.main.usuario.username.upper()}")
                 QMessageBox.information(self, "Importación Exitosa", f"✅ {agregadas} guías agregadas.\n⚠️ {omitidas} omitidas (ya existían)."); self.cargar_movimientos_dia()

@@ -142,7 +142,7 @@ class PlataformaLogistica(QMainWindow):
         w = QWidget(); self.setCentralWidget(w); main_l = QVBoxLayout(w)
         top = QFrame(); l_top = QHBoxLayout(top)
         
-        self.combo_sucursal = QComboBox(); self.combo_sucursal.addItems(["Mendoza", "San Juan"]); self.combo_sucursal.setCurrentText(self.sucursal_actual); self.combo_sucursal.setMinimumWidth(150)
+        self.combo_sucursal = QComboBox(); self.combo_sucursal.addItems(["Mendoza", "San Juan"]); self.combo_sucursal.setCurrentText(self.sucursal_actual); self.combo_sucursal.setMinimumWidth(250)
         if not self.usuario.es_admin_total: self.combo_sucursal.setEnabled(False)
         self.combo_sucursal.currentTextChanged.connect(self.cambiar_sucursal)
         

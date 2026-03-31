@@ -28,10 +28,9 @@ class EditarPrecioFacturacionDialog(QDialog):
         super().__init__(parent)
         self.op = operacion; self.main_app = main_app
         self.setWindowTitle(f"💵 Facturación Detallada - Guía: {operacion.guia_remito or 'RET'}")
-        self.setGeometry(400, 200, 450, 500)
+        self.setGeometry(400, 200, 450, 550)
         layout = QVBoxLayout(self)
         
-        # --- AUDITORÍA DE VISITAS (Lee la base de datos para avisarle al operador) ---
         conteo = 1
         try:
             sql = text("SELECT COUNT(*) FROM historial_movimientos WHERE operacion_id = :id AND accion = 'SALIDA A REPARTO'")
@@ -43,26 +42,36 @@ class EditarPrecioFacturacionDialog(QDialog):
         if conteo > 1:
             alerta_visitas = f"<br><br><span style='color: #dc3545; font-size: 16px;'>⚠️ <b>ATENCIÓN:</b> El paquete se sacó a reparto <b>{conteo} veces</b>. Considere cobrar Demora.</span>"
 
-        info_lbl = QLabel(f"<b>Destinatario:</b> {operacion.destinatario}<br><b>Zona:</b> {operacion.localidad}<br><b>Bultos:</b> {operacion.bultos} (Frío: {operacion.bultos_frio or 0})<br><b>Peso Total:</b> {operacion.peso} Kg{alerta_visitas}")
+        info_lbl = QLabel(f"<b>Destinatario:</b> {operacion.destinatario}<br><b>Bultos:</b> {operacion.bultos} (Frío: {operacion.bultos_frio or 0})<br><b>Peso Total:</b> {operacion.peso} Kg{alerta_visitas}")
         info_lbl.setStyleSheet("background-color: #e7f1ff; padding: 10px; border: 1px solid #0d6efd; border-radius: 5px; font-size: 14px;")
         info_lbl.setWordWrap(True); layout.addWidget(info_lbl)
         
-        # --- CÁLCULO BASE ---
+        form = QFormLayout()
+
+        # 🔥 FIX 5: EDICIÓN DE ZONA EN FACTURACIÓN 🔥
+        self.in_zona = QComboBox()
+        self.in_zona.setEditable(True)
+        try:
+            from database import Tarifa
+            zonas = [z[0] for z in self.main_app.session.query(Tarifa.localidad).filter(Tarifa.sucursal == self.op.sucursal).distinct().all()]
+            self.in_zona.addItems(sorted(zonas))
+        except: pass
+        self.in_zona.setCurrentText(self.op.localidad or "")
+        self.in_zona.currentTextChanged.connect(self.recalcular_base_por_zona)
+        form.addRow("Zona / Localidad:", self.in_zona)
+
         if self.op.guia_remito == "CARGO-FIJO" or (self.op.tipo_servicio and "Flete" in self.op.tipo_servicio):
             self.precio_base_puro = self.op.monto_servicio
         else:
             cant_frio = self.op.bultos_frio or 0; cant_comun = self.op.bultos - cant_frio
             self.precio_base_puro = self.main_app.obtener_precio(self.op.localidad, cant_comun, cant_frio, self.op.sucursal, proveedor=self.op.proveedor, peso=self.op.peso, bultos_totales=self.op.bultos)
 
-        form = QFormLayout()
-        
         self.in_precio_base = QDoubleSpinBox()
         self.in_precio_base.setRange(0, 10000000); self.in_precio_base.setPrefix("$ "); 
         self.in_precio_base.setValue(self.precio_base_puro)
         self.in_precio_base.valueChanged.connect(self.calcular_total)
         form.addRow("Precio Tarifario Base:", self.in_precio_base)
         
-        # --- CHECKLIST INTELIGENTE DE MODIFICADORES ---
         gb_mod = QGroupBox("Modificadores Rápidos (Opcional)")
         gb_mod.setStyleSheet("font-weight: bold; border: 1px solid #ccc; padding-top: 15px; margin-top: 10px;")
         ly_mod = QVBoxLayout(gb_mod)
@@ -114,6 +123,16 @@ class EditarPrecioFacturacionDialog(QDialog):
         
         self.calcular_total()
 
+    def recalcular_base_por_zona(self, nueva_zona):
+        if self.op.guia_remito == "CARGO-FIJO" or (self.op.tipo_servicio and "Flete" in self.op.tipo_servicio):
+            return
+        cant_frio = self.op.bultos_frio or 0; cant_comun = self.op.bultos - cant_frio
+        self.precio_base_puro = self.main_app.obtener_precio(nueva_zona, cant_comun, cant_frio, self.op.sucursal, proveedor=self.op.proveedor, peso=self.op.peso, bultos_totales=self.op.bultos)
+        self.in_precio_base.blockSignals(True)
+        self.in_precio_base.setValue(self.precio_base_puro)
+        self.in_precio_base.blockSignals(False)
+        self.calcular_total()
+
     def toggle_demora(self, state):
         self.in_monto_demora.setEnabled(state == Qt.CheckState.Checked.value)
         self.calcular_total()
@@ -133,11 +152,15 @@ class EditarPrecioFacturacionDialog(QDialog):
         self.lbl_total.setText(f"$ {self.total_calculado:,.2f}")
         
     def guardar_y_cerrar(self):
+        nueva_zona = self.in_zona.currentText().strip().upper()
+        if nueva_zona:
+            self.op.localidad = nueva_zona
+            
         notas = []
         if self.chk_feriado.isChecked(): notas.append("Feriado")
         if self.chk_demora.isChecked(): notas.append(f"Demora (${self.in_monto_demora.value()})")
         if self.chk_frio.isChecked(): notas.append(f"Frío (${self.in_monto_frio.value()})")
-        if self.in_extra.value() > 0 and self.in_detalle.text(): notas.append(self.in_detalle.text())
+        if self.in_extra.value() > 0 and self.in_detalle.text(): notas.append(self.in_detalle.text().strip().upper())
         if notas:
             self.op.tipo_carga = f"{self.op.tipo_carga.split(' |')[0]} | Extras: {', '.join(notas)}"
         self.accept()
@@ -170,10 +193,9 @@ class PreviewImportacionDialog(QDialog):
         for i in range(self.tabla.rowCount()):
             peso_val = self.tabla.cellWidget(i, 5).value()
             fecha_sel = self.tabla.cellWidget(i, 6).date().toPyDate()
-            self.resultados.append({'guia': self.tabla.item(i, 0).text(), 'destinatario': self.tabla.item(i, 1).text(), 'domicilio': self.tabla.item(i, 2).text(), 'celular': self.tabla.item(i, 3).text(), 'bultos': int(self.tabla.item(i, 4).text()), 'peso': peso_val, 'fecha_ingreso': fecha_sel})
+            self.resultados.append({'guia': self.tabla.item(i, 0).text().upper(), 'destinatario': self.tabla.item(i, 1).text().upper(), 'domicilio': self.tabla.item(i, 2).text().upper(), 'celular': self.tabla.item(i, 3).text(), 'bultos': int(self.tabla.item(i, 4).text()), 'peso': peso_val, 'fecha_ingreso': fecha_sel})
         self.accept()
 
-# 🔥 RESTAURADA CON HORAS Y FOTOS 🔥
 class ConfirmarEntregaDialog(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -229,7 +251,7 @@ class ConfirmarEntregaDialog(QDialog):
         if not self.in_recibe.text().strip():
             QMessageBox.warning(self, "Error", "Debe indicar quién recibió.")
             return
-        self.recibe_final = self.in_recibe.text().strip()
+        self.recibe_final = self.in_recibe.text().strip().upper()
         self.fecha_final = self.in_fecha.date().toPyDate()
         if self.chk_hora.isChecked():
             self.hora_final = self.in_hora.time().toPyTime()
@@ -291,7 +313,11 @@ class EditarDestinoDialog(QDialog):
         layout.addLayout(form); layout.addWidget(btn_save); self.setLayout(layout)
     def guardar(self):
         if not self.in_nom.text(): QMessageBox.warning(self, "Error", "El destinatario es obligatorio"); return
-        self.destino.destinatario = self.in_nom.text(); self.destino.domicilio = self.in_dom.text(); self.destino.celular = self.in_cel.text(); self.destino.localidad = self.in_loc.text(); self.accept()
+        self.destino.destinatario = self.in_nom.text().strip().upper()
+        self.destino.domicilio = self.in_dom.text().strip().upper()
+        self.destino.celular = self.in_cel.text().strip()
+        self.destino.localidad = self.in_loc.text().strip().upper()
+        self.accept()
 
 class EditarEmpresaDialog(QDialog):
     def __init__(self, empresa, parent=None):
@@ -303,14 +329,15 @@ class EditarEmpresaDialog(QDialog):
         layout.addLayout(form); layout.addWidget(btn_save); self.setLayout(layout)
     def guardar(self):
         if not self.in_nom.text(): QMessageBox.warning(self, "Error", "El nombre es obligatorio"); return
-        self.empresa.nombre = self.in_nom.text(); self.empresa.email_reportes = self.in_email.text(); self.accept()
+        self.empresa.nombre = self.in_nom.text().strip().upper()
+        self.empresa.email_reportes = self.in_email.text()
+        self.accept()
 
 class EditarOperacionDialog(QDialog):
     def __init__(self, operacion, session, parent=None):
         super().__init__(parent); self.setWindowTitle(f"✏️ Editar Guía: {operacion.guia_remito}"); self.setGeometry(300, 200, 450, 700)
         self.op = operacion; self.session = session; layout = QVBoxLayout(); form = QFormLayout()
         
-        # 🔥 NUEVOS CAMPOS: FECHA Y GUÍA 🔥
         self.in_fecha = QDateEdit(self.op.fecha_ingreso if self.op.fecha_ingreso else QDate.currentDate())
         self.in_fecha.setCalendarPopup(True)
         self.in_fecha.setStyleSheet("font-weight: bold; color: #d32f2f;")
@@ -337,7 +364,6 @@ class EditarOperacionDialog(QDialog):
         if self.op.estado == Estados.EN_DEPOSITO: self.in_precio.setEnabled(True); self.lbl_aviso = QLabel("🟢 ESTADO INICIAL: Puede modificar el precio (Extra)."); self.lbl_aviso.setStyleSheet("color: green; font-weight: bold;")
         else: self.in_precio.setEnabled(False); self.lbl_aviso = QLabel("🔒 PRECIO BLOQUEADO (Solo editable en estado 'En Deposito')"); self.lbl_aviso.setStyleSheet("color: red; font-size: 10px;")
         
-        # 🔥 AGREGAMOS AL FORMULARIO 🔥
         form.addRow("Fecha Ingreso:", self.in_fecha)
         form.addRow("Guía / Remito:", self.in_guia)
         form.addRow("Destinatario:", self.in_dest); form.addRow("Domicilio:", self.in_dom); form.addRow("Localidad:", self.in_loc); form.addRow("Celular:", self.in_cel); form.addRow("Proveedor:", self.in_prov); form.addRow("Peso Total:", self.in_peso);
@@ -351,162 +377,19 @@ class EditarOperacionDialog(QDialog):
     def guardar(self):
         try:
             self.op.fecha_ingreso = self.in_fecha.date().toPyDate()
-            self.op.guia_remito = self.in_guia.text()
+            self.op.guia_remito = self.in_guia.text().strip().upper()
             
-            self.op.destinatario = self.in_dest.text(); self.op.domicilio = self.in_dom.text(); self.op.localidad = self.in_loc.text(); self.op.celular = self.in_cel.text(); self.op.proveedor = self.in_prov.currentText(); self.op.peso = self.in_peso.value()
+            self.op.destinatario = self.in_dest.text().strip().upper()
+            self.op.domicilio = self.in_dom.text().strip().upper()
+            self.op.localidad = self.in_loc.text().strip().upper()
+            self.op.celular = self.in_cel.text().strip()
+            self.op.proveedor = self.in_prov.currentText().strip().upper()
+            self.op.peso = self.in_peso.value()
             if self.radio_comb.isChecked(): c = self.in_c_comun.value(); f = self.in_c_frio.value(); self.op.bultos = c + f; self.op.bultos_frio = f; self.op.tipo_carga = "COMBINADO"
             else: self.op.bultos = self.in_bultos_simple.value(); self.op.bultos_frio = self.op.bultos if self.radio_frio.isChecked() else 0; self.op.tipo_carga = "REFRIGERADO" if self.radio_frio.isChecked() else "COMUN"
             if self.in_precio.isEnabled(): self.op.monto_servicio = self.in_precio.value()
             self.session.commit(); QMessageBox.information(self, "Listo", "Datos actualizados."); self.accept()
         except Exception as e: QMessageBox.critical(self, "Error", f"No se pudo guardar: {e}")
-
-# 🔥 RESTAURAMOS EL TRACKING DIALOG COMPLETO CON PESO Y BULTOS 🔥
-class TrackingDialog(QDialog):
-    def __init__(self, session, usuario=None):
-        super().__init__()
-        self.session = session
-        self.usuario = usuario
-        self.setWindowTitle("🔍 Rastreo de Guía (Tracking)")
-        self.setGeometry(400, 200, 600, 500)
-        self.setStyleSheet("background-color: white;")
-        layout = QVBoxLayout()
-        h = QHBoxLayout()
-        self.in_buscar = QLineEdit()
-        self.in_buscar.setPlaceholderText("Ingrese N° de Guía o Remito...")
-        self.in_buscar.returnPressed.connect(self.buscar_tracking)
-        btn_bus = QPushButton("RASTREAR")
-        btn_bus.setStyleSheet("background-color: #0d6efd; color: white; font-weight: bold;")
-        btn_bus.clicked.connect(self.buscar_tracking)
-        
-        btn_reset = QPushButton("⚠️ RESETEAR A DEPÓSITO")
-        btn_reset.setStyleSheet("background-color: #dc3545; color: white; font-weight: bold;")
-        btn_reset.clicked.connect(self.resetear_guia)
-        # Solo los admin totales pueden ver el boton de reseteo
-        if not self.usuario or not self.usuario.es_admin_total:
-            btn_reset.hide()
-            
-        h.addWidget(self.in_buscar)
-        h.addWidget(btn_bus)
-        h.addWidget(btn_reset)
-        
-        self.lbl_info = QLabel("Ingrese una guía para ver el estado.")
-        self.lbl_info.setStyleSheet("font-size: 14px; color: #333; padding: 10px; border: 1px solid #ccc; background: #f8f9fa;")
-        self.lbl_info.setWordWrap(True)
-        self.tabla = QTableWidget()
-        self.tabla.setColumnCount(4)
-        self.tabla.setHorizontalHeaderLabels(["Fecha/Hora", "Usuario", "Acción", "Detalle"])
-        
-        self.tabla.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
-        self.tabla.setColumnWidth(0, 130)
-        self.tabla.setColumnWidth(1, 100)
-        self.tabla.setColumnWidth(2, 130)
-        self.tabla.horizontalHeader().setStretchLastSection(True)
-        
-        layout.addLayout(h)
-        layout.addWidget(self.lbl_info)
-        layout.addWidget(QLabel("<b>HISTORIAL DE MOVIMIENTOS:</b>"))
-        layout.addWidget(self.tabla)
-        self.setLayout(layout)
-        
-    def resetear_guia(self):
-        guia = self.in_buscar.text().strip()
-        if not guia: return
-        op = self.session.query(Operacion).filter(Operacion.guia_remito == guia).first()
-        if not op: op = self.session.query(Operacion).filter(Operacion.guia_remito.ilike(f"%{guia}%")).first()
-        if not op: return
-        
-        reply = QMessageBox.question(self, "⚠️ ALERTA DE SEGURIDAD EXTREMA", 
-            f"¿Está súper seguro de devolver la guía '{op.guia_remito}' a EN DEPOSITO?\n\n"
-            "Esto borrará de forma permanente TODO su historial de movimientos de la calle, perderá a su chofer asignado, se le borrará la marca de entregado y de facturado.",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
-        
-        if reply == QMessageBox.StandardButton.Yes:
-            try:
-                self.session.execute(text("DELETE FROM historial_movimientos WHERE operacion_id = :id"), {"id": op.id})
-                op.estado = Estados.EN_DEPOSITO
-                op.chofer_asignado = None
-                op.fecha_salida = None
-                op.fecha_entrega = None
-                op.facturado = False
-                self.session.commit()
-                QMessageBox.information(self, "Éxito", "Guía reseteada y borrada del historial exitosamente.")
-                self.buscar_tracking() 
-            except Exception as e:
-                self.session.rollback()
-                QMessageBox.critical(self, "Error", f"Fallo al resetear la guía: {str(e)}")
-    
-    def buscar_tracking(self):
-        guia = self.in_buscar.text().strip(); 
-        if not guia: return
-        op = self.session.query(Operacion).filter(Operacion.guia_remito == guia).first()
-        if not op: op = self.session.query(Operacion).filter(Operacion.guia_remito.ilike(f"%{guia}%")).first()
-        if not op: 
-            self.lbl_info.setText("❌ GUÍA NO ENCONTRADA")
-            self.lbl_info.setStyleSheet("font-size: 16px; color: red; font-weight: bold; padding: 10px; border: 1px solid red;")
-            self.tabla.setRowCount(0)
-            return
-            
-        self.lbl_info.setStyleSheet("font-size: 14px; color: #333; padding: 10px; border: 1px solid #ccc; background: #f8f9fa;")
-            
-        color_estado = "blue"; bg_color = "#e7f1ff"
-        if op.estado == Estados.ENTREGADO: color_estado = "#198754"; bg_color = "#d1e7dd"
-        elif op.estado == Estados.EN_REPARTO: color_estado = "#856404"; bg_color = "#fff3cd"
-        if op.proveedor and op.proveedor.lower() == "jetpaq":
-            fac_str = "NO SE FACTURA (USO INTERNO)"; color_fac = "gray"
-        else:
-            fac_str = "SÍ" if op.facturado else "NO"; color_fac = "green" if op.facturado else "red"
-            
-        movs = self.session.query(Historial).filter(Historial.operacion_id == op.id).order_by(Historial.fecha_hora.desc()).all()
-        
-        entregado_info = ""
-        if op.estado == Estados.ENTREGADO:
-            for m in movs:
-                if m.detalle and "Recibio:" in m.detalle:
-                    recibe = m.detalle.split("Recibio:")[1].split("[")[0].split("|")[0].strip()
-                    fecha_ent = m.fecha_hora.strftime("%d/%m/%Y a las %H:%M hs")
-                    entregado_info = f"<br><b>ENTREGADO A:</b> <span style='color:#198754;'>{recibe}</span> <b>EL:</b> {fecha_ent}"
-                    break
-                    
-        # 🔥 EL FIX DEL TRACKING (TIPO DE CARGA Y BULTOS) 🔥
-        bultos_tot = op.bultos or 1
-        bultos_fr = getattr(op, 'bultos_frio', 0) or 0
-        bultos_com = bultos_tot - bultos_fr
-        tipo_c = op.tipo_carga or "COMÚN"
-        
-        if "Flete" in (op.tipo_servicio or ""):
-            texto_bultos = f"{bultos_tot} Horas / Viajes (FLETE)"
-        else:
-            if bultos_fr > 0:
-                texto_bultos = f"{bultos_tot} Totales (<b>{bultos_com}</b> Comunes, <b>{bultos_fr}</b> Refrigerados) | TIPO: {tipo_c}"
-            else:
-                texto_bultos = f"{bultos_tot} (Todos Comunes) | TIPO: {tipo_c}"
-        
-        info_txt = f"<div style='background-color: {bg_color}; padding: 10px;'><b>GUÍA:</b> {op.guia_remito} <br><b>ESTADO ACTUAL:</b> <span style='color:{color_estado}; font-size: 18px; font-weight: bold;'>{op.estado.upper()}</span> {entregado_info} <br><b>FACTURACIÓN:</b> <span style='color:{color_fac}; font-weight: bold;'>{fac_str}</span> <br><b>DESTINATARIO:</b> {op.destinatario} ({op.localidad}) <br><b>CHOFER:</b> {op.chofer_asignado or 'Sin Asignar'} <br><b>📦 BULTOS / CARGA:</b> <span style='color:#d32f2f; font-weight:bold; font-size:15px;'>{texto_bultos}</span> <br><b>SERVICIO:</b> {op.tipo_servicio} <br><b>PESO TOTAL:</b> {op.peso} Kg</div>"
-        self.lbl_info.setText(info_txt)
-        self.tabla.setRowCount(0)
-        
-        for r, m in enumerate(movs): 
-            self.tabla.insertRow(r)
-            self.tabla.setItem(r, 0, QTableWidgetItem(m.fecha_hora.strftime("%d/%m/%Y %H:%M")))
-            self.tabla.setItem(r, 1, QTableWidgetItem(m.usuario))
-            self.tabla.setItem(r, 2, QTableWidgetItem(m.accion))
-            
-            detalle_texto = m.detalle or ""
-            if "| GPS:" in detalle_texto:
-                try:
-                    partes = detalle_texto.split("| GPS:")
-                    base_texto = partes[0].strip()
-                    link = partes[1].strip()
-                    from PyQt6.QtWidgets import QLabel
-                    from PyQt6.QtCore import Qt
-                    lbl = QLabel(f'{base_texto} <a href="{link}" style="color:#d32f2f; text-decoration:none; font-weight:bold; font-size:14px;">📍 VER MAPA</a>')
-                    lbl.setAlignment(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft)
-                    lbl.setOpenExternalLinks(True)
-                    self.tabla.setCellWidget(r, 3, lbl)
-                except:
-                    self.tabla.setItem(r, 3, QTableWidgetItem(detalle_texto))
-            else:
-                self.tabla.setItem(r, 3, QTableWidgetItem(detalle_texto))
 
 class EditarTarifaDialog(QDialog):
     def __init__(self, tarifa_obj, parent=None):

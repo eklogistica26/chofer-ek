@@ -495,11 +495,14 @@ class DialogoMantenimiento(QDialog):
         self.in_tipo.addItems([
             "Cambio de Aceite / Filtros",
             "Cambio de Distribución",
+            "Embrague y Caja de Cambios",
+            "Tren Delantero / Trasero / Suspensión",
             "Renovación RTO",
             "Renovación Oblea GNC",
             "Frenos",
-            "Neumáticos",
+            "Neumáticos (Cambio / Alineación / Balanceo)",
             "Reparación Mecánica General",
+            "Limpieza y Estética",
             "Otro Gastos"
         ])
         
