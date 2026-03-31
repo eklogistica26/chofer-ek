@@ -34,27 +34,88 @@ def hora_arg():
 
 # --- RUTAS DE LA APP ---
 
-@app.route('/')
+@app.route('/uploads/<filename>')
+def uploaded_file(filename):
+    return send_from_directory(app.config['UPLOAD_FOLDER'], filename)
+
+@app.route('/', methods=['GET', 'POST'])
 def index():
     if 'chofer' in session:
         return redirect(url_for('chofer_dashboard'))
-    return redirect(url_for('login'))
+        
+    if request.method == 'POST':
+        sucursal = request.form.get('sucursal')
+        if sucursal:
+            return redirect(url_for('login_chofer', sucursal=sucursal))
+            
+    html = """
+    <!DOCTYPE html>
+    <html lang="es">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+        <title>App Choferes</title>
+        <style>
+            body { font-family: Arial, sans-serif; background-color: #f4f7f6; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
+            .login-box { background-color: white; padding: 30px; border-radius: 10px; box-shadow: 0 4px 8px rgba(0,0,0,0.1); width: 90%; max-width: 400px; text-align: center; }
+            .logo-img { width: 150px; margin-bottom: 20px; }
+            select { width: 100%; padding: 15px; margin-bottom: 20px; border-radius: 5px; border: 1px solid #ccc; font-size: 18px; }
+            button { background-color: #0d6efd; color: white; border: none; padding: 15px; width: 100%; border-radius: 5px; font-size: 18px; font-weight: bold; cursor: pointer; }
+        </style>
+    </head>
+    <body>
+        <div class="login-box">
+            <img src="/uploads/eklogo.png" alt="Logo EK" class="logo-img" onerror="this.style.display='none'">
+            <h2 style="color: #0d6efd; margin-top:0;">Selecciona tu Base</h2>
+            <form method="POST">
+                <select name="sucursal" required>
+                    <option value="">-- Elige la Sucursal --</option>
+                    <option value="Mendoza">Mendoza</option>
+                    <option value="San Juan">San Juan</option>
+                </select>
+                <button type="submit">CONTINUAR ➡</button>
+            </form>
+        </div>
+    </body>
+    </html>
+    """
+    return render_template_string(html)
 
-@app.route('/login', methods=['GET', 'POST'])
-def login():
+@app.route('/login_chofer/<sucursal>', methods=['GET', 'POST'])
+def login_chofer(sucursal):
+    if 'chofer' in session:
+        return redirect(url_for('chofer_dashboard'))
+        
+    engine = create_engine(DATABASE_URL)
+    
     if request.method == 'POST':
         nombre_chofer = request.form.get('chofer')
-        if nombre_chofer:
-            session.permanent = True
-            session['chofer'] = nombre_chofer
-            return redirect(url_for('chofer_dashboard'))
-            
-    engine = create_engine(DATABASE_URL)
+        dni_ingresado = request.form.get('dni')
+        
+        if nombre_chofer and dni_ingresado:
+            try:
+                with engine.connect() as conn:
+                    result = conn.execute(text("SELECT dni FROM choferes WHERE nombre = :n AND sucursal = :s"), {"n": nombre_chofer, "s": sucursal}).fetchone()
+                    
+                    if result:
+                        dni_real = str(result[0]).strip()
+                        if dni_ingresado.strip() == dni_real:
+                            session.permanent = True
+                            session['chofer'] = nombre_chofer
+                            session['sucursal'] = sucursal
+                            return redirect(url_for('chofer_dashboard'))
+                        else:
+                            flash("❌ Contraseña (DNI) incorrecta.", "error")
+                    else:
+                        flash("❌ Error al verificar chofer.", "error")
+            except Exception as e:
+                flash("❌ Error de conexión.", "error")
+                
     try:
         with engine.connect() as conn:
-            result = conn.execute(text("SELECT nombre FROM choferes ORDER BY nombre ASC")).fetchall()
+            result = conn.execute(text("SELECT nombre FROM choferes WHERE sucursal = :s ORDER BY nombre ASC"), {"s": sucursal}).fetchall()
             choferes = [row[0] for row in result]
-    except Exception as e:
+    except:
         choferes = []
 
     html = f"""
@@ -63,25 +124,40 @@ def login():
     <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-        <title>Ingreso Choferes</title>
+        <title>Ingreso - {sucursal}</title>
         <style>
             body {{ font-family: Arial, sans-serif; background-color: #f4f7f6; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }}
             .login-box {{ background-color: white; padding: 30px; border-radius: 10px; box-shadow: 0 4px 8px rgba(0,0,0,0.1); width: 90%; max-width: 400px; text-align: center; }}
-            select {{ width: 100%; padding: 15px; margin-bottom: 20px; border-radius: 5px; border: 1px solid #ccc; font-size: 18px; }}
-            button {{ background-color: #0d6efd; color: white; border: none; padding: 15px; width: 100%; border-radius: 5px; font-size: 18px; font-weight: bold; cursor: pointer; }}
+            .logo-img {{ width: 120px; margin-bottom: 10px; }}
+            select, input {{ width: 100%; padding: 15px; margin-bottom: 20px; border-radius: 5px; border: 1px solid #ccc; font-size: 16px; box-sizing: border-box; }}
+            button {{ background-color: #198754; color: white; border: none; padding: 15px; width: 100%; border-radius: 5px; font-size: 18px; font-weight: bold; cursor: pointer; margin-bottom: 15px; }}
+            .btn-back {{ display: block; text-decoration: none; color: #666; font-weight: bold; font-size: 14px; margin-top: 10px; }}
         </style>
     </head>
     <body>
         <div class="login-box">
-            <h2 style="color: #0d6efd; margin-top:0;">📦 E.K. Logística</h2>
-            <p style="color: #666; margin-bottom: 20px;">Selecciona tu usuario para ingresar:</p>
+            <img src="/uploads/eklogo.png" alt="Logo EK" class="logo-img" onerror="this.style.display='none'">
+            <h3 style="color: #333; margin-top:0;">Base: {sucursal}</h3>
+            
+            {{% with messages = get_flashed_messages(with_categories=true) %}}
+              {{% if messages %}}
+                {{% for category, message in messages %}}
+                  <div style="padding: 10px; margin-bottom: 15px; border-radius: 5px; background-color: #f8d7da; color: #721c24;">
+                    {{{{ message }}}}
+                  </div>
+                {{% endfor %}}
+              {{% endif %}}
+            {{% endwith %}}
+            
             <form method="POST">
                 <select name="chofer" required>
-                    <option value="">-- Seleccionar Chofer --</option>
+                    <option value="">-- Soy el Chofer --</option>
                     {''.join([f'<option value="{c}">{c}</option>' for c in choferes])}
                 </select>
+                <input type="password" name="dni" placeholder="Contraseña (Tu DNI)" required autocomplete="off">
                 <button type="submit">INGRESAR</button>
             </form>
+            <a href="/" class="btn-back">⬅ Cambiar Sucursal</a>
         </div>
     </body>
     </html>
@@ -91,12 +167,13 @@ def login():
 @app.route('/logout')
 def logout():
     session.pop('chofer', None)
-    return redirect(url_for('login'))
+    session.pop('sucursal', None)
+    return redirect(url_for('index'))
 
 @app.route('/chofer')
 def chofer_dashboard():
     if 'chofer' not in session:
-        return redirect(url_for('login'))
+        return redirect(url_for('index'))
     
     chofer_nombre = session['chofer']
     engine = create_engine(DATABASE_URL)
@@ -123,8 +200,10 @@ def chofer_dashboard():
         <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
         <title>Mi Ruta</title>
         <style>
-            body {{ font-family: Arial, sans-serif; background-color: #f4f7f6; padding: 15px; margin: 0; }}
-            .container {{ max-width: 600px; margin: 0 auto; }}
+            body {{ font-family: Arial, sans-serif; background-color: #f4f7f6; margin: 0; padding-bottom: 20px; }}
+            .header-banner {{ background-color: #ffffff; padding: 10px 15px; border-bottom: 3px solid #0d6efd; display: flex; align-items: center; margin-bottom: 15px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }}
+            .header-banner img {{ height: 40px; margin-right: 15px; }}
+            .container {{ max-width: 600px; margin: 0 auto; padding: 0 15px; }}
             .card {{ background-color: white; border-radius: 10px; padding: 15px; margin-bottom: 15px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); border-left: 5px solid #0d6efd; }}
             .card-retiro {{ border-left: 5px solid #ffc107; background-color: #fffdf5; }}
             .btn-gestionar {{ display: inline-block; background-color: #198754; color: white; padding: 10px; text-decoration: none; border-radius: 5px; font-weight: bold; width: 100%; text-align: center; margin-top: 10px; box-sizing: border-box; }}
@@ -135,9 +214,13 @@ def chofer_dashboard():
         </style>
     </head>
     <body>
+        <div class="header-banner">
+            <img src="/uploads/eklogo.png" alt="EK" onerror="this.style.display='none'">
+            <h2 style="color: #0d6efd; margin: 0; font-size: 20px; font-weight: bold;">Plataforma Móvil</h2>
+        </div>
         <div class="container">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
-                <h3 style="color: #0d6efd; margin-top: 0;">👋 Hola, {chofer_nombre}</h3>
+                <h3 style="color: #333; margin-top: 0;">👋 Hola, {chofer_nombre}</h3>
                 <a href="/logout" style="background-color: #dc3545; color: white; padding: 8px 15px; text-decoration: none; border-radius: 5px; font-weight: bold;">Salir</a>
             </div>
             
@@ -151,16 +234,16 @@ def chofer_dashboard():
               {{% endif %}}
             {{% endwith %}}
 
+            <a href="/scan" style="display: block; background-color: #ff9800; color: black; padding: 15px; text-align: center; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 18px; margin-bottom: 20px; border: 2px solid #e68a00;">
+                📷 ESCANEAR CÓDIGO DE BARRAS
+            </a>
+
             <div style="background-color: white; padding: 15px; border-radius: 10px; margin-bottom: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); text-align: center; border: 1px solid #17a2b8;">
                 <p style="margin: 0 0 10px 0; color: #555; font-size: 14px; font-weight: bold;">Mantenimiento de Vehículo</p>
                 <a href="/update_km" style="display: block; background-color: #17a2b8; color: white; padding: 12px; text-align: center; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 16px;">
                     🚗 Actualizar Kilómetros
                 </a>
             </div>
-            
-            <a href="/scan" style="display: block; background-color: #ff9800; color: black; padding: 15px; text-align: center; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 18px; margin-bottom: 20px; border: 2px solid #e68a00;">
-                📷 ESCANEAR CÓDIGO DE BARRAS
-            </a>
 
             <h4 style="border-bottom: 2px solid #ddd; padding-bottom: 10px;">📋 Tu Hoja de Ruta ({len(entregas)})</h4>
     """
@@ -218,7 +301,7 @@ def chofer_dashboard():
 @app.route('/update_km', methods=['GET', 'POST'])
 def update_km():
     if 'chofer' not in session:
-        return redirect(url_for('login'))
+        return redirect(url_for('index'))
     
     chofer_nombre = session['chofer']
     engine = create_engine(DATABASE_URL)
@@ -247,7 +330,6 @@ def update_km():
             
         return redirect(url_for('chofer_dashboard'))
     
-    # --- PANTALLA GET (Formulario) ---
     km_actual = ""
     patente = "Buscando vehículo..."
     tiene_vehiculo = False
@@ -311,7 +393,7 @@ def update_km():
 @app.route('/scan', methods=['GET', 'POST'])
 def scan():
     if 'chofer' not in session:
-        return redirect(url_for('login'))
+        return redirect(url_for('index'))
         
     if request.method == 'POST':
         codigo = request.form.get('codigo_guia')
@@ -346,13 +428,19 @@ def scan():
         <title>Escanear Guía</title>
         <style>
             body { font-family: Arial, sans-serif; background-color: #333; color: white; display: flex; flex-direction: column; align-items: center; height: 100vh; margin: 0; padding: 20px; box-sizing: border-box; }
-            h3 { color: #ff9800; margin-bottom: 20px; }
+            .header-banner { width: 100%; background-color: #ffffff; padding: 10px 15px; border-bottom: 3px solid #ff9800; display: flex; align-items: center; margin-bottom: 20px; box-sizing: border-box; position: absolute; top: 0; left: 0; }
+            .header-banner img { height: 40px; margin-right: 15px; }
+            h3 { color: #ff9800; margin-bottom: 20px; margin-top: 80px; }
             input[type="text"] { width: 100%; max-width: 400px; padding: 15px; margin-bottom: 20px; border-radius: 5px; border: none; font-size: 18px; text-align: center; }
             button { background-color: #198754; color: white; border: none; padding: 15px; width: 100%; max-width: 400px; border-radius: 5px; font-size: 18px; font-weight: bold; cursor: pointer; margin-bottom: 15px; }
             .btn-back { background-color: #6c757d; color: white; padding: 15px; width: 100%; max-width: 400px; text-align: center; text-decoration: none; border-radius: 5px; font-weight: bold; box-sizing: border-box; }
         </style>
     </head>
     <body>
+        <div class="header-banner">
+            <img src="/uploads/eklogo.png" alt="EK" onerror="this.style.display='none'">
+            <h2 style="color: #ff9800; margin: 0; font-size: 20px; font-weight: bold;">Escáner Móvil</h2>
+        </div>
         <h3>📷 Lector de Guías</h3>
         
         {% with messages = get_flashed_messages(with_categories=true) %}
@@ -377,10 +465,46 @@ def scan():
     """
     return render_template_string(html)
 
+def enviar_mail_brevo(destinatario, asunto, mensaje_html, adjuntos_base64=None):
+    if not BREVO_API_KEY:
+        print("⚠️ No hay API KEY de Brevo configurada. Correo omitido.")
+        return
+        
+    url = "https://api.brevo.com/v3/smtp/email"
+    headers = {
+        "accept": "application/json",
+        "api-key": BREVO_API_KEY,
+        "content-type": "application/json"
+    }
+    
+    data = {
+        "sender": {"email": EMAIL_REMITENTE, "name": "E.K. Logística"},
+        "to": [{"email": destinatario}],
+        "subject": asunto,
+        "htmlContent": mensaje_html
+    }
+    
+    if adjuntos_base64:
+        data["attachment"] = []
+        for i, foto_b64 in enumerate(adjuntos_base64):
+            data["attachment"].append({
+                "content": foto_b64,
+                "name": f"Remito_Firmado_{i+1}.jpg"
+            })
+            
+    try:
+        response = requests.post(url, headers=headers, data=json.dumps(data))
+        if response.status_code in [200, 201, 202]:
+            print(f"✅ Correo enviado exitosamente a {destinatario}")
+        else:
+            print(f"❌ Error al enviar correo: {response.text}")
+    except Exception as e:
+        print(f"❌ Error de red al enviar correo: {e}")
+
 @app.route('/gestion/<int:id_op>', methods=['GET', 'POST'])
 def gestion(id_op):
     if 'chofer' not in session:
-        return redirect(url_for('login'))
+        return redirect(url_for('index'))
         
     chofer_nombre = session['chofer']
     engine = create_engine(DATABASE_URL)
@@ -392,22 +516,37 @@ def gestion(id_op):
         lat = request.form.get('lat')
         lng = request.form.get('lng')
         
-        foto = request.files.get('foto_remito')
+        fotos = request.files.getlist('foto_remito')
+        fotos_base64 = []
+        
+        for foto in fotos:
+            if foto and foto.filename:
+                foto_bytes = foto.read()
+                if len(foto_bytes) > 0:
+                    fotos_base64.append(base64.b64encode(foto_bytes).decode('utf-8'))
         
         detalle_historial = ""
+        link_maps = ""
+        if lat and lng:
+            link_maps = f"https://www.google.com/maps?q={lat},{lng}"
+            
         if estado_nuevo == "ENTREGADO":
             detalle_historial = f"Recibio: {recibe} "
-            if lat and lng:
-                link_maps = f"https://www.google.com/maps?q={lat},{lng}"
-                detalle_historial += f"| GPS: {link_maps}"
+            if link_maps: detalle_historial += f"| GPS: {link_maps} "
+            if fotos_base64: detalle_historial += f"| 📸 {len(fotos_base64)} Foto(s) Adjunta(s)"
         else:
             detalle_historial = f"Motivo: {motivo} "
-            if lat and lng:
-                link_maps = f"https://www.google.com/maps?q={lat},{lng}"
-                detalle_historial += f"| GPS: {link_maps}"
+            if link_maps: detalle_historial += f"| GPS: {link_maps}"
                 
         try:
             with engine.connect() as conn:
+                op_data = conn.execute(text("""
+                    SELECT o.guia_remito, o.destinatario, o.proveedor, o.fecha_ingreso, c.email_reportes, c.enviar_mail
+                    FROM operaciones o
+                    LEFT JOIN clientes_principales c ON o.proveedor = c.nombre
+                    WHERE o.id = :id AND o.chofer_asignado = :chofer
+                """), {"id": id_op, "chofer": chofer_nombre}).fetchone()
+                
                 conn.execute(text("""
                     UPDATE operaciones 
                     SET estado = :est, fecha_entrega = :fech 
@@ -431,6 +570,35 @@ def gestion(id_op):
                 })
                 
                 conn.commit()
+                
+                if op_data and estado_nuevo == "ENTREGADO" and op_data[5] and op_data[4]:
+                    guia_n = op_data[0] or str(id_op)
+                    dest_n = op_data[1]
+                    email_dest = op_data[4]
+                    fecha_str = hora_arg().strftime("%d/%m/%Y %H:%M")
+                    
+                    asunto = f"Aviso de Entrega: Guía {guia_n} - E.K. Logística"
+                    html_mail = f"""
+                    <div style="font-family: Arial, sans-serif; padding: 20px; border: 1px solid #ccc; max-width: 600px;">
+                        <h2 style="color: #0d6efd;">Confirmación de Entrega</h2>
+                        <p>Estimado cliente,</p>
+                        <p>Le informamos que su envío <b>{guia_n}</b> a nombre de <b>{dest_n}</b> ha sido <b>ENTREGADO</b> satisfactoriamente.</p>
+                        <ul style="background-color: #f8f9fa; padding: 15px; border-radius: 5px; list-style-type: none;">
+                            <li>📅 <b>Fecha y Hora:</b> {fecha_str}</li>
+                            <li>👤 <b>Recibió:</b> {recibe}</li>
+                            <li>🚚 <b>Entregado por:</b> {chofer_nombre}</li>
+                        </ul>
+                        <p>Gracias por confiar en <b>E.K. Logística</b>.</p>
+                    </div>
+                    """
+                    
+                    try:
+                        import threading
+                        thread = threading.Thread(target=enviar_mail_brevo, args=(email_dest, asunto, html_mail, fotos_base64))
+                        thread.start()
+                    except Exception as email_e:
+                        print("Fallo al iniciar el hilo del correo:", email_e)
+                
                 flash(f"✅ Guía {id_op} marcada como {estado_nuevo}.", "success")
         except Exception as e:
             flash(f"❌ Error al guardar en base de datos: {e}", "error")
@@ -469,6 +637,8 @@ def gestion(id_op):
         <title>Gestionar Guía</title>
         <style>
             body {{ font-family: Arial, sans-serif; background-color: #f4f7f6; padding: 15px; margin: 0; }}
+            .header-banner {{ background-color: #ffffff; padding: 10px 15px; border-bottom: 3px solid #198754; display: flex; align-items: center; margin-bottom: 15px; margin-top: -15px; margin-left: -15px; margin-right: -15px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }}
+            .header-banner img {{ height: 40px; margin-right: 15px; }}
             .container {{ max-width: 600px; margin: 0 auto; background: white; padding: 20px; border-radius: 10px; box-shadow: 0 4px 8px rgba(0,0,0,0.1); }}
             h3 {{ color: #0d6efd; margin-top: 0; border-bottom: 2px solid #ddd; padding-bottom: 10px; }}
             .info {{ margin-bottom: 20px; font-size: 16px; color: #444; line-height: 1.6; }}
@@ -481,6 +651,10 @@ def gestion(id_op):
         </style>
     </head>
     <body>
+        <div class="header-banner">
+            <img src="/uploads/eklogo.png" alt="EK" onerror="this.style.display='none'">
+            <h2 style="color: #198754; margin: 0; font-size: 20px; font-weight: bold;">Gestión de Entrega</h2>
+        </div>
         <div class="container">
             <h3>📦 Guía: {op[0] or 'S/G'} (ID: {id_op})</h3>
             
@@ -510,8 +684,9 @@ def gestion(id_op):
                     <label style="font-weight: bold; color: #198754;">Nombre de quien recibe (Obligatorio):</label>
                     <input type="text" name="recibe" id="in_recibe" placeholder="Ej: Juan Perez (Familiar)..." autocomplete="off">
                     
-                    <label style="font-weight: bold; color: #198754; margin-top:10px; display:block;">Opcional: Subir foto del remito firmado</label>
-                    <input type="file" name="foto_remito" accept="image/*" capture="environment" style="margin-bottom:10px;">
+                    <label style="font-weight: bold; color: #198754; margin-top:10px; display:block;">Opcional: Subir foto(s) del remito firmado</label>
+                    <input type="file" name="foto_remito" accept="image/*" capture="environment" multiple style="margin-bottom:10px;">
+                    <p style="font-size: 12px; color: #666; margin-top: 0;">(Puedes seleccionar varias fotos a la vez)</p>
                 </div>
 
                 <div id="div_no_entregado">
