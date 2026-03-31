@@ -181,7 +181,7 @@ class Vehiculo(Base):
     vencimiento_rto = Column(Date, nullable=True) 
     vencimiento_cedula = Column(Date, nullable=True)
     
-    # 🔥 NUEVO CAMPO: Oblea de GNC 🔥
+    # Oblea de GNC
     vencimiento_oblea_gnc = Column(Date, nullable=True)
 
     # Alertas Mecánicas
@@ -205,13 +205,3 @@ class Mantenimiento(Base):
     taller_proveedor = Column(String(100))
     detalle = Column(String(255)) 
     vehiculo = relationship("Vehiculo", back_populates="mantenimientos")
-
-# Parche automático: Agrega la columna de GNC si la tabla ya había sido creada sin ella
-try:
-    Base.metadata.create_all(bind=engine)
-    from sqlalchemy import text
-    with engine.connect() as conn:
-        conn.execute(text("ALTER TABLE vehiculos ADD COLUMN vencimiento_oblea_gnc DATE"))
-        conn.commit()
-except Exception as e:
-    pass
