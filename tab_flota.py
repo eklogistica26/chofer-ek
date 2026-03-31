@@ -28,6 +28,7 @@ class TabFlota(QWidget):
         
         top_bar = QHBoxLayout()
         self.filtro_sucursal = QComboBox()
+        self.filtro_sucursal.setMinimumWidth(250)
         self.filtro_sucursal.addItems(["Todas", "Mendoza", "San Juan"])
         if not getattr(self.main.usuario, 'es_admin_total', False):
             self.filtro_sucursal.setCurrentText(self.main.sucursal_actual)
