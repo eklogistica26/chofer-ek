@@ -3,7 +3,8 @@ import calendar
 from datetime import datetime, date
 from PyQt6.QtWidgets import (QApplication, QDialog, QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, 
                              QComboBox, QPushButton, QTableWidget, QTableWidgetItem, 
-                             QHeaderView, QMessageBox, QSpinBox, QFrame, QFileDialog, QTabWidget, QAbstractItemView, QStyledItemDelegate)
+                             QHeaderView, QMessageBox, QSpinBox, QFrame, QFileDialog, QTabWidget, 
+                             QAbstractItemView, QStyledItemDelegate, QProgressDialog)
 from PyQt6.QtCore import Qt, QDate
 from PyQt6.QtGui import QColor, QFont, QBrush
 from sqlalchemy import text
@@ -59,9 +60,12 @@ class TabFacturacion(QWidget):
         self.cierre_anio = QSpinBox(); self.cierre_anio.setRange(2020, 2030); self.cierre_anio.setValue(datetime.now().year)
         self.cierre_sucursal = QComboBox(); self.cierre_sucursal.addItems(["Todas", "Mendoza", "San Juan"]) 
         self.cierre_prov = QComboBox(); self.cierre_prov.addItem("Todos"); self.cierre_prov.addItems(self.main.lista_proveedores)
-        btn_c = QPushButton("Calcular Listado"); btn_c.clicked.connect(self.calcular_cierre)
+        
+        # 🔥 CREAMOS EL BOTÓN COMO VARIABLE PARA PODER BLOQUEARLO 🔥
+        self.btn_c = QPushButton("Calcular Listado"); self.btn_c.clicked.connect(self.calcular_cierre)
+        
         btn_pdf = QPushButton("Rendición PDF"); btn_pdf.setStyleSheet("background-color: #dc3545 !important; color: white !important;"); btn_pdf.clicked.connect(self.generar_pdf_fact)
-        hl.addWidget(QLabel("Sucursal:")); hl.addWidget(self.cierre_sucursal); hl.addWidget(QLabel("Mes:")); hl.addWidget(self.cierre_mes); hl.addWidget(QLabel("Año:")); hl.addWidget(self.cierre_anio); hl.addWidget(QLabel("Proveedor:")); hl.addWidget(self.cierre_prov); hl.addWidget(btn_c); hl.addWidget(btn_pdf); btn_cargo_fijo = QPushButton("➕ Agregar Cargo Fijo"); btn_cargo_fijo.clicked.connect(self.agregar_cargo_fijo); hl.addWidget(btn_cargo_fijo)
+        hl.addWidget(QLabel("Sucursal:")); hl.addWidget(self.cierre_sucursal); hl.addWidget(QLabel("Mes:")); hl.addWidget(self.cierre_mes); hl.addWidget(QLabel("Año:")); hl.addWidget(self.cierre_anio); hl.addWidget(QLabel("Proveedor:")); hl.addWidget(self.cierre_prov); hl.addWidget(self.btn_c); hl.addWidget(btn_pdf); btn_cargo_fijo = QPushButton("➕ Agregar Cargo Fijo"); btn_cargo_fijo.clicked.connect(self.agregar_cargo_fijo); hl.addWidget(btn_cargo_fijo)
         self.tabla_cierre = QTableWidget(); self.tabla_cierre.setColumnCount(10); self.tabla_cierre.setHorizontalHeaderLabels(["Fecha", "Sucursal", "Guía", "Zona", "Bultos", "Estado", "Base ($)", "Extras ($)", "Total ($)", "Ajuste"]); self.tabla_cierre.setStyleSheet(ESTILO_TABLAS_BLANCAS); self.pintor_cierre = PintorCeldasDelegate(self.tabla_cierre); self.tabla_cierre.setItemDelegate(self.pintor_cierre)
         header = self.tabla_cierre.horizontalHeader(); header.setSectionResizeMode(QHeaderView.ResizeMode.Interactive); self.tabla_cierre.setColumnWidth(0, 90); self.tabla_cierre.setColumnWidth(1, 100); self.tabla_cierre.setColumnWidth(2, 140); self.tabla_cierre.setColumnWidth(3, 140); self.tabla_cierre.setColumnWidth(4, 90); self.tabla_cierre.setColumnWidth(5, 140); self.tabla_cierre.setColumnWidth(6, 100); self.tabla_cierre.setColumnWidth(7, 100); self.tabla_cierre.setColumnWidth(8, 100); header.setStretchLastSection(True); self.tabla_cierre.verticalHeader().setFixedWidth(30); self.tabla_cierre.verticalHeader().setDefaultSectionSize(45); self.tabla_cierre.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows); self.tabla_cierre.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers); self.tabla_cierre.cellDoubleClicked.connect(self.doble_clic_ajuste_precio)
         self.lbl_resumen = QLabel("Total Base: $0 | Total Extras: $0 | TOTAL: $0"); self.lbl_resumen.setStyleSheet("font-size: 16px; font-weight: bold; margin: 10px 15px; padding: 10px; border: 1px solid #ccc;")
@@ -107,26 +111,23 @@ class TabFacturacion(QWidget):
             dlg = EditarPrecioFacturacionDialog(op, self.main, self)
             if dlg.exec() == QDialog.DialogCode.Accepted: op.monto_servicio = dlg.precio_final; self.main.session.commit(); self.calcular_cierre(); self.main.toast.mostrar("✅ Precio actualizado")
         except Exception: self.main.session.rollback()
+        
     def calcular_cierre(self):
-        # 🔥 FIX 4 & 5: LIMPIEZA MASIVA Y ACTUALIZACIÓN DE NOMBRES 🔥
-        try:
-            self.main.session.execute(text("""
-                UPDATE operaciones SET proveedor = UPPER(proveedor), destinatario = UPPER(destinatario), domicilio = UPPER(domicilio), localidad = UPPER(localidad);
-                UPDATE destinos_frecuentes SET destinatario = UPPER(destinatario), domicilio = UPPER(domicilio), localidad = UPPER(localidad), proveedor = UPPER(proveedor);
-                UPDATE clientes_principales SET nombre = 'CARGAS Y ENCOMIENDAS (AEROTRANSPORTADORA)' WHERE nombre ILIKE '%Carga%Encomienda%';
-                UPDATE operaciones SET proveedor = 'CARGAS Y ENCOMIENDAS (AEROTRANSPORTADORA)' WHERE proveedor ILIKE '%Carga%Encomienda%';
-                UPDATE destinos_frecuentes SET proveedor = 'CARGAS Y ENCOMIENDAS (AEROTRANSPORTADORA)' WHERE proveedor ILIKE '%Carga%Encomienda%';
-            """))
-            self.main.session.commit()
-        except: self.main.session.rollback()
-        mes = self.cierre_mes.currentIndex() + 1; anio = self.cierre_anio.value(); prov = self.cierre_prov.currentText().strip(); sucursal = self.cierre_sucursal.currentText(); self.tabla_cierre.setRowCount(0); QApplication.processEvents()
+        self.btn_c.setEnabled(False) # 🔥 BLOQUEAMOS EL BOTÓN 🔥
+        
+        mes = self.cierre_mes.currentIndex() + 1; anio = self.cierre_anio.value(); prov = self.cierre_prov.currentText().strip(); sucursal = self.cierre_sucursal.currentText(); self.tabla_cierre.setRowCount(0)
         try:
             _, last_day = calendar.monthrange(anio, mes); start_date = date(anio, mes, 1); end_date = date(anio, mes, last_day); query = self.main.session.query(Operacion).filter(Operacion.fecha_ingreso >= start_date, Operacion.fecha_ingreso <= end_date, (Operacion.facturado == False) | (Operacion.facturado == None), Operacion.estado.ilike('ENTREGADO'))
             if prov != "Todos": query = query.filter(Operacion.proveedor.ilike(prov))
             else: query = query.filter(~Operacion.proveedor.ilike('JetPaq'))
             if sucursal != "Todas": query = query.filter(Operacion.sucursal == sucursal)
             query = query.order_by(Operacion.fecha_ingreso.asc()); self.resultados_cierre = query.all()
-            if not self.resultados_cierre: self.tabla_cierre.setRowCount(1); item_empty = QTableWidgetItem("❌ Sin guías entregadas para facturar."); item_empty.setTextAlignment(Qt.AlignmentFlag.AlignCenter); self.tabla_cierre.setItem(0, 0, item_empty); self.tabla_cierre.setSpan(0, 0, 1, 10); self.lbl_resumen.setText("Total: $0"); return
+            
+            if not self.resultados_cierre: 
+                self.tabla_cierre.setRowCount(1); item_empty = QTableWidgetItem("❌ Sin guías entregadas para facturar."); item_empty.setTextAlignment(Qt.AlignmentFlag.AlignCenter); self.tabla_cierre.setItem(0, 0, item_empty); self.tabla_cierre.setSpan(0, 0, 1, 10); self.lbl_resumen.setText("Total Base: $0 | Total Extras: $0 | TOTAL: $0")
+                self.btn_c.setEnabled(True)
+                return
+            
             op_ids = [op.id for op in self.resultados_cierre]; conteo_repartos = {}
             if op_ids:
                 hist_records = self.main.session.query(Historial.operacion_id, Historial.accion).filter(Historial.operacion_id.in_(op_ids), Historial.accion.in_(['SALIDA A REPARTO', 'DESHACER (ADMIN)', 'REPROGRAMADO (ADMIN)', 'SALIDA A TERCERIZADO'])).all()
@@ -134,8 +135,22 @@ class TabFacturacion(QWidget):
                     if op_id not in conteo_repartos: conteo_repartos[op_id] = 0
                     if accion == 'SALIDA A REPARTO': conteo_repartos[op_id] += 1
                     elif accion in ['DESHACER (ADMIN)', 'REPROGRAMADO (ADMIN)']: conteo_repartos[op_id] -= 1
-            tot_base = 0; tot_extras = 0; tot_final = 0; self.mapa_filas_cierre = {} 
+                    
+            tot_base = 0; tot_extras = 0; tot_final = 0; self.mapa_filas_cierre = {}; total_ops = len(self.resultados_cierre)
+            
+            # 🔥 CREAMOS LA BARRA DE PROGRESO EMERGENTE (QProgressDialog) 🔥
+            progreso = QProgressDialog("Preparando datos de facturación...", None, 0, total_ops, self)
+            progreso.setWindowTitle("⏳ Calculando Facturación")
+            progreso.setWindowModality(Qt.WindowModality.WindowModal) # Bloquea la ventana de fondo
+            progreso.setMinimumDuration(0)
+            progreso.setValue(0)
+            
             for row, op in enumerate(self.resultados_cierre):
+                if row % 2 == 0 or row == total_ops - 1: 
+                    progreso.setLabelText(f"Calculando tarifa: guía {row + 1} de {total_ops}...")
+                    progreso.setValue(row)
+                    QApplication.processEvents()
+                    
                 self.tabla_cierre.insertRow(row); self.mapa_filas_cierre[row] = op.id; self.tabla_cierre.setItem(row, 0, QTableWidgetItem(op.fecha_ingreso.strftime("%d/%m/%Y") if op.fecha_ingreso else "-")); self.tabla_cierre.setItem(row, 1, QTableWidgetItem((op.sucursal or "").upper())); self.tabla_cierre.setItem(row, 2, QTableWidgetItem(op.guia_remito or "RET")); self.tabla_cierre.setItem(row, 3, QTableWidgetItem(op.localidad or "")); bultos_tot = op.bultos or 1; bultos_fr = op.bultos_frio or 0; det_b = str(bultos_tot); 
                 if bultos_fr > 0 and bultos_fr < bultos_tot: det_b += f" ({bultos_tot-bultos_fr}C/{bultos_fr}R)"; 
                 elif bultos_fr == bultos_tot: det_b += " (R)"
@@ -147,8 +162,17 @@ class TabFacturacion(QWidget):
                 self.tabla_cierre.setItem(row, 6, QTableWidgetItem(f"$ {precio_base:,.2f}")); self.tabla_cierre.setItem(row, 7, QTableWidgetItem(f"$ {extras:,.2f}")); self.tabla_cierre.setItem(row, 8, QTableWidgetItem(f"$ {monto_serv:,.2f}"))
                 btn_ajuste = QPushButton("✏️ Editar"); btn_ajuste.setStyleSheet("background-color: #0d6efd !important; color: white !important; font-size: 11px;"); btn_ajuste.clicked.connect(lambda checked, r=row: self.abrir_dialogo_ajuste_precio(self.mapa_filas_cierre[r])); self.tabla_cierre.setCellWidget(row, 9, btn_ajuste)
                 tot_base += precio_base; tot_extras += extras; tot_final += monto_serv
-            self.totales_cierre = (tot_base, tot_extras, tot_final); self.lbl_resumen.setText(f"Total Base: ${tot_base:,.2f} | Extras: ${tot_extras:,.2f} | TOTAL: ${tot_final:,.2f}")
-        except Exception as e: self.main.session.rollback(); QMessageBox.critical(self, "Error", str(e))
+                
+            progreso.setValue(total_ops)
+            self.totales_cierre = (tot_base, tot_extras, tot_final)
+            self.lbl_resumen.setText(f"Total Base: ${tot_base:,.2f} | Extras: ${tot_extras:,.2f} | TOTAL: ${tot_final:,.2f}")
+        except Exception as e: 
+            self.main.session.rollback()
+            self.lbl_resumen.setText("Total Base: $0 | Total Extras: $0 | TOTAL: $0")
+            QMessageBox.critical(self, "Error", str(e))
+        finally:
+            self.btn_c.setEnabled(True) # 🔥 DESBLOQUEAMOS EL BOTÓN 🔥
+        
     def generar_pdf_fact(self):
         if not hasattr(self, 'resultados_cierre') or not self.resultados_cierre: return
         reply = QMessageBox.question(self, "Cerrar Facturación", "¿Desea marcar estas guías como FACTURADAS?", QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No); marcar_facturado = (reply == QMessageBox.StandardButton.Yes); mes_nombre = self.cierre_mes.currentText(); anio_num = self.cierre_anio.value(); prov_nombre = self.cierre_prov.currentText(); descargas_dir = os.path.join(os.path.expanduser('~'), 'Downloads'); os.makedirs(descargas_dir, exist_ok=True); ruta_pdf = os.path.join(descargas_dir, f"Facturacion_{prov_nombre}_{mes_nombre}_{anio_num}.pdf")
