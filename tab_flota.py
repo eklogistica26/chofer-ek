@@ -4,12 +4,20 @@ from datetime import datetime, timedelta
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, 
                              QComboBox, QPushButton, QTableWidget, QTableWidgetItem, 
                              QHeaderView, QMessageBox, QDateEdit, QDialog, QFormLayout, 
-                             QSpinBox, QDoubleSpinBox, QAbstractItemView, QTextEdit, QCheckBox)
+                             QSpinBox, QDoubleSpinBox, QAbstractItemView, QTextEdit, QCheckBox, QStyledItemDelegate)
 from PyQt6.QtCore import Qt, QDate
-from PyQt6.QtGui import QColor, QFont
+from PyQt6.QtGui import QColor, QFont, QBrush
 from sqlalchemy import text
 
 from database import Vehiculo, Mantenimiento, Chofer
+
+# 🔥 ESTE ES EL PINTOR QUE PERMITE SOBREESCRIBIR LA TRANSPARENCIA Y PONER COLORES 🔥
+class PintorCeldasDelegate(QStyledItemDelegate):
+    def paint(self, painter, option, index):
+        bg_color = index.data(Qt.ItemDataRole.BackgroundRole)
+        if bg_color:
+            painter.fillRect(option.rect, bg_color)
+        super().paint(painter, option, index)
 
 ESTILO_TABLAS_BLANCAS = """
 QTableWidget { background-color: #ffffff !important; gridline-color: #d0d0d0 !important; }
@@ -29,7 +37,7 @@ class TabFlota(QWidget):
         top_bar = QHBoxLayout()
         self.filtro_sucursal = QComboBox()
         self.filtro_sucursal.addItems(["Todas", "Mendoza", "San Juan"])
-        self.filtro_sucursal.setMinimumWidth(250) # 🔥 ANCHO SUCURSAL AMPLIADO 🔥
+        self.filtro_sucursal.setMinimumWidth(250)
         if not getattr(self.main.usuario, 'es_admin_total', False):
             self.filtro_sucursal.setCurrentText(self.main.sucursal_actual)
             self.filtro_sucursal.setEnabled(False)
@@ -100,6 +108,10 @@ class TabFlota(QWidget):
         self.tabla.setStyleSheet(ESTILO_TABLAS_BLANCAS)
         self.tabla.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.tabla.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        
+        # 🔥 ACÁ LE ASIGNAMOS EL PINTOR A LA TABLA DE FLOTA 🔥
+        self.pintor = PintorCeldasDelegate(self.tabla)
+        self.tabla.setItemDelegate(self.pintor)
         
         header = self.tabla.horizontalHeader()
         header.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
@@ -267,12 +279,13 @@ class TabFlota(QWidget):
                 
                 self.tabla.setItem(row, 10, QTableWidgetItem(txt_estado))
 
+                brush_bg = QBrush(color_fila)
                 for col in range(11):
                     item = self.tabla.item(row, col)
                     if item:
-                        item.setBackground(color_fila)
+                        item.setBackground(brush_bg)
                         if color_fila == QColor("#f8d7da"):
-                            item.setForeground(QColor("#721c24"))
+                            item.setForeground(QBrush(QColor("#721c24")))
                 row += 1
 
         except Exception as e:
@@ -492,7 +505,6 @@ class DialogoMantenimiento(QDialog):
         self.in_fecha = QDateEdit(QDate.currentDate())
         self.in_fecha.setCalendarPopup(True)
         
-        # 🔥 CONCEPTOS DEL EXCEL AGREGADOS 🔥
         self.in_tipo = QComboBox()
         self.in_tipo.addItems([
             "Cambio de Aceite / Filtros",
@@ -512,11 +524,10 @@ class DialogoMantenimiento(QDialog):
         self.in_km.setRange(0, 2000000)
         self.in_km.setValue(self.vehiculo.kilometraje_actual or 0)
 
-        # 🔥 ACÁ ESTABA EL ERROR SILENCIOSO QUE BLOQUEABA LA VENTANA 🔥
         self.in_costo = QDoubleSpinBox()
         self.in_costo.setRange(0, 100000000)
         self.in_costo.setPrefix("$ ")
-        self.in_costo.setGroupSeparatorShown(True) # Ahora funciona a la perfección
+        self.in_costo.setGroupSeparatorShown(True)
 
         self.in_taller = QLineEdit()
         self.in_detalle = QTextEdit()
