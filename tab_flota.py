@@ -83,7 +83,6 @@ class TabFlota(QWidget):
 
         self.splitter = QSplitter(Qt.Orientation.Horizontal)
         
-        # --- TABLA IZQUIERDA (Resumen) ---
         self.tabla = QTableWidget()
         self.tabla.setColumnCount(5)
         self.tabla.setHorizontalHeaderLabels(["ID", "Patente", "Chofer", "KM Actual", "Estado / Alertas"])
@@ -103,7 +102,6 @@ class TabFlota(QWidget):
         
         self.tabla.itemSelectionChanged.connect(self.mostrar_radiografia)
 
-        # --- PANEL DERECHO (Radiografía) ---
         self.panel_radiografia = QGroupBox("Radiografía del Vehículo")
         self.panel_radiografia.setStyleSheet("""
             QGroupBox { font-weight: bold; border: 2px solid #1565c0; border-radius: 8px; margin-top: 10px; padding: 10px; background-color: #f8f9fa;}
@@ -135,17 +133,20 @@ class TabFlota(QWidget):
         
         self.pb_aceite = QProgressBar()
         self.pb_distri = QProgressBar()
-        self.pb_neumaticos = QProgressBar()
+        self.pb_poli_v = QProgressBar()
+        self.pb_alineacion = QProgressBar()
         
         estilo_pb = """
             QProgressBar { border: 1px solid #bbb; border-radius: 5px; text-align: center; font-weight: bold; background-color: #e9ecef; }
             QProgressBar::chunk { background-color: #17a2b8; width: 1px; }
         """
-        self.pb_aceite.setStyleSheet(estilo_pb); self.pb_distri.setStyleSheet(estilo_pb); self.pb_neumaticos.setStyleSheet(estilo_pb)
+        self.pb_aceite.setStyleSheet(estilo_pb); self.pb_distri.setStyleSheet(estilo_pb)
+        self.pb_poli_v.setStyleSheet(estilo_pb); self.pb_alineacion.setStyleSheet(estilo_pb)
         
         lay_mec.addRow("Aceite (10k):", self.pb_aceite)
-        lay_mec.addRow("Distribución (60k):", self.pb_distri)
-        lay_mec.addRow("Neumáticos (40k):", self.pb_neumaticos)
+        lay_mec.addRow("Distribución (150k):", self.pb_distri)
+        lay_mec.addRow("Poli V (60k):", self.pb_poli_v)
+        lay_mec.addRow("Alineación/Bal (20k):", self.pb_alineacion)
         lay_rad.addWidget(gb_mec)
         
         gb_leg = QGroupBox("Vencimientos Legales")
@@ -224,7 +225,8 @@ class TabFlota(QWidget):
 
                 if v.km_proximo_service and v.kilometraje_actual >= v.km_proximo_service: alertas.append("ACEITE")
                 if v.km_proximo_distribucion and v.kilometraje_actual >= v.km_proximo_distribucion: alertas.append("DISTRIBUCIÓN")
-                if v.km_proximo_neumaticos and v.kilometraje_actual >= v.km_proximo_neumaticos: alertas.append("NEUMÁTICOS")
+                if v.km_proximo_poli_v and v.kilometraje_actual >= v.km_proximo_poli_v: alertas.append("POLI V")
+                if v.km_proximo_alineacion and v.kilometraje_actual >= v.km_proximo_alineacion: alertas.append("ALINEACIÓN")
                 
                 if v.vencimiento_seguro and v.vencimiento_seguro <= hoy: alertas.append("SEGURO")
                 if v.vencimiento_rto and v.vencimiento_rto <= hoy: alertas.append("RTO")
@@ -266,7 +268,6 @@ class TabFlota(QWidget):
         v = self.main.session.query(Vehiculo).get(v_id)
         if not v: return
         
-        # 🔥 ACÁ AGREGUÉ EL CHOFER AL TÍTULO DE LA RADIOGRAFÍA 🔥
         nombre_chofer = v.chofer.nombre if v.chofer else "Sin Asignar"
         self.lbl_vehiculo_tit.setText(f"🚗 {v.marca} {v.modelo} - {v.patente}  |  👤 Chofer: {nombre_chofer}")
         
@@ -299,7 +300,8 @@ class TabFlota(QWidget):
 
         config_pb(self.pb_aceite, v.km_proximo_service or 0, 1000)
         config_pb(self.pb_distri, v.km_proximo_distribucion or 0, 5000)
-        config_pb(self.pb_neumaticos, v.km_proximo_neumaticos or 0, 3000)
+        config_pb(self.pb_poli_v, v.km_proximo_poli_v or 0, 3000)
+        config_pb(self.pb_alineacion, v.km_proximo_alineacion or 0, 2000)
 
         hoy = datetime.today().date()
         margen = timedelta(days=15)
@@ -425,7 +427,8 @@ class DialogoVehiculo(QDialog):
         # --- MECÁNICA ---
         self.in_km_aceite = QSpinBox(); self.in_km_aceite.setRange(0, 2000000); self.in_km_aceite.setSingleStep(1000)
         self.in_km_distri = QSpinBox(); self.in_km_distri.setRange(0, 2000000); self.in_km_distri.setSingleStep(1000)
-        self.in_km_neumaticos = QSpinBox(); self.in_km_neumaticos.setRange(0, 2000000); self.in_km_neumaticos.setSingleStep(1000)
+        self.in_km_poli_v = QSpinBox(); self.in_km_poli_v.setRange(0, 2000000); self.in_km_poli_v.setSingleStep(1000)
+        self.in_km_alineacion = QSpinBox(); self.in_km_alineacion.setRange(0, 2000000); self.in_km_alineacion.setSingleStep(1000)
 
         # --- LEGALES ---
         self.in_seguro = QDateEdit(QDate.currentDate()); self.in_seguro.setCalendarPopup(True)
@@ -440,7 +443,6 @@ class DialogoVehiculo(QDialog):
         self.in_estado = QComboBox()
         self.in_estado.addItems(["ACTIVO", "EN TALLER", "BAJA"])
 
-        # Armado de formulario visual
         form.addRow("Sucursal:", self.in_sucursal)
         form.addRow("Chofer Asignado:", self.in_chofer)
         form.addRow("Patente:", self.in_patente)
@@ -451,7 +453,8 @@ class DialogoVehiculo(QDialog):
         form.addRow(QLabel("<b>⚙️ ALERTAS MECÁNICAS (Próximo Cambio en KM)</b>"))
         form.addRow("Aceite / Service:", self.in_km_aceite)
         form.addRow("Correa Distribución:", self.in_km_distri)
-        form.addRow("Neumáticos:", self.in_km_neumaticos)
+        form.addRow("Correa Poli V:", self.in_km_poli_v)
+        form.addRow("Alineación y Balanceo:", self.in_km_alineacion)
         
         form.addRow(QLabel(" "))
         form.addRow(QLabel("<b>📄 ALERTAS LEGALES (Fecha de Vencimiento)</b>"))
@@ -492,7 +495,8 @@ class DialogoVehiculo(QDialog):
         
         self.in_km_aceite.setValue(self.vehiculo.km_proximo_service or 0)
         self.in_km_distri.setValue(self.vehiculo.km_proximo_distribucion or 0)
-        self.in_km_neumaticos.setValue(self.vehiculo.km_proximo_neumaticos or 0)
+        self.in_km_poli_v.setValue(self.vehiculo.km_proximo_poli_v or 0)
+        self.in_km_alineacion.setValue(self.vehiculo.km_proximo_alineacion or 0)
         
         if self.vehiculo.vencimiento_seguro: self.in_seguro.setDate(self.vehiculo.vencimiento_seguro)
         if self.vehiculo.vencimiento_rto: self.in_rto.setDate(self.vehiculo.vencimiento_rto)
@@ -528,7 +532,8 @@ class DialogoVehiculo(QDialog):
             
             self.vehiculo.km_proximo_service = self.in_km_aceite.value()
             self.vehiculo.km_proximo_distribucion = self.in_km_distri.value()
-            self.vehiculo.km_proximo_neumaticos = self.in_km_neumaticos.value()
+            self.vehiculo.km_proximo_poli_v = self.in_km_poli_v.value()
+            self.vehiculo.km_proximo_alineacion = self.in_km_alineacion.value()
             
             self.vehiculo.vencimiento_seguro = self.in_seguro.date().toPyDate()
             self.vehiculo.vencimiento_rto = self.in_rto.date().toPyDate()
@@ -568,12 +573,14 @@ class DialogoMantenimiento(QDialog):
         self.in_tipo.addItems([
             "Cambio de Aceite / Filtros",
             "Cambio de Distribución",
+            "Cambio de Correa Poli V",
+            "Alineación y Balanceo",
             "Embrague y Caja de Cambios",
             "Tren Delantero / Trasero / Suspensión",
             "Renovación RTO",
             "Renovación Oblea GNC",
             "Frenos",
-            "Neumáticos (Cambio / Alineación / Balanceo)",
+            "Neumáticos (Cambio)",
             "Reparación Mecánica General",
             "Limpieza y Estética",
             "Otros Gastos"
@@ -599,8 +606,12 @@ class DialogoMantenimiento(QDialog):
         
         self.check_actualizar_service = QPushButton("🔄 Sumar 10.000km para Próx Aceite")
         self.check_actualizar_service.setCheckable(True)
-        self.check_actualizar_distri = QPushButton("🔄 Sumar 60.000km para Próx Distribución")
+        self.check_actualizar_distri = QPushButton("🔄 Sumar 150.000km para Próx Distribución")
         self.check_actualizar_distri.setCheckable(True)
+        self.check_actualizar_poli_v = QPushButton("🔄 Sumar 60.000km para Próx Poli V")
+        self.check_actualizar_poli_v.setCheckable(True)
+        self.check_actualizar_alineacion = QPushButton("🔄 Sumar 20.000km para Próx Alineación")
+        self.check_actualizar_alineacion.setCheckable(True)
 
         form.addRow("Fecha:", self.in_fecha)
         form.addRow("Tipo de Servicio:", self.in_tipo)
@@ -613,6 +624,8 @@ class DialogoMantenimiento(QDialog):
         layout.addWidget(QLabel("<b>Acciones Automáticas Rápidas:</b>"))
         layout.addWidget(self.check_actualizar_service)
         layout.addWidget(self.check_actualizar_distri)
+        layout.addWidget(self.check_actualizar_poli_v)
+        layout.addWidget(self.check_actualizar_alineacion)
         layout.addWidget(self.check_actualizar_rto)
         layout.addWidget(self.check_actualizar_gnc)
 
@@ -629,6 +642,8 @@ class DialogoMantenimiento(QDialog):
         self.check_actualizar_gnc.setChecked("GNC" in texto)
         self.check_actualizar_service.setChecked("Aceite" in texto)
         self.check_actualizar_distri.setChecked("Distribución" in texto)
+        self.check_actualizar_poli_v.setChecked("Poli V" in texto or "Correa" in texto)
+        self.check_actualizar_alineacion.setChecked("Alineación" in texto or "Balanceo" in texto or "Neumáticos" in texto)
 
     def guardar(self):
         try:
@@ -653,7 +668,11 @@ class DialogoMantenimiento(QDialog):
             if self.check_actualizar_service.isChecked():
                 self.vehiculo.km_proximo_service = self.in_km.value() + 10000
             if self.check_actualizar_distri.isChecked():
-                self.vehiculo.km_proximo_distribucion = self.in_km.value() + 60000
+                self.vehiculo.km_proximo_distribucion = self.in_km.value() + 150000
+            if self.check_actualizar_poli_v.isChecked():
+                self.vehiculo.km_proximo_poli_v = self.in_km.value() + 60000
+            if self.check_actualizar_alineacion.isChecked():
+                self.vehiculo.km_proximo_alineacion = self.in_km.value() + 20000
 
             self.session.commit()
             self.accept()

@@ -187,8 +187,11 @@ class Vehiculo(Base):
     kilometraje_actual = Column(Integer, default=0)
     km_proximo_service = Column(Integer, default=0) 
     
-    km_proximo_neumaticos = Column(Integer, default=0) 
+    km_proximo_neumaticos = Column(Integer, default=0) # Obsoleto visualmente, mantenido por seguridad DB
     km_proximo_distribucion = Column(Integer, default=0) 
+    km_proximo_alineacion = Column(Integer, default=0) # NUEVO: Alineación y balanceo (20k)
+    km_proximo_poli_v = Column(Integer, default=0)     # NUEVO: Correa Poli V (60k)
+    
     falla_reportada = Column(String(255), nullable=True)
     
     estado = Column(String(50), default="ACTIVO") 
@@ -207,3 +210,13 @@ class Mantenimiento(Base):
     taller_proveedor = Column(String(100))
     detalle = Column(String(255)) 
     vehiculo = relationship("Vehiculo", back_populates="mantenimientos")
+
+# 🔥 AUTO-PARCHE (BORRAR DESPUÉS DE ABRIR EL PROGRAMA 1 VEZ) 🔥
+try:
+    from sqlalchemy import text
+    _e, _s = get_session()
+    _s.execute(text("ALTER TABLE vehiculos ADD COLUMN IF NOT EXISTS km_proximo_alineacion INTEGER DEFAULT 0;"))
+    _s.execute(text("ALTER TABLE vehiculos ADD COLUMN IF NOT EXISTS km_proximo_poli_v INTEGER DEFAULT 0;"))
+    _s.commit()
+    _s.close()
+except: pass
