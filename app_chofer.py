@@ -1033,9 +1033,19 @@ def update_km():
                     res_c = conn.execute(text("SELECT id FROM choferes WHERE nombre = :n"), {"n": chofer}).fetchone()
                     if res_c:
                         ch_id = res_c[0]
-                        res_v = conn.execute(text("SELECT id FROM vehiculos WHERE chofer_id = :cid AND estado = 'ACTIVO'"), {"cid": ch_id}).fetchone()
+                        res_v = conn.execute(text("SELECT id, patente FROM vehiculos WHERE chofer_id = :cid AND estado = 'ACTIVO'"), {"cid": ch_id}).fetchone()
                         if res_v:
+                            # 1. Actualiza el número en el vehículo
                             conn.execute(text("UPDATE vehiculos SET kilometraje_actual = :km WHERE id = :vid"), {"km": int(nuevo_km), "vid": res_v[0]})
+                            
+                            # 🔥 2. NUEVO: Guarda el registro exacto en el historial con fecha y hora 🔥
+                            detalle_hist = f"Actualizó el odómetro a {nuevo_km} km (Patente: {res_v[1]})"
+                            conn.execute(text("INSERT INTO historial_movimientos (usuario, accion, detalle, fecha_hora) VALUES (:u, 'APP - ACTUALIZACION KM', :d, :f)"), {
+                                "u": chofer,
+                                "d": detalle_hist,
+                                "f": hora_arg()
+                            })
+                            
                             conn.commit()
                             flash(f"✅ Kilometraje actualizado a {nuevo_km} km.", "success")
                         else:
