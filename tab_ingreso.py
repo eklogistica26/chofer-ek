@@ -1,10 +1,11 @@
 import os
+import re
 from datetime import datetime, date
 from PyQt6.QtWidgets import (QApplication, QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, 
                              QComboBox, QPushButton, QTableWidget, QTableWidgetItem, 
                              QHeaderView, QMessageBox, QDateEdit, QGroupBox, 
                              QFormLayout, QSpinBox, QDoubleSpinBox, QRadioButton, 
-                             QButtonGroup, QFileDialog, QCheckBox, QStyledItemDelegate, QScrollArea, QCompleter, QAbstractItemView, QDialog)
+                             QButtonGroup, QFileDialog, QCheckBox, QStyledItemDelegate, QScrollArea, QCompleter, QAbstractItemView, QDialog, QSplitter)
 from PyQt6.QtCore import Qt, QDate, QTimer
 from PyQt6.QtGui import QColor, QFont, QBrush
 from sqlalchemy import text
@@ -221,10 +222,8 @@ class TabIngreso(QWidget):
         self.btn_dhl.clicked.connect(self.importar_txt_dhl)
         if self.main.sucursal_actual != "San Juan": self.btn_dhl.hide()
         
-        # 🔥 SOLUCIÓN AL CORTE EN PANTALLAS CHICAS 🔥
+        # 🔥 CREAMOS EL SPLITTER (PUNTITOS) PARA QUE SEA 100% RESPONSIVO 🔥
         panel_izquierdo = QWidget()
-        panel_izquierdo.setMinimumWidth(420) # Obliga a que siempre tenga un tamaño legible
-        panel_izquierdo.setMaximumWidth(480) # Evita que se estire demasiado en monitores gigantes
         layout_izquierdo = QVBoxLayout(panel_izquierdo)
         layout_izquierdo.setContentsMargins(0, 0, 5, 0)
         layout_izquierdo.addWidget(self.scroll_izq) 
@@ -256,9 +255,15 @@ class TabIngreso(QWidget):
         self.tabla_ingresos.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows); self.tabla_ingresos.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         lay_botones_tabla = QHBoxLayout(); btn_del = QPushButton("🗑️ ELIMINAR"); btn_del.clicked.connect(lambda: self.main.eliminar_fila(self.tabla_ingresos, Operacion)); btn_edit_ingreso = QPushButton("✏️ EDITAR"); btn_edit_ingreso.clicked.connect(lambda: self.main.abrir_edicion(self.tabla_ingresos)); lay_botones_tabla.addWidget(btn_edit_ingreso); lay_botones_tabla.addWidget(btn_del); col_der.addLayout(h_header_ingreso); col_der.addWidget(self.tabla_ingresos); col_der.addLayout(lay_botones_tabla)
         
-        # 🔥 LE SACAMOS EL PORCENTAJE (30/70) Y LO DEJAMOS AUTOMÁTICO 🔥
-        l.addWidget(panel_izquierdo) 
-        l.addLayout(col_der, 1) # La tabla absorbe todo el espacio sobrante
+        panel_derecho = QWidget()
+        panel_derecho.setLayout(col_der)
+        
+        self.splitter = QSplitter(Qt.Orientation.Horizontal)
+        self.splitter.addWidget(panel_izquierdo)
+        self.splitter.addWidget(panel_derecho)
+        self.splitter.setSizes([400, 800]) 
+        
+        l.addWidget(self.splitter)
         
         self.configurar_autocompletado_global()
         self.actualizar_interfaz_peso()
@@ -294,9 +299,10 @@ class TabIngreso(QWidget):
                 self.in_prov.blockSignals(False)
                 self.cargar_destinos_frecuentes_combo(destino_db.proveedor)
                 self.actualizar_interfaz_peso()
-                self.in_dest.blockSignals(True)
-                self.in_dest.setText(destino_db.destinatario.upper())
-                self.in_dest.blockSignals(False)
+                
+                # 🔥 FORZAMOS A BORRAR LA BASURA DEL PROVEEDOR EN LA CASILLA 🔥
+                QTimer.singleShot(10, lambda: self.in_dest.setText(destino_db.destinatario.upper()))
+                
                 self.in_dom.setText(destino_db.domicilio.upper())
                 self.in_cel.setText(destino_db.celular or "")
                 self.in_loc_combo.setCurrentText(destino_db.localidad.upper())
@@ -385,6 +391,12 @@ class TabIngreso(QWidget):
             peso_manual = self.in_peso_manual.value()
             prov = self.in_prov.currentText().strip().upper()
             guia_final = self.in_guia.text().strip().upper()
+            
+            # 🔥 LIMPIEZA FINAL DE CORCHETES POR LAS DUDAS 🔥
+            dest_texto = self.in_dest.text().strip().upper()
+            if "[" in dest_texto:
+                dest_texto = re.sub(r'\s*-?\s*\[.*?\]', '', dest_texto).strip()
+            
             if prov and prov != "JETPAQ" and guia_final and "Flete" not in servicio:
                 existe = self.main.session.query(Operacion).filter(Operacion.guia_remito == guia_final, Operacion.proveedor == prov).first()
                 if existe: QMessageBox.warning(self, "Guía Duplicada", f"⚠️ ¡ALTO!\n\nEl remito/guía '{guia_final}' ya fue ingresado previamente para el cliente '{prov}'."); return
@@ -407,7 +419,8 @@ class TabIngreso(QWidget):
                         try: seq = int(r_op[0].split('-')[-1]); max_seq = max(max_seq, seq)
                         except: pass
                 guia_final = f"{prefijo} {c_year}-{c_month}-{max_seq + 1:03d}"
-            dest_texto = self.in_dest.text().strip().upper(); dom_texto = self.in_dom.text().strip().upper(); cel_texto = self.in_cel.text().strip(); mensaje_toast = "✅ GUARDADO EN DEPÓSITO CORRECTAMENTE"
+            
+            dom_texto = self.in_dom.text().strip().upper(); cel_texto = self.in_cel.text().strip(); mensaje_toast = "✅ GUARDADO EN DEPÓSITO CORRECTAMENTE"
             if prov and prov != "JETPAQ" and dest_texto and dom_texto:
                 existe_dest = self.main.session.query(DestinoFrecuente).filter(DestinoFrecuente.proveedor == prov, DestinoFrecuente.sucursal == self.main.sucursal_actual, DestinoFrecuente.destinatario == dest_texto, DestinoFrecuente.domicilio == dom_texto).first()
                 if not existe_dest:
