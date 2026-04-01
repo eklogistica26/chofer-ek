@@ -119,6 +119,9 @@ class PlataformaLogistica(QMainWindow):
                 self.cargar_monitor_global(); self.cargar_novedades()
             elif "INGRESO" in nombre_tab: 
                 self.tab_ingreso.cargar_movimientos_dia()
+                self.actualizar_combos_dinamicos()
+            if hasattr(self.tab_ingreso, 'configurar_autocompletado_global'):
+                self.tab_ingreso.configurar_autocompletado_global()
             elif "Ruta" in nombre_tab: self.cargar_ruta()
             elif "Rendición" in nombre_tab: self.tab_rendicion.cargar_rendicion()
             elif "Estadísticas" in nombre_tab: self.cargar_estadisticas()
