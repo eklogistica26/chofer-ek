@@ -190,8 +190,8 @@ class Vehiculo(Base):
     
     km_proximo_neumaticos = Column(Integer, default=0) 
     km_proximo_distribucion = Column(Integer, default=0) 
-    km_proximo_alineacion = Column(Integer, default=0) # 🔥 NUEVO 🔥
-    km_proximo_poli_v = Column(Integer, default=0)     # 🔥 NUEVO 🔥
+    km_proximo_alineacion = Column(Integer, default=0) 
+    km_proximo_poli_v = Column(Integer, default=0)     
     
     falla_reportada = Column(String(255), nullable=True)
     
@@ -211,14 +211,3 @@ class Mantenimiento(Base):
     taller_proveedor = Column(String(100))
     detalle = Column(String(255)) 
     vehiculo = relationship("Vehiculo", back_populates="mantenimientos")
-
-# 🔥 AUTO-SINCRONIZADOR DE NUBE (Podés borrar estas líneas después de abrir el programa una vez) 🔥
-try:
-    from sqlalchemy import text
-    _e, _s = get_session()
-    _s.execute(text("ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS ver_flota BOOLEAN DEFAULT TRUE;"))
-    _s.execute(text("ALTER TABLE vehiculos ADD COLUMN IF NOT EXISTS km_proximo_alineacion INTEGER DEFAULT 0;"))
-    _s.execute(text("ALTER TABLE vehiculos ADD COLUMN IF NOT EXISTS km_proximo_poli_v INTEGER DEFAULT 0;"))
-    _s.commit()
-    _s.close()
-except: pass
