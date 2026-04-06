@@ -58,6 +58,29 @@ except: pass
 def serve_logo():
     return send_from_directory(BASE_DIR, 'eklogo.png')
 
+# --- MENÚ DE NAVEGACIÓN INFERIOR DINÁMICO ---
+def get_bottom_nav(active_tab="ruta", num_base=""):
+    c_ruta = "color: #1976D2; font-weight:bold;" if active_tab == "ruta" else "color: #777;"
+    c_flota = "color: #1976D2; font-weight:bold;" if active_tab == "flota" else "color: #777;"
+    c_hist = "color: #1976D2; font-weight:bold;" if active_tab == "historial" else "color: #777;"
+    
+    return f"""
+    <div class="bottom-nav">
+        <a href="/viajes" class="nav-item" style="{c_ruta}">
+            <span class="nav-icon">📦</span>Ruta
+        </a>
+        <a href="/flota" class="nav-item" style="{c_flota}">
+            <span class="nav-icon">🚙</span>Vehículo
+        </a>
+        <a href="/historial" class="nav-item" style="{c_hist}">
+            <span class="nav-icon">📜</span>Historial
+        </a>
+        <a href="https://wa.me/{num_base}" class="nav-item" style="color:#D32F2F;">
+            <span class="nav-icon">🆘</span>Base
+        </a>
+    </div>
+    """
+
 # --- MAIL BLINDADO Y ACTUALIZADO CON ANTI-REBOTE POR PESO ---
 def enviar_email(destinatario, guia, rutas_fotos, proveedor, link_mapa=""):
     if not BREVO_API_KEY: return
@@ -170,7 +193,7 @@ HTML_HEAD = """
         .alert-success { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
         .alert-error { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
         .bottom-nav { position: fixed; bottom: 0; left: 0; width: 100%; background: white; border-top: 1px solid #eee; display: flex; justify-content: space-around; padding: 12px 0; z-index: 99; box-shadow: 0 -2px 5px rgba(0,0,0,0.05); }
-        .nav-item { text-decoration: none; color: #777; text-align: center; font-size: 0.75rem; font-weight: 500; }
+        .nav-item { text-decoration: none; color: #777; text-align: center; font-size: 0.75rem; font-weight: 500; width: 25%; }
         .nav-icon { font-size: 1.4rem; display: block; margin-bottom: 3px; }
     </style>
 </head>
@@ -337,7 +360,6 @@ def lista_viajes():
             </div>
             """
             
-    # 🔥 LÓGICA DE VISIBILIDAD DE BOTONES 🔥
     btn_escaner = ""
     if "gaston" in chofer_lower or "gastón" in chofer_lower:
         btn_escaner = """
@@ -345,26 +367,7 @@ def lista_viajes():
             <span style="font-size:1.2rem;">📷</span> ESCANEAR CÓDIGO DE BARRAS
         </a>
         """
-        
-    mostrar_mantenimiento = True
-    if "miguel" in chofer_lower and ("nuñez" in chofer_lower or "nunez" in chofer_lower):
-        mostrar_mantenimiento = False
-    if "eusebio" in chofer_lower and "rovera" in chofer_lower:
-        mostrar_mantenimiento = False
 
-    botones_mantenimiento = ""
-    if mostrar_mantenimiento:
-        botones_mantenimiento = """
-        <div style="display:flex; gap:10px; margin-bottom:15px;">
-            <a href="/update_km" class="btn" style="background-color: #17a2b8; color: white; flex:1; margin-top:0; font-size:0.9rem;">
-                🚗 KMs
-            </a>
-            <a href="/reportar_falla" class="btn" style="background-color: #D32F2F; color: white; flex:1; margin-top:0; font-size:0.9rem;">
-                ⚠️ FALLA
-            </a>
-        </div>
-        """
-            
     html = f"""
     <!DOCTYPE html>
     <html>
@@ -381,26 +384,16 @@ def lista_viajes():
                 <a href="/guardia" class="btn btn-red" style="display:flex; align-items:center; justify-content:center; gap:10px; margin-bottom: 10px;">
                     <span style="font-size:1.2rem;">🚨</span> CARGAR GUÍA DE GUARDIA
                 </a>
-                
                 {btn_escaner}
-                {botones_mantenimiento}
             </div>
 
             {cards_html}
             <br>
             <a href="/viajes" class="btn btn-green" style="margin-bottom: 60px;">🔄 ACTUALIZAR LISTA</a>
         </div>
-        <div class="bottom-nav">
-            <a href="/viajes" class="nav-item" style="color: #1976D2; font-weight:bold;">
-                <span class="nav-icon">📦</span>Ruta
-            </a>
-            <a href="/historial" class="nav-item">
-                <span class="nav-icon">📜</span>Historial
-            </a>
-            <a href="https://wa.me/{NUMERO_BASE_FINAL}" class="nav-item" style="color:#D32F2F;">
-                <span class="nav-icon">🆘</span>Base
-            </a>
-        </div>
+        
+        {get_bottom_nav('ruta', NUMERO_BASE_FINAL)}
+        
     </body>
     </html>
     """
@@ -418,23 +411,32 @@ def guardia():
         destinatario = request.form.get('destinatario')
         domicilio = request.form.get('domicilio')
         localidad = request.form.get('localidad')
-        bultos = request.form.get('bultos', 1)
+        
+        # Validación de tipo de dato para evitar error en Postgres
+        bultos_val = request.form.get('bultos', 1)
+        try: bultos_val = int(bultos_val)
+        except: bultos_val = 1
+        
         tipo_carga = request.form.get('tipo_carga', 'Común')
         tipo_urgencia = request.form.get('tipo_urgencia', 'Normal')
 
         if conn:
             try:
+                # 1. Buscamos de qué sucursal es el chofer para no romper la base
+                res_suc = conn.execute(text("SELECT sucursal FROM choferes WHERE nombre = :n"), {"n": chofer}).fetchone()
+                suc_chof = res_suc[0] if res_suc else 'Mendoza'
+
                 sql_insert = text("""
                     INSERT INTO operaciones 
-                    (guia_remito, proveedor, destinatario, domicilio, localidad, bultos, tipo_carga, tipo_urgencia, chofer_asignado, estado, fecha_salida, tipo_servicio, fecha_ingreso)
+                    (guia_remito, proveedor, destinatario, domicilio, localidad, bultos, tipo_carga, tipo_urgencia, chofer_asignado, estado, fecha_salida, tipo_servicio, fecha_ingreso, sucursal)
                     VALUES 
-                    (:g, :p, :d, :dom, :loc, :b, :tc, :tu, :c, 'EN REPARTO', :fs, 'Entrega (Guardia)', :fi)
+                    (:g, :p, :d, :dom, :loc, :b, :tc, :tu, :c, 'EN REPARTO', :fs, 'Entrega (Guardia)', :fi, :suc)
                     RETURNING id
                 """)
                 res = conn.execute(sql_insert, {
                     "g": guia, "p": proveedor, "d": destinatario, "dom": domicilio,
-                    "loc": localidad, "b": bultos, "tc": tipo_carga, "tu": tipo_urgencia,
-                    "c": chofer, "fs": hora_arg(), "fi": hora_arg().date()
+                    "loc": localidad, "b": bultos_val, "tc": tipo_carga, "tu": tipo_urgencia,
+                    "c": chofer, "fs": hora_arg(), "fi": hora_arg().date(), "suc": suc_chof
                 })
                 new_id = res.fetchone()[0]
                 
@@ -442,6 +444,7 @@ def guardia():
                 conn.commit()
                 flash("✅ Guía de guardia generada e ingresada a tu ruta.", "success")
             except Exception as e:
+                print("Error Guardia:", e)
                 flash("❌ Error al crear la guía.", "error")
             finally:
                 conn.close()
@@ -607,17 +610,9 @@ def historial():
         <div class="container">
             {filas_html}
         </div>
-        <div class="bottom-nav">
-            <a href="/viajes" class="nav-item">
-                <span class="nav-icon">📦</span>Ruta
-            </a>
-            <a href="/historial" class="nav-item" style="color: #1976D2; font-weight:bold;">
-                <span class="nav-icon">📜</span>Historial
-            </a>
-            <a href="https://wa.me/{NUMERO_BASE_FINAL}" class="nav-item" style="color:#D32F2F;">
-                <span class="nav-icon">🆘</span>Base
-            </a>
-        </div>
+        
+        {get_bottom_nav('historial', NUMERO_BASE_FINAL)}
+        
     </body>
     </html>
     """
@@ -675,8 +670,9 @@ def gestion(id_op):
                     from PIL import Image
                     img = Image.open(ruta)
                     if img.mode in ("RGBA", "P"): img = img.convert("RGB")
-                    img.thumbnail((800, 800))
-                    img.save(ruta, "JPEG", quality=70, optimize=True)
+                    # 🔥 RESOLUCIÓN ALTA PARA REMITOS PERFECTOS 🔥
+                    img.thumbnail((1600, 1600)) 
+                    img.save(ruta, "JPEG", quality=85, optimize=True)
                 except: pass
                 rutas_fotos.append(ruta)
                 tiene_foto = True
@@ -700,16 +696,22 @@ def gestion(id_op):
 
         estado_db = "EN REPARTO"
         detalle_historial = ""
+        accion_historial = "APP" 
+        
         if estado_btn == "ENTREGADO":
             estado_db = "ENTREGADO"
             detalle_historial = f"Recibio: {recibe}"
             if tiene_foto: detalle_historial += f" [CON {len(rutas_fotos)} FOTO/S]"
             detalle_historial += texto_gps_historial 
+            
         elif estado_btn == "Pendiente":
             estado_db = "EN REPARTO" 
             detalle_historial = f"Pendiente en calle. Motivo: {motivo}{texto_gps_historial}"
+            
         elif estado_btn == "Reprogramado":
             estado_db = "EN DEPOSITO" 
+            accion_historial = "REPROGRAMADO (APP)"
+            
             if fecha_repro:
                 try:
                     f_str = datetime.strptime(fecha_repro, "%Y-%m-%d").strftime("%d/%m/%Y")
@@ -734,7 +736,7 @@ def gestion(id_op):
                 else:
                     conn.execute(text("UPDATE operaciones SET estado=:e, fecha_entrega=:f WHERE id=:i"), {"e": estado_db, "f": hora_arg(), "i": id_op})
                 
-                conn.execute(text("INSERT INTO historial_movimientos (operacion_id, usuario, accion, detalle, fecha_hora) VALUES (:o, :u, 'APP', :d, :f)"), {"o": id_op, "u": chofer, "d": detalle_historial, "f": hora_arg()})
+                conn.execute(text("INSERT INTO historial_movimientos (operacion_id, usuario, accion, detalle, fecha_hora) VALUES (:o, :u, :acc, :d, :f)"), {"o": id_op, "u": chofer, "acc": accion_historial, "d": detalle_historial, "f": hora_arg()})
                 conn.commit()
             except Exception as e: print("Error actualizando DB:", e)
             finally: conn.close()
@@ -951,6 +953,55 @@ def scan():
     """
     return render_template_string(html)
 
+# 🔥 NUEVA PANTALLA: MENÚ FLOTA (VEHÍCULO) 🔥
+@app.route('/flota')
+def flota():
+    chofer = session.get('chofer')
+    if not chofer: return redirect(url_for('index'))
+    
+    conn = get_db()
+    patente = "Ningún vehículo asignado"
+    if conn:
+        try:
+            res_c = conn.execute(text("SELECT id FROM choferes WHERE nombre = :n"), {"n": chofer}).fetchone()
+            if res_c:
+                res_v = conn.execute(text("SELECT patente, marca, modelo FROM vehiculos WHERE chofer_id = :cid AND estado = 'ACTIVO'"), {"cid": res_c[0]}).fetchone()
+                if res_v:
+                    patente = f"{res_v[1]} {res_v[2]} <br><small style='color:#1565C0;'>(Patente: {res_v[0]})</small>"
+        except: pass
+        finally: conn.close()
+        
+    html = f"""
+    <!DOCTYPE html>
+    <html>
+    {HTML_HEAD}
+    <body>
+        <div class="header" style="background:#546E7A;">
+            <div style="width:100%; text-align:center;">🧰 Mi Vehículo</div>
+        </div>
+        <div class="container">
+            <div class="card" style="text-align:center; border-top: 5px solid #546E7A;">
+                <p style="color:#666; margin-top:0; font-weight:bold;">Vehículo actual:</p>
+                <h3 style="margin:5px 0 25px 0; color:#333;">{patente}</h3>
+                
+                <div style="display:flex; flex-direction:column; gap:15px;">
+                    <a href="/update_km" class="btn" style="background-color: #17a2b8; color: white; font-size:1.1rem; padding:15px;">
+                        🚗 ACTUALIZAR KILÓMETROS
+                    </a>
+                    <a href="/reportar_falla" class="btn" style="background-color: #D32F2F; color: white; font-size:1.1rem; padding:15px;">
+                        ⚠️ REPORTAR FALLA MECÁNICA
+                    </a>
+                </div>
+            </div>
+        </div>
+        
+        {get_bottom_nav('flota', NUMERO_BASE_FINAL)}
+        
+    </body>
+    </html>
+    """
+    return render_template_string(html)
+
 @app.route('/update_km', methods=['GET', 'POST'])
 def update_km():
     chofer = session.get('chofer')
@@ -967,19 +1018,26 @@ def update_km():
                         ch_id = res_c[0]
                         res_v = conn.execute(text("SELECT id, patente FROM vehiculos WHERE chofer_id = :cid AND estado = 'ACTIVO'"), {"cid": ch_id}).fetchone()
                         if res_v:
+                            # 1. GUARDAMOS EL KILOMETRAJE PRIMERO Y CONFIRMAMOS
                             conn.execute(text("UPDATE vehiculos SET kilometraje_actual = :km WHERE id = :vid"), {"km": int(nuevo_km), "vid": res_v[0]})
-                            
-                            detalle_hist = f"Actualizó el odómetro a {nuevo_km} km (Patente: {res_v[1]})"
-                            conn.execute(text("INSERT INTO historial_movimientos (usuario, accion, detalle, fecha_hora) VALUES (:u, 'APP - KILOMETROS', :d, :f)"), {"u": chofer, "d": detalle_hist, "f": hora_arg()})
-                            
                             conn.commit()
+                            
+                            # 2. INTENTAMOS GUARDAR EL HISTORIAL (Aislado por si falla)
+                            try:
+                                detalle_hist = f"Actualizó el odómetro a {nuevo_km} km (Patente: {res_v[1]})"
+                                conn.execute(text("INSERT INTO historial_movimientos (usuario, accion, detalle, fecha_hora) VALUES (:u, 'APP - KILOMETROS', :d, :f)"), {"u": chofer, "d": detalle_hist, "f": hora_arg()})
+                                conn.commit()
+                            except:
+                                conn.rollback() # Si la base rechaza el historial huérfano, no pasa nada
+                                
                             flash(f"✅ Kilometraje actualizado a {nuevo_km} km.", "success")
                         else: flash("❌ No tienes un vehículo activo asignado en la base de datos.", "error")
                     else: flash("❌ Error de identificación de usuario.", "error")
-                except: flash("❌ Error al guardar el kilometraje en la base de datos.", "error")
+                except Exception as e: 
+                    flash("❌ Error al guardar el kilometraje en la base de datos.", "error")
                 finally: conn.close()
         else: flash("❌ Por favor ingresa un número válido.", "error")
-        return redirect(url_for('lista_viajes'))
+        return redirect(url_for('flota'))
         
     km_actual = ""; patente = "Buscando vehículo..."; tiene_vehiculo = False
     conn = get_db()
@@ -1015,7 +1073,7 @@ def update_km():
                     <button type="submit" class="btn" style="background:#17a2b8; color:white;" {'disabled' if not tiene_vehiculo else ''}>💾 GUARDAR KILÓMETROS</button>
                 </form>
             </div>
-            <a href="/viajes" class="btn btn-outline">⬅ Cancelar y Volver</a>
+            <a href="/flota" class="btn btn-outline">⬅ Cancelar y Volver</a>
             {"" if tiene_vehiculo else "<div class='alert alert-error' style='margin-top:20px;'>⚠️ Para usar esta función, el administrador de la oficina debe asignarte un vehículo desde la PC.</div>"}
         </div>
     </body>
@@ -1023,7 +1081,6 @@ def update_km():
     """
     return render_template_string(html)
 
-# 🔥 NUEVA RUTA PARA REPORTAR FALLAS MECÁNICAS 🔥
 @app.route('/reportar_falla', methods=['GET', 'POST'])
 def reportar_falla():
     chofer = session.get('chofer')
@@ -1040,19 +1097,23 @@ def reportar_falla():
                         ch_id = res_c[0]
                         res_v = conn.execute(text("SELECT id, patente FROM vehiculos WHERE chofer_id = :cid AND estado = 'ACTIVO'"), {"cid": ch_id}).fetchone()
                         if res_v:
-                            # Guardamos la falla en el vehículo para que la PC lo lea
+                            # 1. GUARDAMOS LA FALLA EN EL VEHÍCULO PRIMERO
                             conn.execute(text("UPDATE vehiculos SET falla_reportada = :falla WHERE id = :vid"), {"falla": detalle_falla, "vid": res_v[0]})
-                            
-                            # Lo dejamos asentado en el historial del chofer
-                            hist = f"Reportó falla mecánica: '{detalle_falla}' (Patente: {res_v[1]})"
-                            conn.execute(text("INSERT INTO historial_movimientos (usuario, accion, detalle, fecha_hora) VALUES (:u, 'APP - REPORTE FALLA', :d, :f)"), {"u": chofer, "d": hist, "f": hora_arg()})
-                            
                             conn.commit()
+                            
+                            # 2. INTENTAMOS GUARDAR EL HISTORIAL
+                            try:
+                                hist = f"Reportó falla mecánica: '{detalle_falla}' (Patente: {res_v[1]})"
+                                conn.execute(text("INSERT INTO historial_movimientos (usuario, accion, detalle, fecha_hora) VALUES (:u, 'APP - REPORTE FALLA', :d, :f)"), {"u": chofer, "d": hist, "f": hora_arg()})
+                                conn.commit()
+                            except:
+                                conn.rollback()
+                                
                             flash("⚠️ Falla reportada a la administración con éxito.", "success")
                         else: flash("❌ No tienes un vehículo activo asignado.", "error")
                 except: flash("❌ Error de base de datos.", "error")
                 finally: conn.close()
-        return redirect(url_for('lista_viajes'))
+        return redirect(url_for('flota'))
 
     patente = "Buscando..."
     tiene_vehiculo = False
@@ -1089,7 +1150,7 @@ def reportar_falla():
                     <button type="submit" class="btn btn-red" {'disabled' if not tiene_vehiculo else ''}>ENVIAR REPORTE</button>
                 </form>
             </div>
-            <a href="/viajes" class="btn btn-outline">⬅ Cancelar y Volver</a>
+            <a href="/flota" class="btn btn-outline">⬅ Cancelar y Volver</a>
         </div>
     </body>
     </html>
