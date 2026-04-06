@@ -959,6 +959,12 @@ def flota():
     chofer = session.get('chofer')
     if not chofer: return redirect(url_for('index'))
     
+    mensajes_html = ""
+    mensajes = session.pop('_flashes', [])
+    for categoria, mensaje in mensajes:
+        clase = "alert-success" if categoria == "success" else "alert-error"
+        mensajes_html += f'<div class="alert {clase}">{mensaje}</div>'
+    
     conn = get_db()
     patente = "Ningún vehículo asignado"
     if conn:
@@ -980,6 +986,7 @@ def flota():
             <div style="width:100%; text-align:center;">🧰 Mi Vehículo</div>
         </div>
         <div class="container">
+            {mensajes_html}
             <div class="card" style="text-align:center; border-top: 5px solid #546E7A;">
                 <p style="color:#666; margin-top:0; font-weight:bold;">Vehículo actual:</p>
                 <h3 style="margin:5px 0 25px 0; color:#333;">{patente}</h3>
