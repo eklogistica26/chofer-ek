@@ -10,7 +10,7 @@ from PyQt6.QtCore import Qt, QDate
 from PyQt6.QtGui import QColor, QFont, QBrush
 from sqlalchemy import text
 
-from database import Vehiculo, Mantenimiento, Chofer
+from database import Vehiculo, Mantenimiento, Chofer, Historial
 
 class PintorCeldasDelegate(QStyledItemDelegate):
     def paint(self, painter, option, index):
@@ -379,6 +379,8 @@ class TabFlota(QWidget):
         if vehiculo:
             dlg = DialogoHistorialMantenimiento(self.main.session, vehiculo, parent=self)
             dlg.exec()
+            self.cargar_vehiculos()
+            self.mostrar_radiografia()
 
     def eliminar_vehiculo(self):
         v_id = self.obtener_id_seleccionado()
@@ -599,19 +601,26 @@ class DialogoMantenimiento(QDialog):
         self.in_detalle = QTextEdit()
         self.in_detalle.setMaximumHeight(80)
 
-        self.check_actualizar_rto = QPushButton("🔄 Posponer Vencimiento RTO a un año")
-        self.check_actualizar_rto.setCheckable(True)
-        self.check_actualizar_gnc = QPushButton("🔄 Posponer Oblea GNC a un año")
-        self.check_actualizar_gnc.setCheckable(True)
+        # 🔥 AHORA SON CHECKBOX PARA QUE VEAS CLARAMENTE SI ESTÁN ACTIVADOS O NO 🔥
+        estilo_chk = "font-weight: bold; color: #0d6efd; padding: 5px;"
         
-        self.check_actualizar_service = QPushButton("🔄 Sumar 10.000km para Próx Aceite")
-        self.check_actualizar_service.setCheckable(True)
-        self.check_actualizar_distri = QPushButton("🔄 Sumar 150.000km para Próx Distribución")
-        self.check_actualizar_distri.setCheckable(True)
-        self.check_actualizar_poli_v = QPushButton("🔄 Sumar 60.000km para Próx Poli V")
-        self.check_actualizar_poli_v.setCheckable(True)
-        self.check_actualizar_alineacion = QPushButton("🔄 Sumar 20.000km para Próx Alineación")
-        self.check_actualizar_alineacion.setCheckable(True)
+        self.check_actualizar_rto = QCheckBox("🔄 Posponer Vencimiento RTO a un año")
+        self.check_actualizar_rto.setStyleSheet(estilo_chk)
+        
+        self.check_actualizar_gnc = QCheckBox("🔄 Posponer Oblea GNC a un año")
+        self.check_actualizar_gnc.setStyleSheet(estilo_chk)
+        
+        self.check_actualizar_service = QCheckBox("🔄 Sumar 10.000km para Próx Aceite")
+        self.check_actualizar_service.setStyleSheet(estilo_chk)
+        
+        self.check_actualizar_distri = QCheckBox("🔄 Sumar 150.000km para Próx Distribución")
+        self.check_actualizar_distri.setStyleSheet(estilo_chk)
+        
+        self.check_actualizar_poli_v = QCheckBox("🔄 Sumar 60.000km para Próx Poli V")
+        self.check_actualizar_poli_v.setStyleSheet(estilo_chk)
+        
+        self.check_actualizar_alineacion = QCheckBox("🔄 Sumar 20.000km para Próx Alineación")
+        self.check_actualizar_alineacion.setStyleSheet(estilo_chk)
 
         form.addRow("Fecha:", self.in_fecha)
         form.addRow("Tipo de Servicio:", self.in_tipo)
@@ -686,24 +695,32 @@ class DialogoHistorialMantenimiento(QDialog):
         self.session = session
         self.vehiculo = vehiculo
         self.setWindowTitle(f"Historial Mecánico - {vehiculo.patente}")
-        self.setMinimumSize(700, 400)
+        self.setMinimumSize(800, 450)
         self.setup_ui()
 
     def setup_ui(self):
         layout = QVBoxLayout(self)
+        
+        # 🔥 NUEVO BOTÓN PARA ELIMINAR REGISTROS 🔥
+        btn_eliminar = QPushButton("🗑️ Eliminar Registro Seleccionado")
+        btn_eliminar.setStyleSheet("background-color: #dc3545; color: white; font-weight: bold; padding: 8px;")
+        btn_eliminar.clicked.connect(self.eliminar_registro)
+        layout.addWidget(btn_eliminar)
+
         self.tabla = QTableWidget()
         self.tabla.setColumnCount(6)
-        self.tabla.setHorizontalHeaderLabels(["Fecha", "Tipo", "KM", "Costo", "Taller", "Detalle"])
+        self.tabla.setHorizontalHeaderLabels(["Fecha", "Tipo de Movimiento", "KM", "Costo", "Responsable / Taller", "Detalle"])
         self.tabla.setStyleSheet(ESTILO_TABLAS_BLANCAS)
         self.tabla.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.tabla.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         
         header = self.tabla.horizontalHeader()
         header.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
         self.tabla.setColumnWidth(0, 90)
-        self.tabla.setColumnWidth(1, 150)
-        self.tabla.setColumnWidth(2, 80)
+        self.tabla.setColumnWidth(1, 160)
+        self.tabla.setColumnWidth(2, 90)
         self.tabla.setColumnWidth(3, 90)
-        self.tabla.setColumnWidth(4, 120)
+        self.tabla.setColumnWidth(4, 140)
         header.setStretchLastSection(True)
 
         layout.addWidget(self.tabla)
@@ -711,16 +728,92 @@ class DialogoHistorialMantenimiento(QDialog):
 
     def cargar_datos(self):
         try:
-            mantenimientos = self.session.query(Mantenimiento).filter(
-                Mantenimiento.vehiculo_id == self.vehiculo.id
-            ).order_by(Mantenimiento.fecha.desc()).all()
+            self.tabla.setRowCount(0)
             
-            self.tabla.setRowCount(len(mantenimientos))
-            for i, m in enumerate(mantenimientos):
-                self.tabla.setItem(i, 0, QTableWidgetItem(m.fecha.strftime("%d/%m/%Y") if m.fecha else ""))
-                self.tabla.setItem(i, 1, QTableWidgetItem(m.tipo_servicio))
-                self.tabla.setItem(i, 2, QTableWidgetItem(f"{m.kilometraje:,}"))
-                self.tabla.setItem(i, 3, QTableWidgetItem(f"$ {m.costo:,.2f}"))
-                self.tabla.setItem(i, 4, QTableWidgetItem(m.taller_proveedor))
-                self.tabla.setItem(i, 5, QTableWidgetItem(m.detalle))
-        except: pass
+            # 1. Buscamos los mantenimientos de PC
+            mants = self.session.query(Mantenimiento).filter(
+                Mantenimiento.vehiculo_id == self.vehiculo.id
+            ).all()
+            
+            # 2. Buscamos los reportes y KMs de la App
+            # Filtramos en el historial general donde aparezca la patente y sean acciones de la app
+            hists = self.session.query(Historial).filter(
+                Historial.detalle.ilike(f"%{self.vehiculo.patente}%"),
+                Historial.accion.in_(["APP - KILOMETROS", "APP - REPORTE FALLA"])
+            ).all()
+            
+            # 3. Mezclamos todo en una sola lista
+            registros = []
+            for m in mants:
+                registros.append({
+                    'tipo_db': 'mantenimiento',
+                    'id': m.id,
+                    'fecha': m.fecha,
+                    'servicio': m.tipo_servicio,
+                    'km': f"{m.kilometraje:,}" if m.kilometraje else "-",
+                    'costo': f"$ {m.costo:,.2f}" if m.costo else "-",
+                    'taller': m.taller_proveedor or "-",
+                    'detalle': m.detalle or "-"
+                })
+            for h in hists:
+                registros.append({
+                    'tipo_db': 'historial',
+                    'id': h.id,
+                    'fecha': h.fecha_hora.date() if h.fecha_hora else None,
+                    'servicio': "📱 " + h.accion,
+                    'km': "-", 
+                    'costo': "-",
+                    'taller': h.usuario or "CHOFER",
+                    'detalle': h.detalle or "-"
+                })
+                
+            # 4. Ordenamos por fecha del más nuevo al más viejo
+            registros.sort(key=lambda x: x['fecha'] or datetime.min.date(), reverse=True)
+            
+            self.tabla.setRowCount(len(registros))
+            for i, r in enumerate(registros):
+                it_fecha = QTableWidgetItem(r['fecha'].strftime("%d/%m/%Y") if r['fecha'] else "")
+                # Guardamos oculto el ID real y a qué tabla pertenece para poder borrarlo
+                it_fecha.setData(Qt.ItemDataRole.UserRole, (r['tipo_db'], r['id'])) 
+                
+                self.tabla.setItem(i, 0, it_fecha)
+                self.tabla.setItem(i, 1, QTableWidgetItem(r['servicio']))
+                self.tabla.setItem(i, 2, QTableWidgetItem(r['km']))
+                self.tabla.setItem(i, 3, QTableWidgetItem(r['costo']))
+                self.tabla.setItem(i, 4, QTableWidgetItem(r['taller']))
+                self.tabla.setItem(i, 5, QTableWidgetItem(r['detalle']))
+                
+                # Le damos un colorcito especial si vino de la App
+                if r['tipo_db'] == 'historial':
+                    bg_color = QColor("#e3f2fd")
+                    for col in range(6):
+                        it = self.tabla.item(i, col)
+                        if it: it.setBackground(QBrush(bg_color))
+                        
+        except Exception as e: 
+            print(f"Error cargando historial unificado: {e}")
+
+    def eliminar_registro(self):
+        row = self.tabla.currentRow()
+        if row < 0:
+            QMessageBox.warning(self, "Atención", "Seleccione un registro de la tabla para eliminar.")
+            return
+            
+        it = self.tabla.item(row, 0)
+        tipo_db, reg_id = it.data(Qt.ItemDataRole.UserRole)
+        
+        reply = QMessageBox.question(self, "Confirmar", "¿Seguro que desea eliminar este registro del historial de forma permanente?", QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+        if reply == QMessageBox.StandardButton.Yes:
+            try:
+                if tipo_db == 'mantenimiento':
+                    obj = self.session.query(Mantenimiento).get(reg_id)
+                else:
+                    obj = self.session.query(Historial).get(reg_id)
+                
+                if obj:
+                    self.session.delete(obj)
+                    self.session.commit()
+                    self.cargar_datos() # Refresca la tabla
+            except Exception as e:
+                self.session.rollback()
+                QMessageBox.critical(self, "Error", f"No se pudo eliminar el registro: {e}")
