@@ -123,8 +123,6 @@ class EditarUsuarioDialog(QDialog):
         self.chk_crm = QCheckBox("💬 CRM Contacto"); self.chk_crm.setChecked(usuario.ver_crm)
         self.chk_est = QCheckBox("📈 Estadísticas"); self.chk_est.setChecked(usuario.ver_estadisticas)
         self.chk_cfg = QCheckBox("⚙️ Configuración"); self.chk_cfg.setChecked(usuario.ver_configuracion)
-        
-        # 🔥 ACÁ AGREGAMOS EL TILDE DE FLOTA AL EDITAR USUARIO 🔥
         self.chk_flo = QCheckBox("🚚 Flota"); self.chk_flo.setChecked(getattr(usuario, 'ver_flota', True))
 
         grid.addWidget(self.chk_mon, 0, 0); grid.addWidget(self.chk_ing, 0, 1); grid.addWidget(self.chk_rut, 0, 2)
@@ -426,11 +424,17 @@ class TabConfiguracion(QWidget):
         f.addRow("Sucursal:", self.cfg_tarifa_sucursal); f.addRow("Zona / Localidad:", self.cfg_zona); f.addRow("Común:", self.cfg_cc); f.addRow("Refrigerado:", self.cfg_rc)
         h_btn_t = QHBoxLayout(); btn = QPushButton("➕ AGREGAR TARIFA"); btn.clicked.connect(self.guardar_tarifa); btn_hist_t = QPushButton("📜 VER HISTORIAL"); btn_hist_t.clicked.connect(self.ver_historial_tarifas)
         h_btn_t.addWidget(btn); h_btn_t.addWidget(btn_hist_t); gb.setLayout(f); l_gen.addWidget(gb); l_gen.addLayout(h_btn_t)
-        self.tabla_tarifas = QTableWidget(); self.tabla_tarifas.setColumnCount(4); self.tabla_tarifas.hideColumn(0); self.tabla_tarifas.setHorizontalHeaderLabels(["ID", "Zona", "Común", "Refrigerado"]); 
+        
+        # 🔥 ACÁ SE AGREGAN LAS 6 COLUMNAS CON SUS NOMBRES NUEVOS 🔥
+        self.tabla_tarifas = QTableWidget(); self.tabla_tarifas.setColumnCount(6); self.tabla_tarifas.hideColumn(0); 
+        self.tabla_tarifas.setHorizontalHeaderLabels(["ID", "Zona", "Común", "Refrigerado", "Última Act.", "Act. Anterior"]); 
         
         self.tabla_tarifas.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
         self.tabla_tarifas.setColumnWidth(1, 200)
         self.tabla_tarifas.setColumnWidth(2, 100)
+        self.tabla_tarifas.setColumnWidth(3, 100)
+        self.tabla_tarifas.setColumnWidth(4, 110)
+        self.tabla_tarifas.setColumnWidth(5, 110)
         self.tabla_tarifas.horizontalHeader().setStretchLastSection(True)
         
         self.tabla_tarifas.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows); self.tabla_tarifas.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
@@ -490,13 +494,49 @@ class TabConfiguracion(QWidget):
         try:
             self.tabla_tarifas.setRowCount(0)
             tarifas = self.main.session.query(Tarifa).filter(Tarifa.sucursal == suc_sel).order_by(Tarifa.localidad.asc()).all()
+            
+            # 🔥 LEEMOS TODO EL HISTORIAL DE LA SUCURSAL DE GOLPE PARA NO TRABAR EL SISTEMA 🔥
+            historiales = self.main.session.query(HistorialTarifas).filter(HistorialTarifas.zona.like(f"%({suc_sel})%")).order_by(desc(HistorialTarifas.fecha_hora)).all()
+            hist_dict = {}
+            for h in historiales:
+                if h.zona not in hist_dict:
+                    hist_dict[h.zona] = []
+                hist_dict[h.zona].append(h.fecha_hora)
+            
             vistos = set()
             row = 0
             for t in tarifas:
                 if t.localidad not in vistos:
-                    vistos.add(t.localidad); self.tabla_tarifas.insertRow(row)
-                    self.tabla_tarifas.setItem(row,0,QTableWidgetItem(str(t.id))); self.tabla_tarifas.setItem(row,1,QTableWidgetItem(t.localidad))
-                    self.tabla_tarifas.setItem(row,2,QTableWidgetItem(str(t.precio_base_comun))); self.tabla_tarifas.setItem(row,3,QTableWidgetItem(str(t.precio_base_refrig)))
+                    vistos.add(t.localidad)
+                    self.tabla_tarifas.insertRow(row)
+                    
+                    self.tabla_tarifas.setItem(row, 0, QTableWidgetItem(str(t.id)))
+                    self.tabla_tarifas.setItem(row, 1, QTableWidgetItem(t.localidad))
+                    
+                    # 🔥 MONTOS CON DOS DECIMALES, ALINEADOS A LA DERECHA 🔥
+                    item_c = QTableWidgetItem(f"$ {t.precio_base_comun:,.2f}")
+                    item_c.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+                    self.tabla_tarifas.setItem(row, 2, item_c)
+                    
+                    item_r = QTableWidgetItem(f"$ {t.precio_base_refrig:,.2f}")
+                    item_r.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+                    self.tabla_tarifas.setItem(row, 3, item_r)
+                    
+                    # 🔥 EXTRACCIÓN DE LAS FECHAS DEL DICCIONARIO 🔥
+                    zona_key = f"{t.localidad} ({t.sucursal})"
+                    fechas = hist_dict.get(zona_key, [])
+                    
+                    str_ultima = fechas[0].strftime("%d/%m/%Y") if len(fechas) > 0 else "-"
+                    str_anterior = fechas[1].strftime("%d/%m/%Y") if len(fechas) > 1 else "-"
+                    
+                    item_ult = QTableWidgetItem(str_ultima)
+                    item_ult.setTextAlignment(Qt.AlignmentFlag.AlignCenter) # Fechas centradas se ven más prolijas
+                    self.tabla_tarifas.setItem(row, 4, item_ult)
+                    
+                    item_ant = QTableWidgetItem(str_anterior)
+                    item_ant.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                    self.tabla_tarifas.setItem(row, 5, item_ant)
+                    
                     row += 1
             self.calcular_alerta_tarifas()
         except Exception: self.main.session.rollback()
@@ -671,7 +711,6 @@ class TabConfiguracion(QWidget):
         self.chk_est = QCheckBox("📈 Estadísticas")
         self.chk_cfg = QCheckBox("⚙️ Configuración")
         
-        # 🔥 ACÁ AGREGAMOS EL TILDE DE FLOTA AL CREAR USUARIO 🔥
         self.chk_flo = QCheckBox("🚚 Flota"); self.chk_flo.setChecked(True)
         
         grid.addWidget(self.chk_mon, 0, 0); grid.addWidget(self.chk_ing, 0, 1); grid.addWidget(self.chk_rut, 0, 2)
@@ -759,7 +798,7 @@ class TabConfiguracion(QWidget):
                 if u.ver_crm: perms.append("CRM")
                 if u.ver_estadisticas: perms.append("Est")
                 if u.ver_configuracion: perms.append("Cfg")
-                if getattr(u, 'ver_flota', True): perms.append("Flota") # Acá te lo muestra en la tablita resumen
+                if getattr(u, 'ver_flota', True): perms.append("Flota")
                 self.tabla_usuarios.setItem(r, 4, QTableWidgetItem(", ".join(perms)))
         except Exception: self.main.session.rollback()
         
