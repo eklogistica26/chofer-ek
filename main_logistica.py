@@ -812,27 +812,118 @@ class PlataformaLogistica(QMainWindow):
         url = f"https://web.whatsapp.com/send?phone={num_limpio}&text={mensaje}"; QDesktopServices.openUrl(QUrl(url))
 
     def setup_estadisticas(self):
-        layout = QVBoxLayout(self.tab_stats); top_bar = QHBoxLayout(); btn_refresh = QPushButton("🔄 Actualizar Gráficos"); btn_refresh.clicked.connect(self.cargar_estadisticas)
-        top_bar.addWidget(btn_refresh); top_bar.addStretch(); self.vista_stats = QTextBrowser(); self.vista_stats.setOpenExternalLinks(False)
-        layout.addLayout(top_bar); layout.addWidget(self.vista_stats)
+        layout = QVBoxLayout(self.tab_stats)
+        top_bar = QHBoxLayout()
+        
+        self.meses = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"]
+        self.combo_mes_stats = QComboBox()
+        self.combo_mes_stats.addItems(self.meses)
+        self.combo_mes_stats.setCurrentIndex(datetime.now().month - 1)
+        self.combo_mes_stats.setMinimumWidth(150)
+        
+        self.combo_anio_stats = QComboBox()
+        anio_actual = datetime.now().year
+        self.combo_anio_stats.addItems([str(anio_actual - 1), str(anio_actual), str(anio_actual + 1)])
+        self.combo_anio_stats.setCurrentText(str(anio_actual))
+        
+        btn_refresh = QPushButton("📊 Filtrar y Comparar con Mes Anterior")
+        btn_refresh.setStyleSheet("background-color: #0d6efd; color: white; font-weight: bold; padding: 6px 15px;")
+        btn_refresh.clicked.connect(self.cargar_estadisticas)
+        
+        top_bar.addWidget(QLabel("<b>Mes a Analizar:</b>"))
+        top_bar.addWidget(self.combo_mes_stats)
+        top_bar.addWidget(QLabel("<b>Año:</b>"))
+        top_bar.addWidget(self.combo_anio_stats)
+        top_bar.addWidget(btn_refresh)
+        top_bar.addStretch()
+        
+        self.vista_stats = QTextBrowser()
+        self.vista_stats.setOpenExternalLinks(False)
+        
+        layout.addLayout(top_bar)
+        layout.addWidget(self.vista_stats)
 
     def cargar_estadisticas(self):
         try:
-            c_month = datetime.now().month; c_year = datetime.now().year
-            res_hoy = self.session.execute(text("SELECT estado, COUNT(*) FROM operaciones WHERE fecha_ingreso = CURRENT_DATE AND sucursal = :s GROUP BY estado"), {"s": self.sucursal_actual}).fetchall()
-            res_prov = self.session.execute(text("SELECT proveedor, COUNT(*) FROM operaciones WHERE EXTRACT(MONTH FROM fecha_ingreso) = :m AND EXTRACT(YEAR FROM fecha_ingreso) = :y AND sucursal = :s GROUP BY proveedor ORDER BY COUNT(*) DESC"), {"m": c_month, "y": c_year, "s": self.sucursal_actual}).fetchall()
-            res_chof = self.session.execute(text("SELECT chofer_asignado, COUNT(*) FROM operaciones WHERE EXTRACT(MONTH FROM fecha_ingreso) = :m AND EXTRACT(YEAR FROM fecha_ingreso) = :y AND sucursal = :s AND estado = 'ENTREGADO' AND chofer_asignado IS NOT NULL GROUP BY chofer_asignado ORDER BY COUNT(*) DESC LIMIT 5"), {"m": c_month, "y": c_year, "s": self.sucursal_actual}).fetchall()
-            html = f"<html><body style='font-family: Arial; padding: 20px;'><h1 style='color: #1565C0; border-bottom: 2px solid #1565C0; padding-bottom: 10px;'>📊 PANEL GERENCIAL - {self.sucursal_actual.upper()}</h1>"
-            total_hoy = sum([r[1] for r in res_hoy]); entregados = sum([r[1] for r in res_hoy if r[0] == Estados.ENTREGADO]); en_calle = sum([r[1] for r in res_hoy if r[0] == Estados.EN_REPARTO])
-            html += f"<h2 style='color: #444;'>📅 Resumen de la Operativa de Hoy</h2><table width='100%' style='text-align:center; font-size:18px; margin-bottom: 30px;'><tr><td style='background:#e7f1ff; padding:25px; border-radius:12px; border: 1px solid #b6d4fe; width: 33%; color: black;'><b>Total Salidas Hoy</b><br><span style='font-size:35px; color:#0d6efd;'><b>{total_hoy}</b></span></td><td width='2%'></td><td style='background:#d1e7dd; padding:25px; border-radius:12px; border: 1px solid #badbcc; width: 33%; color: black;'><b>Entregas Exitosas</b><br><span style='font-size:35px; color:#198754;'><b>{entregados}</b></span></td><td width='2%'></td><td style='background:#fff3cd; padding:25px; border-radius:12px; border: 1px solid #ffecb5; width: 33%; color: black;'><b>Aún en la Calle</b><br><span style='font-size:35px; color:#856404;'><b>{en_calle}</b></span></td></tr></table><hr style='border:1px solid #ddd;'><br>"
-            html += f"<table width='100%'><tr><td width='48%' valign='top' style='padding:20px; border-radius:10px; border:1px solid #ccc;'><h2 style='margin-top:0;'>📦 Volúmen por Cliente (Este Mes)</h2><ul style='list-style-type: none; padding-left: 0;'>"
-            for p in res_prov: html += f"<li style='font-size: 17px; margin-bottom: 12px; padding-bottom:5px; border-bottom:1px dashed #eee;'>📌 <b>{p[0]}</b>: <span style='float:right; color:#1565C0; font-weight:bold;'>{p[1]} envíos</span></li>"
-            html += "</ul></td><td width='4%'></td><td width='48%' valign='top' style='padding:20px; border-radius:10px; border:1px solid #ccc;'><h2 style='margin-top:0;'>🏆 Top 5 Choferes (Este Mes)</h2><ul style='list-style-type: none; padding-left: 0;'>"
-            medallas = ["🥇", "🥈", "🥉", "🏅", "🏅"]
-            for idx, c in enumerate(res_chof): med = medallas[idx] if idx < len(medallas) else "🚛"; html += f"<li style='font-size: 17px; margin-bottom: 12px; padding-bottom:5px; border-bottom:1px dashed #eee;'>{med} <b>{c[0]}</b>: <span style='float:right; color:#198754; font-weight:bold;'>{c[1]} paquetes</span></li>"
-            html += "</ul></td></tr></table></body></html>"
+            mes_sel = self.combo_mes_stats.currentIndex() + 1
+            anio_sel = int(self.combo_anio_stats.currentText())
+            
+            if mes_sel == 1: mes_ant = 12; anio_ant = anio_sel - 1
+            else: mes_ant = mes_sel - 1; anio_ant = anio_sel
+            
+            def obtener_datos(m, y):
+                tot = self.session.execute(text("SELECT COUNT(*) FROM operaciones WHERE EXTRACT(MONTH FROM fecha_ingreso) = :m AND EXTRACT(YEAR FROM fecha_ingreso) = :y AND sucursal = :s"), {"m": m, "y": y, "s": self.sucursal_actual}).scalar() or 0
+                ent = self.session.execute(text("SELECT COUNT(*) FROM operaciones WHERE EXTRACT(MONTH FROM fecha_ingreso) = :m AND EXTRACT(YEAR FROM fecha_ingreso) = :y AND sucursal = :s AND estado = 'ENTREGADO'"), {"m": m, "y": y, "s": self.sucursal_actual}).scalar() or 0
+                fac = self.session.execute(text("SELECT SUM(monto_servicio) FROM operaciones WHERE EXTRACT(MONTH FROM fecha_ingreso) = :m AND EXTRACT(YEAR FROM fecha_ingreso) = :y AND sucursal = :s AND facturado = true"), {"m": m, "y": y, "s": self.sucursal_actual}).scalar() or 0.0
+                return tot, ent, fac
+
+            t_sel, e_sel, f_sel = obtener_datos(mes_sel, anio_sel)
+            t_ant, e_ant, f_ant = obtener_datos(mes_ant, anio_ant)
+            
+            def calc_var(actual, anterior):
+                if anterior == 0: return "<span style='color:#198754;'>+100% ⬆</span>" if actual > 0 else "-"
+                pct = ((actual - anterior) / anterior) * 100
+                if pct > 0: return f"<span style='color:#198754;'>+{pct:.1f}% ⬆</span>"
+                elif pct < 0: return f"<span style='color:#dc3545;'>{pct:.1f}% ⬇</span>"
+                return "<span style='color:#6c757d;'>0% =</span>"
+
+            res_prov = self.session.execute(text("SELECT proveedor, COUNT(*) FROM operaciones WHERE EXTRACT(MONTH FROM fecha_ingreso) = :m AND EXTRACT(YEAR FROM fecha_ingreso) = :y AND sucursal = :s GROUP BY proveedor ORDER BY COUNT(*) DESC"), {"m": mes_sel, "y": anio_sel, "s": self.sucursal_actual}).fetchall()
+            
+            # 🔥 CÁLCULO DE HORAS DE CHOFER EN CALLE 🔥
+            sql_horas = text("""
+                SELECT chofer_asignado, DATE(fecha_salida), MIN(fecha_salida), MAX(COALESCE(fecha_entrega, fecha_salida))
+                FROM operaciones
+                WHERE EXTRACT(MONTH FROM fecha_salida) = :m AND EXTRACT(YEAR FROM fecha_salida) = :y
+                AND sucursal = :s AND chofer_asignado IS NOT NULL AND chofer_asignado NOT LIKE '%TERCERIZADO%'
+                GROUP BY chofer_asignado, DATE(fecha_salida)
+            """)
+            res_horas = self.session.execute(sql_horas, {"m": mes_sel, "y": anio_sel, "s": self.sucursal_actual}).fetchall()
+            
+            horas_por_chofer = {}; dias_por_chofer = {}
+            for r in res_horas:
+                chof = r[0]; inicio = r[2]; fin = r[3]
+                if inicio and fin and fin > inicio:
+                    diff_horas = (fin - inicio).total_seconds() / 3600.0
+                    if diff_horas > 14: diff_horas = 14 # Filtro para evitar errores si dejaron App abierta
+                    if chof not in horas_por_chofer: 
+                        horas_por_chofer[chof] = 0.0; dias_por_chofer[chof] = 0
+                    horas_por_chofer[chof] += diff_horas
+                    dias_por_chofer[chof] += 1
+            
+            lista_chof = []
+            for chof in horas_por_chofer:
+                promedio = horas_por_chofer[chof] / dias_por_chofer[chof]
+                lista_chof.append((chof, promedio, dias_por_chofer[chof]))
+            lista_chof.sort(key=lambda x: x[1], reverse=True)
+
+            nombre_mes_ant = self.meses[mes_ant - 1]
+            
+            html = f"<html><body style='font-family: Arial; padding: 20px;'><h1 style='color: #1565C0; border-bottom: 2px solid #1565C0; padding-bottom: 10px;'>📊 RENDIMIENTO MENSUAL - {self.combo_mes_stats.currentText().upper()} {anio_sel}</h1>"
+            
+            html += f"<table width='100%' style='text-align:center; font-size:16px; margin-bottom: 30px;'><tr>"
+            html += f"<td style='background:#f8f9fa; padding:20px; border-radius:12px; border: 1px solid #dee2e6; width: 33%; color: black;'><b>Total Guías (Mes)</b><br><span style='font-size:32px; color:#0d6efd;'><b>{t_sel}</b></span><br><small>vs {nombre_mes_ant}: {calc_var(t_sel, t_ant)}</small></td><td width='2%'></td>"
+            html += f"<td style='background:#f8f9fa; padding:20px; border-radius:12px; border: 1px solid #dee2e6; width: 33%; color: black;'><b>Entregas Exitosas</b><br><span style='font-size:32px; color:#198754;'><b>{e_sel}</b></span><br><small>vs {nombre_mes_ant}: {calc_var(e_sel, e_ant)}</small></td><td width='2%'></td>"
+            html += f"<td style='background:#f8f9fa; padding:20px; border-radius:12px; border: 1px solid #dee2e6; width: 33%; color: black;'><b>Facturado Confirmado</b><br><span style='font-size:32px; color:#6f42c1;'><b>$ {f_sel:,.0f}</b></span><br><small>vs {nombre_mes_ant}: {calc_var(f_sel, f_ant)}</small></td>"
+            html += f"</tr></table><hr style='border:1px solid #ddd;'><br>"
+            
+            html += f"<table width='100%'><tr><td width='48%' valign='top' style='padding:20px; border-radius:10px; border:1px solid #ccc; background:#ffffff;'><h2 style='margin-top:0; color:#444;'>📦 Volúmen por Cliente ({self.combo_mes_stats.currentText()})</h2><ul style='list-style-type: none; padding-left: 0;'>"
+            for p in res_prov: html += f"<li style='font-size: 16px; margin-bottom: 12px; padding-bottom:5px; border-bottom:1px dashed #eee;'>📌 <b>{p[0]}</b>: <span style='float:right; color:#1565C0; font-weight:bold;'>{p[1]} envíos</span></li>"
+            
+            html += "</ul></td><td width='4%'></td><td width='48%' valign='top' style='padding:20px; border-radius:10px; border:1px solid #ccc; background:#ffffff;'><h2 style='margin-top:0; color:#444;'>⏱️ Rendimiento Choferes (Promedio en Calle)</h2><ul style='list-style-type: none; padding-left: 0;'>"
+            
+            if not lista_chof:
+                html += "<li style='color:#777; font-style:italic;'>No hay suficientes datos de rutas en este mes.</li>"
+            else:
+                for idx, c in enumerate(lista_chof): 
+                    med = "🏃" if c[1] > 6 else ("🚶" if c[1] > 3 else "☕")
+                    html += f"<li style='font-size: 16px; margin-bottom: 12px; padding-bottom:5px; border-bottom:1px dashed #eee;'>{med} <b>{c[0]}</b> <small>({c[2]} rutas)</small>: <span style='float:right; color:#d32f2f; font-weight:bold;'>{c[1]:.1f} Hs / día</span></li>"
+            
+            html += "</ul><p style='font-size:12px; color:#888; margin-top:20px;'>* El tiempo en calle se calcula desde que la guía sale del depósito (En Reparto) hasta el horario exacto de la última entrega del día registrada en la App.</p></td></tr></table></body></html>"
+            
             self.vista_stats.setHtml(html)
-        except Exception: self.session.rollback()
+        except Exception as e: 
+            self.session.rollback()
+            print(f"Error en estadisticas: {e}")
 
 class DBWakeUpThread(QThread):
     finished_signal = pyqtSignal()
