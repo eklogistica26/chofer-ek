@@ -452,6 +452,8 @@ class TabConfiguracion(QWidget):
         self.cfg_dhl_exc = QDoubleSpinBox(); self.cfg_dhl_exc.setRange(0, 9e6); self.cfg_dhl_exc.setPrefix("$ ")
         f_dhl.addRow("Sucursal:", self.cfg_dhl_suc); f_dhl.addRow("0 a 2 Kg:", self.cfg_dhl_t2); f_dhl.addRow("2 a 5 Kg:", self.cfg_dhl_t5); f_dhl.addRow("5 a 10 Kg:", self.cfg_dhl_t10); f_dhl.addRow("10 a 20 Kg:", self.cfg_dhl_t20); f_dhl.addRow("20 a 30 Kg:", self.cfg_dhl_t30); f_dhl.addRow("Excedente (x Kg):", self.cfg_dhl_exc)
         btn_dhl = QPushButton("💾 GUARDAR TARIFA DHL"); btn_dhl.clicked.connect(self.guardar_tarifa_dhl); gb_dhl.setLayout(f_dhl); l_dhl.addWidget(gb_dhl); l_dhl.addWidget(btn_dhl); l_dhl.addStretch(); self.tabs_tarifas.addTab(tab_dhl, "DHL (Por Peso)")
+        self.cargar_tarifas()
+        self.cargar_tarifas_dhl()
 
     def guardar_tarifa_dhl(self):
         suc_sel = self.cfg_dhl_suc.currentText()
