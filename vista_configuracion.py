@@ -6,10 +6,11 @@ from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdi
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QFont
 from datetime import datetime
-from sqlalchemy import text, desc
+import math
+from sqlalchemy import text, desc, extract
 
 from database import (ClientePrincipal, DestinoFrecuente, Tarifa, TarifaDHL, 
-                      HistorialTarifas, Chofer, ClienteRetiro, Usuario)
+                      HistorialTarifas, Chofer, ClienteRetiro, Usuario, Operacion)
 from dialogos import EditarDestinoDialog, EditarTarifaDialog, HistorialTarifasDialog
 
 class EditarEmpresaDialogLocal(QDialog):
@@ -414,6 +415,61 @@ class TabConfiguracion(QWidget):
                     self.cargar_destinos_de_proveedor_combo(self.prov_seleccionado)
         except Exception: self.main.session.rollback()
 
+    # 🔥 FUNCIÓN MAESTRA QUE ACTUALIZA EL MES CORRIENTE AUTOMÁTICAMENTE 🔥
+    def recalcular_mes_corriente(self):
+        try:
+            mes_actual = datetime.now().month
+            anio_actual = datetime.now().year
+            
+            # 🔥 Buscamos las operaciones del mes actual que NO ESTÉN FACTURADAS (Escudo protector)
+            ops = self.main.session.query(Operacion).filter(
+                extract('month', Operacion.fecha_ingreso) == mes_actual,
+                extract('year', Operacion.fecha_ingreso) == anio_actual,
+                Operacion.facturado == False
+            ).all()
+
+            for op in ops:
+                suc = op.sucursal
+                nuevo_precio = 0.0
+                
+                if op.proveedor and op.proveedor.upper() == "DHL":
+                    t = self.main.session.query(TarifaDHL).filter(TarifaDHL.sucursal == suc).first()
+                    if t:
+                        bultos = op.bultos if op.bultos and op.bultos > 0 else 1
+                        peso = op.peso or 0.0
+                        if peso <= bultos * 2: base = bultos * t.t2
+                        elif peso <= bultos * 5: base = bultos * t.t5
+                        elif peso <= bultos * 10: base = bultos * t.t10
+                        elif peso <= bultos * 20: base = bultos * t.t20
+                        else: base = bultos * t.t30 
+                        excedente_kg = max(0.0, peso - (bultos * 30))
+                        nuevo_precio = base + (excedente_kg * t.excedente)
+                else:
+                    loc = (op.localidad or "").strip()
+                    t = self.main.session.query(Tarifa).filter(Tarifa.localidad.ilike(loc), Tarifa.sucursal == suc).first()
+                    if t:
+                        bultos_tot = op.bultos or 1
+                        cant_frio = getattr(op, 'bultos_frio', 0) or 0
+                        cant_comun = bultos_tot - cant_frio
+                        
+                        if cant_comun > 0 and cant_frio > 0:
+                            multiplicador = math.ceil(bultos_tot / 3)
+                            nuevo_precio = multiplicador * t.precio_base_refrig
+                        else:
+                            costo_comun = math.ceil(cant_comun / 3) * t.precio_base_comun if cant_comun > 0 else 0
+                            costo_frio = math.ceil(cant_frio / 3) * t.precio_base_refrig if cant_frio > 0 else 0
+                            nuevo_precio = costo_comun + costo_frio
+
+                # Si calculamos un precio válido y es distinto, lo actualizamos silenciosamente
+                if nuevo_precio > 0 and op.monto_servicio != nuevo_precio:
+                    op.monto_servicio = nuevo_precio
+
+            self.main.session.commit()
+            print(">>> Tarifas del mes corriente recalculadas con éxito.")
+        except Exception as e:
+            self.main.session.rollback()
+            print(f"Error recalculando mes corriente: {e}")
+
     def setup_panel_tarifas(self):
         l = QVBoxLayout(self.page_tarifas); self.tabs_tarifas = QTabWidget(); l.addWidget(self.tabs_tarifas)
         tab_gen = QWidget(); l_gen = QVBoxLayout(tab_gen)
@@ -425,7 +481,6 @@ class TabConfiguracion(QWidget):
         h_btn_t = QHBoxLayout(); btn = QPushButton("➕ AGREGAR TARIFA"); btn.clicked.connect(self.guardar_tarifa); btn_hist_t = QPushButton("📜 VER HISTORIAL"); btn_hist_t.clicked.connect(self.ver_historial_tarifas)
         h_btn_t.addWidget(btn); h_btn_t.addWidget(btn_hist_t); gb.setLayout(f); l_gen.addWidget(gb); l_gen.addLayout(h_btn_t)
         
-        # 🔥 ACÁ SE AGREGAN LAS 6 COLUMNAS CON SUS NOMBRES NUEVOS 🔥
         self.tabla_tarifas = QTableWidget(); self.tabla_tarifas.setColumnCount(6); self.tabla_tarifas.hideColumn(0); 
         self.tabla_tarifas.setHorizontalHeaderLabels(["ID", "Zona", "Común", "Refrigerado", "Última Act.", "Act. Anterior"]); 
         
@@ -452,6 +507,7 @@ class TabConfiguracion(QWidget):
         self.cfg_dhl_exc = QDoubleSpinBox(); self.cfg_dhl_exc.setRange(0, 9e6); self.cfg_dhl_exc.setPrefix("$ ")
         f_dhl.addRow("Sucursal:", self.cfg_dhl_suc); f_dhl.addRow("0 a 2 Kg:", self.cfg_dhl_t2); f_dhl.addRow("2 a 5 Kg:", self.cfg_dhl_t5); f_dhl.addRow("5 a 10 Kg:", self.cfg_dhl_t10); f_dhl.addRow("10 a 20 Kg:", self.cfg_dhl_t20); f_dhl.addRow("20 a 30 Kg:", self.cfg_dhl_t30); f_dhl.addRow("Excedente (x Kg):", self.cfg_dhl_exc)
         btn_dhl = QPushButton("💾 GUARDAR TARIFA DHL"); btn_dhl.clicked.connect(self.guardar_tarifa_dhl); gb_dhl.setLayout(f_dhl); l_dhl.addWidget(gb_dhl); l_dhl.addWidget(btn_dhl); l_dhl.addStretch(); self.tabs_tarifas.addTab(tab_dhl, "DHL (Por Peso)")
+        
         self.cargar_tarifas()
         self.cargar_tarifas_dhl()
 
@@ -464,6 +520,7 @@ class TabConfiguracion(QWidget):
             t.t20 = self.cfg_dhl_t20.value(); t.t30 = self.cfg_dhl_t30.value(); t.excedente = self.cfg_dhl_exc.value()
             hist = HistorialTarifas(zona=f"DHL {suc_sel}", detalle=f"Base: ${t.t2} a ${t.t30} | Exc: ${t.excedente}", usuario=self.main.usuario.username)
             self.main.session.add(hist); self.main.session.commit(); self.main.toast.mostrar("✅ Tarifa DHL guardada")
+            self.recalcular_mes_corriente()
             self.calcular_alerta_tarifas()
         except Exception as e: self.main.session.rollback(); QMessageBox.critical(self, "Error", str(e))
 
@@ -488,6 +545,7 @@ class TabConfiguracion(QWidget):
                 else: self.main.session.add(Tarifa(sucursal=suc_sel, localidad=z, precio_base_comun=self.cfg_cc.value(), precio_base_refrig=self.cfg_rc.value()))
                 hist = HistorialTarifas(zona=f"{z} ({suc_sel})", detalle=f"Nueva/Ajuste. Común: ${self.cfg_cc.value()} | Refrig: ${self.cfg_rc.value()}", usuario=self.main.usuario.username)
                 self.main.session.add(hist); self.main.session.commit()
+                self.recalcular_mes_corriente()
                 self.cfg_zona.clear(); self.cargar_tarifas(); self.main.actualizar_combos_dinamicos()
             except Exception: self.main.session.rollback(); QMessageBox.warning(self, "Error", "Intente de nuevo.")
 
@@ -497,7 +555,6 @@ class TabConfiguracion(QWidget):
             self.tabla_tarifas.setRowCount(0)
             tarifas = self.main.session.query(Tarifa).filter(Tarifa.sucursal == suc_sel).order_by(Tarifa.localidad.asc()).all()
             
-            # 🔥 LEEMOS TODO EL HISTORIAL DE LA SUCURSAL DE GOLPE PARA NO TRABAR EL SISTEMA 🔥
             historiales = self.main.session.query(HistorialTarifas).filter(HistorialTarifas.zona.like(f"%({suc_sel})%")).order_by(desc(HistorialTarifas.fecha_hora)).all()
             hist_dict = {}
             for h in historiales:
@@ -515,7 +572,6 @@ class TabConfiguracion(QWidget):
                     self.tabla_tarifas.setItem(row, 0, QTableWidgetItem(str(t.id)))
                     self.tabla_tarifas.setItem(row, 1, QTableWidgetItem(t.localidad))
                     
-                    # 🔥 MONTOS CON DOS DECIMALES, ALINEADOS A LA DERECHA 🔥
                     item_c = QTableWidgetItem(f"$ {t.precio_base_comun:,.2f}")
                     item_c.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
                     self.tabla_tarifas.setItem(row, 2, item_c)
@@ -524,7 +580,6 @@ class TabConfiguracion(QWidget):
                     item_r.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
                     self.tabla_tarifas.setItem(row, 3, item_r)
                     
-                    # 🔥 EXTRACCIÓN DE LAS FECHAS DEL DICCIONARIO 🔥
                     zona_key = f"{t.localidad} ({t.sucursal})"
                     fechas = hist_dict.get(zona_key, [])
                     
@@ -532,7 +587,7 @@ class TabConfiguracion(QWidget):
                     str_anterior = fechas[1].strftime("%d/%m/%Y") if len(fechas) > 1 else "-"
                     
                     item_ult = QTableWidgetItem(str_ultima)
-                    item_ult.setTextAlignment(Qt.AlignmentFlag.AlignCenter) # Fechas centradas se ven más prolijas
+                    item_ult.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
                     self.tabla_tarifas.setItem(row, 4, item_ult)
                     
                     item_ant = QTableWidgetItem(str_anterior)
@@ -565,7 +620,9 @@ class TabConfiguracion(QWidget):
                                 self.main.session.add(h)
                     t_obj.precio_base_comun = new_c; t_obj.precio_base_refrig = new_r
                     h_main = HistorialTarifas(zona=f"{t_obj.localidad} ({t_obj.sucursal})", detalle=f"Cambio Manual.", usuario=self.main.usuario.username)
-                    self.main.session.add(h_main); self.main.session.commit(); self.cargar_tarifas(); self.calcular_alerta_tarifas(); self.main.actualizar_combos_dinamicos()
+                    self.main.session.add(h_main); self.main.session.commit()
+                    self.recalcular_mes_corriente()
+                    self.cargar_tarifas(); self.calcular_alerta_tarifas(); self.main.actualizar_combos_dinamicos()
         except Exception as e: self.main.session.rollback()
 
     def ver_historial_tarifas(self):
