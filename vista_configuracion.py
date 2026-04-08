@@ -161,7 +161,16 @@ class TabConfiguracion(QWidget):
         self.list_menu = QListWidget()
         self.list_menu.setFixedWidth(220)
         self.list_menu.addItems(["💲 Tarifas", "🚛 Choferes", "🏢 Clientes Retiro", "🏢 Proveedores y Destinos", "👥 Usuarios"])
-        self.list_menu.setCurrentRow(0)
+        
+        # 🔥 FILTRO DE SEGURIDAD PARA SUCURSALES Y ADMINS 🔥
+        if not getattr(self.main.usuario, 'es_admin_total', False) and getattr(self.main.usuario, 'sucursal_asignada', '') == "San Juan":
+            for i in range(self.list_menu.count()):
+                if i != 3: # El índice 3 es "Proveedores y Destinos"
+                    self.list_menu.item(i).setHidden(True)
+            self.list_menu.setCurrentRow(3)
+        else:
+            self.list_menu.setCurrentRow(0)
+            
         self.list_menu.currentRowChanged.connect(self.cambiar_panel_config)
         
         self.stack_config = QStackedWidget()

@@ -3,7 +3,7 @@ import calendar
 from datetime import datetime, date
 from PyQt6.QtWidgets import (QApplication, QDialog, QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, 
                              QComboBox, QPushButton, QTableWidget, QTableWidgetItem, 
-                             QHeaderView, QMessageBox, QSpinBox, QFrame, QFileDialog, QTabWidget, 
+                             QHeaderView, QMessageBox, QSpinBox, QDoubleSpinBox, QFrame, QFileDialog, QTabWidget, 
                              QAbstractItemView, QStyledItemDelegate, QProgressDialog)
 from PyQt6.QtCore import Qt, QDate
 from PyQt6.QtGui import QColor, QFont, QBrush
@@ -12,6 +12,37 @@ from sqlalchemy import text
 from database import Operacion, Historial, Estados, ReciboPago
 from utilidades import crear_pdf_facturacion
 from dialogos import EditarPrecioFacturacionDialog, AgregarCargoDialog, CargarPagoDialog
+
+class EditarPesoDHLDialog(QDialog):
+    def __init__(self, op, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle(f"⚖️ Ajustar Peso - Guía: {op.guia_remito or 'S/N'}")
+        self.setFixedSize(300, 200)
+        layout = QVBoxLayout(self)
+        
+        self.in_bultos = QSpinBox()
+        self.in_bultos.setRange(1, 1000)
+        self.in_bultos.setValue(op.bultos or 1)
+        
+        self.in_peso = QDoubleSpinBox()
+        self.in_peso.setRange(0, 10000.0)
+        self.in_peso.setSuffix(" Kg")
+        self.in_peso.setSingleStep(0.5)
+        self.in_peso.setValue(op.peso or 0.0)
+        
+        layout.addWidget(QLabel("Cantidad de Bultos:"))
+        layout.addWidget(self.in_bultos)
+        layout.addWidget(QLabel("Peso Real (Kg):"))
+        layout.addWidget(self.in_peso)
+        
+        btn_guardar = QPushButton("💾 GUARDAR Y RECALCULAR")
+        btn_guardar.setStyleSheet("background-color: #198754; color: white; font-weight: bold; padding: 10px;")
+        btn_guardar.clicked.connect(self.accept)
+        layout.addWidget(btn_guardar)
+        
+    @property
+    def valores(self):
+        return self.in_bultos.value(), self.in_peso.value()
 
 class DeshacerFacturacionDialog(QDialog):
     def __init__(self, main_app, parent=None):
@@ -58,16 +89,25 @@ class TabFacturacion(QWidget):
         tab_rendicion = QWidget(); layout_rend = QVBoxLayout(tab_rendicion); panel = QFrame(); hl = QHBoxLayout(panel)
         self.cierre_mes = QComboBox(); self.cierre_mes.addItems(["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"]); self.cierre_mes.setCurrentIndex(datetime.now().month - 1) 
         self.cierre_anio = QSpinBox(); self.cierre_anio.setRange(2020, 2030); self.cierre_anio.setValue(datetime.now().year)
-        self.cierre_sucursal = QComboBox(); self.cierre_sucursal.addItems(["Todas", "Mendoza", "San Juan"]) 
-        self.cierre_prov = QComboBox(); self.cierre_prov.addItem("Todos"); self.cierre_prov.addItems(self.main.lista_proveedores)
         
-        # 🔥 CREAMOS EL BOTÓN COMO VARIABLE PARA PODER BLOQUEARLO 🔥
+        self.cierre_sucursal = QComboBox(); self.cierre_sucursal.addItems(["Todas", "Mendoza", "San Juan"]) 
+        
+        # 🔥 FILTRO DE SEGURIDAD EXTREMA PARA SAN JUAN 🔥
+        self.cierre_prov = QComboBox()
+        es_sj_restringido = not getattr(self.main.usuario, 'es_admin_total', False) and getattr(self.main.usuario, 'sucursal_asignada', '') == "San Juan"
+        if es_sj_restringido:
+            self.cierre_prov.addItem("DHL")
+        else:
+            self.cierre_prov.addItem("Todos")
+            self.cierre_prov.addItems(self.main.lista_proveedores)
+        
         self.btn_c = QPushButton("Calcular Listado"); self.btn_c.clicked.connect(self.calcular_cierre)
         
         btn_pdf = QPushButton("Rendición PDF"); btn_pdf.setStyleSheet("background-color: #dc3545 !important; color: white !important;"); btn_pdf.clicked.connect(self.generar_pdf_fact)
         hl.addWidget(QLabel("Sucursal:")); hl.addWidget(self.cierre_sucursal); hl.addWidget(QLabel("Mes:")); hl.addWidget(self.cierre_mes); hl.addWidget(QLabel("Año:")); hl.addWidget(self.cierre_anio); hl.addWidget(QLabel("Proveedor:")); hl.addWidget(self.cierre_prov); hl.addWidget(self.btn_c); hl.addWidget(btn_pdf); btn_cargo_fijo = QPushButton("➕ Agregar Cargo Fijo"); btn_cargo_fijo.clicked.connect(self.agregar_cargo_fijo); hl.addWidget(btn_cargo_fijo)
-        self.tabla_cierre = QTableWidget(); self.tabla_cierre.setColumnCount(10); self.tabla_cierre.setHorizontalHeaderLabels(["Fecha", "Sucursal", "Guía", "Zona", "Bultos", "Estado", "Base ($)", "Extras ($)", "Total ($)", "Ajuste"]); self.tabla_cierre.setStyleSheet(ESTILO_TABLAS_BLANCAS); self.pintor_cierre = PintorCeldasDelegate(self.tabla_cierre); self.tabla_cierre.setItemDelegate(self.pintor_cierre)
-        header = self.tabla_cierre.horizontalHeader(); header.setSectionResizeMode(QHeaderView.ResizeMode.Interactive); self.tabla_cierre.setColumnWidth(0, 90); self.tabla_cierre.setColumnWidth(1, 100); self.tabla_cierre.setColumnWidth(2, 140); self.tabla_cierre.setColumnWidth(3, 140); self.tabla_cierre.setColumnWidth(4, 90); self.tabla_cierre.setColumnWidth(5, 140); self.tabla_cierre.setColumnWidth(6, 100); self.tabla_cierre.setColumnWidth(7, 100); self.tabla_cierre.setColumnWidth(8, 100); header.setStretchLastSection(True); self.tabla_cierre.verticalHeader().setFixedWidth(30); self.tabla_cierre.verticalHeader().setDefaultSectionSize(45); self.tabla_cierre.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows); self.tabla_cierre.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers); self.tabla_cierre.cellDoubleClicked.connect(self.doble_clic_ajuste_precio)
+        
+        self.tabla_cierre = QTableWidget(); self.tabla_cierre.setColumnCount(10); self.tabla_cierre.setHorizontalHeaderLabels(["Fecha", "Sucursal", "Guía", "Zona", "Bultos / Peso", "Estado", "Base ($)", "Extras ($)", "Total ($)", "Ajustes"]); self.tabla_cierre.setStyleSheet(ESTILO_TABLAS_BLANCAS); self.pintor_cierre = PintorCeldasDelegate(self.tabla_cierre); self.tabla_cierre.setItemDelegate(self.pintor_cierre)
+        header = self.tabla_cierre.horizontalHeader(); header.setSectionResizeMode(QHeaderView.ResizeMode.Interactive); self.tabla_cierre.setColumnWidth(0, 90); self.tabla_cierre.setColumnWidth(1, 100); self.tabla_cierre.setColumnWidth(2, 140); self.tabla_cierre.setColumnWidth(3, 140); self.tabla_cierre.setColumnWidth(4, 120); self.tabla_cierre.setColumnWidth(5, 140); self.tabla_cierre.setColumnWidth(6, 90); self.tabla_cierre.setColumnWidth(7, 90); self.tabla_cierre.setColumnWidth(8, 90); header.setStretchLastSection(True); self.tabla_cierre.verticalHeader().setFixedWidth(30); self.tabla_cierre.verticalHeader().setDefaultSectionSize(45); self.tabla_cierre.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows); self.tabla_cierre.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers); self.tabla_cierre.cellDoubleClicked.connect(self.doble_clic_ajuste_precio)
         self.lbl_resumen = QLabel("Total Base: $0 | Total Extras: $0 | TOTAL: $0"); self.lbl_resumen.setStyleSheet("font-size: 16px; font-weight: bold; margin: 10px 15px; padding: 10px; border: 1px solid #ccc;")
         lay_abajo = QHBoxLayout(); self.btn_deshacer_fac = QPushButton("⏪ Deshacer Facturación"); self.btn_deshacer_fac.setStyleSheet("background-color: #ff9800; color: black; padding: 10px;"); self.btn_deshacer_fac.clicked.connect(self.abrir_dialogo_deshacer_facturacion); lay_abajo.addWidget(self.btn_deshacer_fac); lay_abajo.addStretch(); lay_abajo.addWidget(self.lbl_resumen); layout_rend.addWidget(panel); layout_rend.addWidget(self.tabla_cierre); layout_rend.addLayout(lay_abajo); self.tabs_fact.addTab(tab_rendicion, "1. Calcular Rendición")
         tab_cta = QWidget(); layout_cta = QVBoxLayout(tab_cta); top_cta = QHBoxLayout(); btn_ref_cta = QPushButton("🔄 Actualizar Saldos"); btn_ref_cta.clicked.connect(self.cargar_ctas_ctes); btn_pago = QPushButton("💰 Registrar Pago"); btn_pago.clicked.connect(self.registrar_pago_ctacte); top_cta.addWidget(btn_ref_cta); top_cta.addStretch(); top_cta.addWidget(btn_pago)
@@ -112,9 +152,36 @@ class TabFacturacion(QWidget):
             if dlg.exec() == QDialog.DialogCode.Accepted: op.monto_servicio = dlg.precio_final; self.main.session.commit(); self.calcular_cierre(); self.main.toast.mostrar("✅ Precio actualizado")
         except Exception: self.main.session.rollback()
         
-    def calcular_cierre(self):
-        self.btn_c.setEnabled(False) # 🔥 BLOQUEAMOS EL BOTÓN 🔥
+    def abrir_dialogo_peso_dhl(self, id_op):
+        try:
+            op = self.main.session.query(Operacion).get(id_op)
+            if not op: return
+            dlg = EditarPesoDHLDialog(op, self)
+            if dlg.exec() == QDialog.DialogCode.Accepted:
+                bultos_nuevos, peso_nuevo = dlg.valores
+                op.bultos = bultos_nuevos
+                op.peso = peso_nuevo
+                
+                nuevo_precio = self.main.obtener_precio(
+                    op.localidad, 
+                    cant_comun=bultos_nuevos, 
+                    cant_frio=0, 
+                    suc_forzada=op.sucursal, 
+                    proveedor="DHL", 
+                    peso=peso_nuevo, 
+                    bultos_totales=bultos_nuevos
+                )
+                
+                op.monto_servicio = nuevo_precio
+                self.main.session.commit()
+                self.calcular_cierre()
+                self.main.toast.mostrar("✅ Peso y tarifa DHL actualizados")
+        except Exception as e:
+            self.main.session.rollback()
+            QMessageBox.critical(self, "Error", str(e))
         
+    def calcular_cierre(self):
+        self.btn_c.setEnabled(False)
         mes = self.cierre_mes.currentIndex() + 1; anio = self.cierre_anio.value(); prov = self.cierre_prov.currentText().strip(); sucursal = self.cierre_sucursal.currentText(); self.tabla_cierre.setRowCount(0)
         try:
             _, last_day = calendar.monthrange(anio, mes); start_date = date(anio, mes, 1); end_date = date(anio, mes, last_day); query = self.main.session.query(Operacion).filter(Operacion.fecha_ingreso >= start_date, Operacion.fecha_ingreso <= end_date, (Operacion.facturado == False) | (Operacion.facturado == None), Operacion.estado.ilike('ENTREGADO'))
@@ -138,10 +205,9 @@ class TabFacturacion(QWidget):
                     
             tot_base = 0; tot_extras = 0; tot_final = 0; self.mapa_filas_cierre = {}; total_ops = len(self.resultados_cierre)
             
-            # 🔥 CREAMOS LA BARRA DE PROGRESO EMERGENTE (QProgressDialog) 🔥
             progreso = QProgressDialog("Preparando datos de facturación...", None, 0, total_ops, self)
             progreso.setWindowTitle("⏳ Calculando Facturación")
-            progreso.setWindowModality(Qt.WindowModality.WindowModal) # Bloquea la ventana de fondo
+            progreso.setWindowModality(Qt.WindowModality.WindowModal)
             progreso.setMinimumDuration(0)
             progreso.setValue(0)
             
@@ -151,16 +217,31 @@ class TabFacturacion(QWidget):
                     progreso.setValue(row)
                     QApplication.processEvents()
                     
-                self.tabla_cierre.insertRow(row); self.mapa_filas_cierre[row] = op.id; self.tabla_cierre.setItem(row, 0, QTableWidgetItem(op.fecha_ingreso.strftime("%d/%m/%Y") if op.fecha_ingreso else "-")); self.tabla_cierre.setItem(row, 1, QTableWidgetItem((op.sucursal or "").upper())); self.tabla_cierre.setItem(row, 2, QTableWidgetItem(op.guia_remito or "RET")); self.tabla_cierre.setItem(row, 3, QTableWidgetItem(op.localidad or "")); bultos_tot = op.bultos or 1; bultos_fr = op.bultos_frio or 0; det_b = str(bultos_tot); 
-                if bultos_fr > 0 and bultos_fr < bultos_tot: det_b += f" ({bultos_tot-bultos_fr}C/{bultos_fr}R)"; 
-                elif bultos_fr == bultos_tot: det_b += " (R)"
+                self.tabla_cierre.insertRow(row); self.mapa_filas_cierre[row] = op.id; self.tabla_cierre.setItem(row, 0, QTableWidgetItem(op.fecha_ingreso.strftime("%d/%m/%Y") if op.fecha_ingreso else "-")); self.tabla_cierre.setItem(row, 1, QTableWidgetItem((op.sucursal or "").upper())); self.tabla_cierre.setItem(row, 2, QTableWidgetItem(op.guia_remito or "RET")); self.tabla_cierre.setItem(row, 3, QTableWidgetItem(op.localidad or "")); 
+                bultos_tot = op.bultos or 1; bultos_fr = op.bultos_frio or 0; det_b = str(bultos_tot); 
+                
+                if op.proveedor and op.proveedor.upper() == "DHL":
+                    det_b = f"{bultos_tot} Bulto(s) | {op.peso or 0} Kg"
+                else:
+                    if bultos_fr > 0 and bultos_fr < bultos_tot: det_b += f" ({bultos_tot-bultos_fr}C/{bultos_fr}R)"; 
+                    elif bultos_fr == bultos_tot: det_b += " (R)"
+                    
                 self.tabla_cierre.setItem(row, 4, QTableWidgetItem(det_b)); visitas = max(1, conteo_repartos.get(op.id, 1)); self.tabla_cierre.setItem(row, 5, QTableWidgetItem(f"{op.estado} ({visitas} Visitas)" if visitas > 1 else op.estado)); monto_serv = op.monto_servicio or 0.0
                 if op.guia_remito == "CARGO-FIJO" or (op.tipo_servicio and "Flete" in op.tipo_servicio): precio_base = monto_serv; extras = 0
                 else: 
                     precio_base = self.main.obtener_precio(op.localidad, bultos_tot-bultos_fr, bultos_fr, op.sucursal, proveedor=op.proveedor, peso=op.peso, bultos_totales=bultos_tot)
                     extras = monto_serv - precio_base
                 self.tabla_cierre.setItem(row, 6, QTableWidgetItem(f"$ {precio_base:,.2f}")); self.tabla_cierre.setItem(row, 7, QTableWidgetItem(f"$ {extras:,.2f}")); self.tabla_cierre.setItem(row, 8, QTableWidgetItem(f"$ {monto_serv:,.2f}"))
-                btn_ajuste = QPushButton("✏️ Editar"); btn_ajuste.setStyleSheet("background-color: #0d6efd !important; color: white !important; font-size: 11px;"); btn_ajuste.clicked.connect(lambda checked, r=row: self.abrir_dialogo_ajuste_precio(self.mapa_filas_cierre[r])); self.tabla_cierre.setCellWidget(row, 9, btn_ajuste)
+                
+                # 🔥 WIDGET DE ACCIONES CON EL BOTÓN EXTRA PARA DHL 🔥
+                w_acc = QWidget(); lay_acc = QHBoxLayout(w_acc); lay_acc.setContentsMargins(0,0,0,0)
+                btn_ajuste = QPushButton("✏️ Editar"); btn_ajuste.setStyleSheet("background-color: #0d6efd !important; color: white !important; font-size: 11px; font-weight: bold; padding: 4px;"); btn_ajuste.clicked.connect(lambda checked, r=row: self.abrir_dialogo_ajuste_precio(self.mapa_filas_cierre[r])); lay_acc.addWidget(btn_ajuste)
+                
+                if op.proveedor and op.proveedor.upper() == "DHL":
+                    btn_peso = QPushButton("⚖️ Peso"); btn_peso.setStyleSheet("background-color: #ff9800 !important; color: black !important; font-size: 11px; font-weight: bold; padding: 4px;"); btn_peso.clicked.connect(lambda checked, r=row: self.abrir_dialogo_peso_dhl(self.mapa_filas_cierre[r])); lay_acc.addWidget(btn_peso)
+                
+                self.tabla_cierre.setCellWidget(row, 9, w_acc)
+                
                 tot_base += precio_base; tot_extras += extras; tot_final += monto_serv
                 
             progreso.setValue(total_ops)
@@ -171,16 +252,21 @@ class TabFacturacion(QWidget):
             self.lbl_resumen.setText("Total Base: $0 | Total Extras: $0 | TOTAL: $0")
             QMessageBox.critical(self, "Error", str(e))
         finally:
-            self.btn_c.setEnabled(True) # 🔥 DESBLOQUEAMOS EL BOTÓN 🔥
+            self.btn_c.setEnabled(True)
         
     def generar_pdf_fact(self):
         if not hasattr(self, 'resultados_cierre') or not self.resultados_cierre: return
         reply = QMessageBox.question(self, "Cerrar Facturación", "¿Desea marcar estas guías como FACTURADAS?", QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No); marcar_facturado = (reply == QMessageBox.StandardButton.Yes); mes_nombre = self.cierre_mes.currentText(); anio_num = self.cierre_anio.value(); prov_nombre = self.cierre_prov.currentText(); descargas_dir = os.path.join(os.path.expanduser('~'), 'Downloads'); os.makedirs(descargas_dir, exist_ok=True); ruta_pdf = os.path.join(descargas_dir, f"Facturacion_{prov_nombre}_{mes_nombre}_{anio_num}.pdf")
-        data_filas = [['FECHA', 'GUÍA', 'ZONA', 'BULTOS', 'BASE ($)', 'EXTRAS ($)', 'TOTAL ($)']]
+        data_filas = [['FECHA', 'GUÍA', 'ZONA', 'BULTOS / PESO', 'BASE ($)', 'EXTRAS ($)', 'TOTAL ($)']]
         for op in self.resultados_cierre:
             monto_serv = op.monto_servicio or 0.0; bultos_tot = op.bultos or 1; bultos_fr = op.bultos_frio or 0; precio_base = self.main.obtener_precio(op.localidad, bultos_tot-bultos_fr, bultos_fr, op.sucursal, proveedor=op.proveedor, peso=op.peso, bultos_totales=bultos_tot); extras = monto_serv - precio_base; det_b = str(bultos_tot)
-            if bultos_fr > 0 and bultos_fr < bultos_tot: det_b += f" ({bultos_tot-bultos_fr}C/{bultos_fr}R)"; 
-            elif bultos_fr == bultos_tot: det_b += " (R)"
+            
+            if op.proveedor and op.proveedor.upper() == "DHL":
+                det_b = f"{bultos_tot}B | {op.peso or 0}Kg"
+            else:
+                if bultos_fr > 0 and bultos_fr < bultos_tot: det_b += f" ({bultos_tot-bultos_fr}C/{bultos_fr}R)"; 
+                elif bultos_fr == bultos_tot: det_b += " (R)"
+                
             data_filas.append([op.fecha_ingreso.strftime("%d/%m/%Y"), op.guia_remito or "RET", op.localidad[:15].upper(), det_b, f"$ {precio_base:,.0f}", f"$ {extras:,.0f}", f"$ {monto_serv:,.0f}"])
             if marcar_facturado: op.facturado = True
         if marcar_facturado: 
