@@ -160,18 +160,6 @@ class TabConfiguracion(QWidget):
         main_layout.setContentsMargins(0, 0, 0, 0)
         self.list_menu = QListWidget()
         self.list_menu.setFixedWidth(220)
-        self.list_menu.addItems(["💲 Tarifas", "🚛 Choferes", "🏢 Clientes Retiro", "🏢 Proveedores y Destinos", "👥 Usuarios"])
-        
-        # 🔥 FILTRO DE SEGURIDAD PARA SUCURSALES Y ADMINS 🔥
-        if not getattr(self.main.usuario, 'es_admin_total', False) and getattr(self.main.usuario, 'sucursal_asignada', '') == "San Juan":
-            for i in range(self.list_menu.count()):
-                if i != 3: # El índice 3 es "Proveedores y Destinos"
-                    self.list_menu.item(i).setHidden(True)
-            self.list_menu.setCurrentRow(3)
-        else:
-            self.list_menu.setCurrentRow(0)
-            
-        self.list_menu.currentRowChanged.connect(self.cambiar_panel_config)
         
         self.stack_config = QStackedWidget()
         
@@ -181,11 +169,27 @@ class TabConfiguracion(QWidget):
         self.page_proveedores = QWidget(); self.setup_panel_proveedores() 
         self.page_usuarios = QWidget(); self.setup_panel_usuarios()
         
-        self.stack_config.addWidget(self.page_tarifas)
-        self.stack_config.addWidget(self.page_choferes)
-        self.stack_config.addWidget(self.page_clientes)
-        self.stack_config.addWidget(self.page_proveedores)
-        self.stack_config.addWidget(self.page_usuarios)
+        self.stack_config.addWidget(self.page_tarifas)      # Index 0
+        self.stack_config.addWidget(self.page_choferes)     # Index 1
+        self.stack_config.addWidget(self.page_clientes)     # Index 2
+        self.stack_config.addWidget(self.page_proveedores)  # Index 3
+        self.stack_config.addWidget(self.page_usuarios)     # Index 4
+        
+        # 🔥 ESTRATEGIA DEFINITIVA: ARMADO DINÁMICO DEL MENÚ 🔥
+        es_sj_restringido = not getattr(self.main.usuario, 'es_admin_total', False) and getattr(self.main.usuario, 'sucursal_asignada', '') == "San Juan"
+        
+        if es_sj_restringido:
+            # SAN JUAN: Solo le creamos un botón y lo conectamos a la pantalla de Destinos
+            self.list_menu.addItem("📍 Destinos Frecuentes")
+            self.list_menu.currentRowChanged.connect(lambda idx: self.stack_config.setCurrentIndex(3))
+            self.list_menu.setCurrentRow(0)
+            self.stack_config.setCurrentIndex(3)
+        else:
+            # MENDOZA / ADMIN: Menú completo estándar
+            self.list_menu.addItems(["💲 Tarifas", "🚛 Choferes", "🏢 Clientes Retiro", "🏢 Proveedores y Destinos", "👥 Usuarios"])
+            self.list_menu.currentRowChanged.connect(self.stack_config.setCurrentIndex)
+            self.list_menu.setCurrentRow(0)
+            self.stack_config.setCurrentIndex(0)
         
         main_layout.addWidget(self.list_menu)
         main_layout.addWidget(self.stack_config)
@@ -311,11 +315,10 @@ class TabConfiguracion(QWidget):
 
         self.cargar_proveedores_tabla()
         
-        # 🔥 FILTRO EXTRA: Ocultar la sub-pestaña "Empresas" para San Juan 🔥
+        # 🔥 DESTRUIR LA SUB-PESTAÑA "EMPRESAS" PARA SAN JUAN 🔥
         es_sj_restringido = not getattr(self.main.usuario, 'es_admin_total', False) and getattr(self.main.usuario, 'sucursal_asignada', '') == "San Juan"
         if es_sj_restringido:
-            self.tabs_prov.setTabVisible(0, False) # Oculta Empresas
-            self.tabs_prov.setCurrentIndex(1)      # Fija en Destinos Frecuentes
+            self.tabs_prov.removeTab(0)
 
     def guardar_proveedor(self):
         n = self.cfg_prov_nombre.text().strip()
