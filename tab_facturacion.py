@@ -13,6 +13,28 @@ from database import Operacion, Historial, Estados, ReciboPago
 from utilidades import crear_pdf_facturacion
 from dialogos import EditarPrecioFacturacionDialog, AgregarCargoDialog, CargarPagoDialog
 
+# 🔥 CORTAFUEGOS DE SEGURIDAD PARA COMBOS DE PROVEEDORES 🔥
+class RestrictedComboBox(QComboBox):
+    def __init__(self, main_app, parent=None):
+        super().__init__(parent)
+        self.main_app = main_app
+
+    def addItem(self, *args, **kwargs):
+        es_sj = not getattr(self.main_app.usuario, 'es_admin_total', False) and getattr(self.main_app.usuario, 'sucursal_asignada', '') == "San Juan"
+        if es_sj:
+            if self.findText("DHL") == -1:
+                super().addItem("DHL")
+        else:
+            super().addItem(*args, **kwargs)
+
+    def addItems(self, texts):
+        es_sj = not getattr(self.main_app.usuario, 'es_admin_total', False) and getattr(self.main_app.usuario, 'sucursal_asignada', '') == "San Juan"
+        if es_sj:
+            if self.findText("DHL") == -1:
+                super().addItem("DHL")
+        else:
+            super().addItems(texts)
+
 class EditarPesoDHLDialog(QDialog):
     def __init__(self, op, parent=None):
         super().__init__(parent)
@@ -92,14 +114,10 @@ class TabFacturacion(QWidget):
         
         self.cierre_sucursal = QComboBox(); self.cierre_sucursal.addItems(["Todas", "Mendoza", "San Juan"]) 
         
-        # 🔥 FILTRO DE SEGURIDAD EXTREMA PARA SAN JUAN 🔥
-        self.cierre_prov = QComboBox()
-        es_sj_restringido = not getattr(self.main.usuario, 'es_admin_total', False) and getattr(self.main.usuario, 'sucursal_asignada', '') == "San Juan"
-        if es_sj_restringido:
-            self.cierre_prov.addItem("DHL")
-        else:
-            self.cierre_prov.addItem("Todos")
-            self.cierre_prov.addItems(self.main.lista_proveedores)
+        # 🔥 ACÁ INYECTAMOS EL COMBO BLINDADO 🔥
+        self.cierre_prov = RestrictedComboBox(self.main)
+        self.cierre_prov.addItem("Todos")
+        self.cierre_prov.addItems(self.main.lista_proveedores)
         
         self.btn_c = QPushButton("Calcular Listado"); self.btn_c.clicked.connect(self.calcular_cierre)
         
@@ -185,7 +203,7 @@ class TabFacturacion(QWidget):
         mes = self.cierre_mes.currentIndex() + 1; anio = self.cierre_anio.value(); prov = self.cierre_prov.currentText().strip(); sucursal = self.cierre_sucursal.currentText(); self.tabla_cierre.setRowCount(0)
         try:
             _, last_day = calendar.monthrange(anio, mes); start_date = date(anio, mes, 1); end_date = date(anio, mes, last_day); query = self.main.session.query(Operacion).filter(Operacion.fecha_ingreso >= start_date, Operacion.fecha_ingreso <= end_date, (Operacion.facturado == False) | (Operacion.facturado == None), Operacion.estado.ilike('ENTREGADO'))
-            if prov != "Todos": query = query.filter(Operacion.proveedor.ilike(prov))
+            if prov != "Todos" and prov != "": query = query.filter(Operacion.proveedor.ilike(prov))
             else: query = query.filter(~Operacion.proveedor.ilike('JetPaq'))
             if sucursal != "Todas": query = query.filter(Operacion.sucursal == sucursal)
             query = query.order_by(Operacion.fecha_ingreso.asc()); self.resultados_cierre = query.all()
@@ -233,7 +251,6 @@ class TabFacturacion(QWidget):
                     extras = monto_serv - precio_base
                 self.tabla_cierre.setItem(row, 6, QTableWidgetItem(f"$ {precio_base:,.2f}")); self.tabla_cierre.setItem(row, 7, QTableWidgetItem(f"$ {extras:,.2f}")); self.tabla_cierre.setItem(row, 8, QTableWidgetItem(f"$ {monto_serv:,.2f}"))
                 
-                # 🔥 WIDGET DE ACCIONES CON EL BOTÓN EXTRA PARA DHL 🔥
                 w_acc = QWidget(); lay_acc = QHBoxLayout(w_acc); lay_acc.setContentsMargins(0,0,0,0)
                 btn_ajuste = QPushButton("✏️ Editar"); btn_ajuste.setStyleSheet("background-color: #0d6efd !important; color: white !important; font-size: 11px; font-weight: bold; padding: 4px;"); btn_ajuste.clicked.connect(lambda checked, r=row: self.abrir_dialogo_ajuste_precio(self.mapa_filas_cierre[r])); lay_acc.addWidget(btn_ajuste)
                 

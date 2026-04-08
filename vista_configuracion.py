@@ -310,6 +310,12 @@ class TabConfiguracion(QWidget):
         layout.addWidget(self.tabs_prov)
 
         self.cargar_proveedores_tabla()
+        
+        # 🔥 FILTRO EXTRA: Ocultar la sub-pestaña "Empresas" para San Juan 🔥
+        es_sj_restringido = not getattr(self.main.usuario, 'es_admin_total', False) and getattr(self.main.usuario, 'sucursal_asignada', '') == "San Juan"
+        if es_sj_restringido:
+            self.tabs_prov.setTabVisible(0, False) # Oculta Empresas
+            self.tabs_prov.setCurrentIndex(1)      # Fija en Destinos Frecuentes
 
     def guardar_proveedor(self):
         n = self.cfg_prov_nombre.text().strip()
@@ -424,13 +430,11 @@ class TabConfiguracion(QWidget):
                     self.cargar_destinos_de_proveedor_combo(self.prov_seleccionado)
         except Exception: self.main.session.rollback()
 
-    # 🔥 FUNCIÓN MAESTRA QUE ACTUALIZA EL MES CORRIENTE AUTOMÁTICAMENTE 🔥
     def recalcular_mes_corriente(self):
         try:
             mes_actual = datetime.now().month
             anio_actual = datetime.now().year
             
-            # 🔥 Buscamos las operaciones del mes actual que NO ESTÉN FACTURADAS (Escudo protector)
             ops = self.main.session.query(Operacion).filter(
                 extract('month', Operacion.fecha_ingreso) == mes_actual,
                 extract('year', Operacion.fecha_ingreso) == anio_actual,
@@ -469,7 +473,6 @@ class TabConfiguracion(QWidget):
                             costo_frio = math.ceil(cant_frio / 3) * t.precio_base_refrig if cant_frio > 0 else 0
                             nuevo_precio = costo_comun + costo_frio
 
-                # Si calculamos un precio válido y es distinto, lo actualizamos silenciosamente
                 if nuevo_precio > 0 and op.monto_servicio != nuevo_precio:
                     op.monto_servicio = nuevo_precio
 
