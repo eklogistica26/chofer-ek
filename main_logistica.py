@@ -681,12 +681,13 @@ class PlataformaLogistica(QMainWindow):
             except: pass
         except Exception: self.session.rollback()
 
-    def setup_reportes(self):
+   def setup_reportes(self):
         layout = QVBoxLayout(self.tab_reportes); filtros = QGroupBox("Filtros"); flayout = QHBoxLayout()
         self.rep_fecha_desde = QDateEdit(QDate.currentDate().addDays(-30)); self.rep_fecha_hasta = QDateEdit(QDate.currentDate()); self.rep_fecha_desde.setCalendarPopup(True); self.rep_fecha_hasta.setCalendarPopup(True)
         
+        # 🔥 ENSANCHADO DE FILTROS 🔥
         self.rep_sucursal = QComboBox(); self.rep_sucursal.addItems(["Todas", "Mendoza", "San Juan"])
-        self.rep_sucursal.setMinimumWidth(120) # 🔥 ENSANCHADO
+        self.rep_sucursal.setMinimumWidth(120) 
         
         self.rep_chofer = QComboBox()
         self.rep_chofer.setMinimumWidth(250) 
@@ -695,7 +696,7 @@ class PlataformaLogistica(QMainWindow):
         self.rep_cliente = QComboBox(); self.rep_cliente.addItem("Todos"); self.rep_cliente.addItems(self.lista_proveedores)
         
         self.rep_estado = QComboBox(); self.rep_estado.addItem("Todos"); self.rep_estado.addItems(Estados.LISTA_TODOS)
-        self.rep_estado.setMinimumWidth(160) # 🔥 ENSANCHADO
+        self.rep_estado.setMinimumWidth(160)
         
         self.rep_facturado = QComboBox(); self.rep_facturado.addItems(["Todos", "Facturado", "NO Facturado"]) 
         
@@ -725,12 +726,17 @@ class PlataformaLogistica(QMainWindow):
         
         self.tabla_reportes.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows); self.tabla_reportes.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         
-        # 🔥 PANEL GERENCIAL DE RESUMEN 🔥
-        self.lbl_reporte_total = QLabel("Presione 'Generar' para procesar las guías y ver el panel resumen.")
-        self.lbl_reporte_total.setStyleSheet("font-size: 14px; background-color: #f8f9fa; margin: 5px; padding: 15px; border: 1px solid #ced4da; border-radius: 8px;")
-        self.lbl_reporte_total.setWordWrap(True)
+        # 🔥 NUEVO PANEL GERENCIAL (QTextBrowser permite scroll y HTML avanzado) 🔥
+        self.panel_resumen = QTextBrowser()
+        self.panel_resumen.setOpenExternalLinks(False)
+        self.panel_resumen.setMinimumHeight(250)
+        self.panel_resumen.setMaximumHeight(350)
+        self.panel_resumen.setStyleSheet("background-color: #f4f6f9; border: 1px solid #ced4da; border-radius: 8px;")
         
-        layout.addWidget(filtros); layout.addWidget(self.tabla_reportes); layout.addWidget(self.lbl_reporte_total)
+        html_inicial = "<div style='padding: 20px; font-size: 16px; color: #6c757d; text-align: center;'>Seleccione los filtros arriba y presione <b>Generar</b> para visualizar el Dashboard Gerencial.</div>"
+        self.panel_resumen.setHtml(html_inicial)
+        
+        layout.addWidget(filtros); layout.addWidget(self.tabla_reportes); layout.addWidget(self.panel_resumen)
         
     def construir_query_reportes(self):
         f_desde = self.rep_fecha_desde.date().toPyDate(); f_hasta = self.rep_fecha_hasta.date().toPyDate()
@@ -745,47 +751,125 @@ class PlataformaLogistica(QMainWindow):
         
     def generar_reporte_avanzado(self):
         try:
-            resultados = self.construir_query_reportes(); self.tabla_reportes.setRowCount(0); total_dinero = 0; total_guias = len(resultados)
+            resultados = self.construir_query_reportes()
+            self.tabla_reportes.setRowCount(0)
+            total_dinero = 0
+            total_guias = len(resultados)
             
-            # 🔥 DICCIONARIOS PARA AUDITORIA GERENCIAL 🔥
-            c_est = {}; c_suc = {}; c_chof = {}; c_cli = {}
+            # 🔥 DICCIONARIOS PARA EL DESGLOSE GERENCIAL 🔥
+            desglose_est = {}
+            c_cli = {}
+            c_chof_general = {}
             
             for row, op in enumerate(resultados):
-                self.tabla_reportes.insertRow(row); self.tabla_reportes.setItem(row, 0, QTableWidgetItem(op.fecha_ingreso.strftime("%d/%m/%Y"))); self.tabla_reportes.setItem(row, 1, QTableWidgetItem(op.sucursal)); self.tabla_reportes.setItem(row, 2, QTableWidgetItem(op.proveedor)); self.tabla_reportes.setItem(row, 3, QTableWidgetItem(op.guia_remito or "-")); self.tabla_reportes.setItem(row, 4, QTableWidgetItem(op.chofer_asignado or "-")); self.tabla_reportes.setItem(row, 5, QTableWidgetItem(op.destinatario)); self.tabla_reportes.setItem(row, 6, QTableWidgetItem(op.localidad)); self.tabla_reportes.setItem(row, 7, QTableWidgetItem(op.estado)); 
-                item_fac = QTableWidgetItem("SI" if op.facturado else "NO"); 
-                if op.facturado: item_fac.setForeground(QColor("green")); item_fac.setFont(QFont("Arial", 9, QFont.Weight.Bold))
-                self.tabla_reportes.setItem(row, 8, item_fac); self.tabla_reportes.setItem(row, 9, QTableWidgetItem(str(op.bultos))); self.tabla_reportes.setItem(row, 10, QTableWidgetItem(f"$ {op.monto_servicio}")); 
-                
-                # Sumatorias para el Dashboard
-                total_dinero += op.monto_servicio
-                c_est[op.estado] = c_est.get(op.estado, 0) + 1
-                suc = op.sucursal or "S/D"; c_suc[suc] = c_suc.get(suc, 0) + 1
-                chof = op.chofer_asignado or "Sin Chofer"; c_chof[chof] = c_chof.get(chof, 0) + 1
-                cli = op.proveedor or "S/D"; c_cli[cli] = c_cli.get(cli, 0) + 1
+                # REGLA DE NEGOCIO: JETPAQ NO SUMA DINERO
+                es_jetpaq = bool(op.proveedor and op.proveedor.lower() == 'jetpaq')
+                precio_mostrar = 0.0 if es_jetpaq else (op.monto_servicio or 0.0)
 
-            # 🔥 ARMADO DEL PANEL HTML RESUMEN 🔥
-            txt_est = " | ".join([f"<b>{k}:</b> {v}" for k, v in sorted(c_est.items(), key=lambda x: x[1], reverse=True)])
-            txt_suc = " | ".join([f"<b>{k}:</b> {v}" for k, v in sorted(c_suc.items(), key=lambda x: x[1], reverse=True)])
-            top_cli = " | ".join([f"<b>{k}:</b> {v}" for k, v in sorted(c_cli.items(), key=lambda x: x[1], reverse=True)[:5]])
-            top_chof = " | ".join([f"<b>{k}:</b> {v}" for k, v in sorted(c_chof.items(), key=lambda x: x[1], reverse=True)[:5]])
+                self.tabla_reportes.insertRow(row); 
+                self.tabla_reportes.setItem(row, 0, QTableWidgetItem(op.fecha_ingreso.strftime("%d/%m/%Y")))
+                self.tabla_reportes.setItem(row, 1, QTableWidgetItem(op.sucursal))
+                self.tabla_reportes.setItem(row, 2, QTableWidgetItem(op.proveedor))
+                self.tabla_reportes.setItem(row, 3, QTableWidgetItem(op.guia_remito or "-"))
+                self.tabla_reportes.setItem(row, 4, QTableWidgetItem(op.chofer_asignado or "-"))
+                self.tabla_reportes.setItem(row, 5, QTableWidgetItem(op.destinatario))
+                self.tabla_reportes.setItem(row, 6, QTableWidgetItem(op.localidad))
+                self.tabla_reportes.setItem(row, 7, QTableWidgetItem(op.estado))
+                
+                item_fac = QTableWidgetItem("SI" if op.facturado else "NO")
+                if op.facturado: item_fac.setForeground(QColor("green")); item_fac.setFont(QFont("Arial", 9, QFont.Weight.Bold))
+                self.tabla_reportes.setItem(row, 8, item_fac)
+                self.tabla_reportes.setItem(row, 9, QTableWidgetItem(str(op.bultos)))
+                
+                if es_jetpaq:
+                    item_precio = QTableWidgetItem("Uso Interno ($0)")
+                    item_precio.setForeground(QColor("gray"))
+                else:
+                    item_precio = QTableWidgetItem(f"$ {precio_mostrar:,.2f}")
+                self.tabla_reportes.setItem(row, 10, item_precio)
+                
+                # Sumatoria financiera (JetPaq suma 0)
+                total_dinero += precio_mostrar
+                
+                # Extracción de datos para el desglose
+                est = op.estado or "S/D"
+                suc = op.sucursal or "S/D"
+                chof = op.chofer_asignado or "Sin Chofer"
+                cli = op.proveedor or "S/D"
+                
+                # Armado del árbol de Estados -> Sucursal -> Chofer
+                if est not in desglose_est:
+                    desglose_est[est] = {'tot': 0, 'MZA': 0, 'SJ': 0, 'choferes': {}}
+                
+                desglose_est[est]['tot'] += 1
+                if suc == 'Mendoza': desglose_est[est]['MZA'] += 1
+                elif suc == 'San Juan': desglose_est[est]['SJ'] += 1
+                
+                if chof not in desglose_est[est]['choferes']:
+                    desglose_est[est]['choferes'][chof] = 0
+                desglose_est[est]['choferes'][chof] += 1
+
+                # Totales generales de Clientes y Choferes
+                c_cli[cli] = c_cli.get(cli, 0) + 1
+                c_chof_general[chof] = c_chof_general.get(chof, 0) + 1
+
+            # 🔥 CONSTRUCCIÓN DEL DASHBOARD HTML CORPORATIVO 🔥
+            html = "<div style='font-family: Arial, sans-serif; color: #333; padding: 5px;'>"
             
-            html = f"""
-            <table width='100%' style='color: #333;'>
+            # Fila Superior: Métricas Principales
+            html += f"""
+            <table width='100%' style='border-bottom: 2px solid #0d6efd; padding-bottom: 10px; margin-bottom: 15px;'>
                 <tr>
-                    <td width='30%' valign='top'>
-                        <span style='font-size:18px; color:#0d6efd;'><b>Total Guías: {total_guias}</b></span><br><br>
-                        <span style='font-size:18px; color:#198754;'><b>Facturación: $ {total_dinero:,.2f}</b></span>
-                    </td>
-                    <td width='70%' valign='top' style='border-left: 1px solid #ccc; padding-left: 15px;'>
-                        <span style='color:#555;'>📊 <b>Por Estado:</b></span> {txt_est}<br><br>
-                        <span style='color:#555;'>🏢 <b>Por Sucursal:</b></span> {txt_suc}<br><br>
-                        <span style='color:#555;'>📦 <b>Top Clientes:</b></span> {top_cli}<br><br>
-                        <span style='color:#555;'>🚚 <b>Top Choferes:</b></span> {top_chof}
-                    </td>
+                    <td width='50%'><span style='font-size: 22px; color: #0d6efd;'><b>📦 Volumen Total: {total_guias} Guías</b></span></td>
+                    <td width='50%' align='right'><span style='font-size: 22px; color: #198754;'><b>💵 Facturación: $ {total_dinero:,.2f}</b></span></td>
                 </tr>
             </table>
             """
-            self.lbl_reporte_total.setText(html)
+            
+            html += "<table width='100%' cellpadding='8'><tr>"
+            
+            # Columna Izquierda: Desglose Profundo por Estados
+            html += "<td width='60%' valign='top' style='background-color: #ffffff; border: 1px solid #dee2e6; border-radius: 6px; padding: 15px;'>"
+            html += "<h3 style='color: #495057; margin-top: 0; border-bottom: 1px solid #eee; padding-bottom: 5px;'>📈 Desglose Operativo por Estado</h3>"
+            
+            if not desglose_est:
+                html += "<span style='color: #6c757d;'>No hay datos operativos en este rango.</span>"
+            
+            for estado, data in sorted(desglose_est.items(), key=lambda x: x[1]['tot'], reverse=True):
+                html += f"<div style='margin-bottom: 12px; padding-bottom: 10px; border-bottom: 1px dashed #e9ecef;'>"
+                html += f"<span style='font-size: 16px; font-weight: bold; color: #212529;'>{estado}</span> "
+                html += f"<span style='font-size: 15px; color: #d32f2f; font-weight: bold;'>({data['tot']})</span><br>"
+                html += f"<span style='font-size: 13px; color: #6c757d;'>➤ <b>Sucursales:</b> Mendoza ({data['MZA']}) | San Juan ({data['SJ']})</span><br>"
+                
+                chof_str_list = [f"{c} ({cant})" for c, cant in sorted(data['choferes'].items(), key=lambda x: x[1], reverse=True)]
+                chof_str = " - ".join(chof_str_list)
+                
+                html += f"<span style='font-size: 13px; color: #0d6efd;'>➤ <b>Choferes:</b> {chof_str}</span>"
+                html += "</div>"
+                
+            html += "</td><td width='2%'></td>"
+            
+            # Columna Derecha: Clientes y Choferes
+            html += "<td width='38%' valign='top'>"
+            
+            # Panel Clientes
+            html += "<div style='background-color: #ffffff; border: 1px solid #dee2e6; border-radius: 6px; padding: 15px; margin-bottom: 15px;'>"
+            html += "<h4 style='color: #495057; margin-top: 0; border-bottom: 1px solid #eee; padding-bottom: 5px;'>🏢 Volumen por Cliente</h4>"
+            for cli, cant in sorted(c_cli.items(), key=lambda x: x[1], reverse=True)[:8]:
+                html += f"<div style='font-size: 14px; margin-bottom: 6px;'>• <b>{cli}</b>: {cant} guías</div>"
+            html += "</div>"
+            
+            # Panel Choferes
+            html += "<div style='background-color: #ffffff; border: 1px solid #dee2e6; border-radius: 6px; padding: 15px;'>"
+            html += "<h4 style='color: #495057; margin-top: 0; border-bottom: 1px solid #eee; padding-bottom: 5px;'>🚛 Distribución por Chofer</h4>"
+            for chof, cant in sorted(c_chof_general.items(), key=lambda x: x[1], reverse=True)[:8]:
+                html += f"<div style='font-size: 14px; margin-bottom: 6px;'>• <b>{chof}</b>: {cant} guías</div>"
+            html += "</div>"
+            
+            html += "</td></tr></table></div>"
+            
+            self.panel_resumen.setHtml(html)
+            
         except Exception as e: 
             self.session.rollback()
             print(f"Error reporte: {e}")
