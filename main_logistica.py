@@ -684,18 +684,25 @@ class PlataformaLogistica(QMainWindow):
     def setup_reportes(self):
         layout = QVBoxLayout(self.tab_reportes); filtros = QGroupBox("Filtros"); flayout = QHBoxLayout()
         self.rep_fecha_desde = QDateEdit(QDate.currentDate().addDays(-30)); self.rep_fecha_hasta = QDateEdit(QDate.currentDate()); self.rep_fecha_desde.setCalendarPopup(True); self.rep_fecha_hasta.setCalendarPopup(True)
-        self.rep_sucursal = QComboBox(); self.rep_sucursal.addItems(["Todas", "Mendoza", "San Juan"]); 
+        
+        self.rep_sucursal = QComboBox(); self.rep_sucursal.addItems(["Todas", "Mendoza", "San Juan"])
+        self.rep_sucursal.setMinimumWidth(120) # 🔥 ENSANCHADO
         
         self.rep_chofer = QComboBox()
         self.rep_chofer.setMinimumWidth(250) 
         self.rep_chofer.addItem("Todos")
         
         self.rep_cliente = QComboBox(); self.rep_cliente.addItem("Todos"); self.rep_cliente.addItems(self.lista_proveedores)
+        
         self.rep_estado = QComboBox(); self.rep_estado.addItem("Todos"); self.rep_estado.addItems(Estados.LISTA_TODOS)
+        self.rep_estado.setMinimumWidth(160) # 🔥 ENSANCHADO
+        
         self.rep_facturado = QComboBox(); self.rep_facturado.addItems(["Todos", "Facturado", "NO Facturado"]) 
+        
         btn_buscar = QPushButton("🔍 Generar"); btn_buscar.clicked.connect(self.generar_reporte_avanzado)
         btn_excel = QPushButton("Excel"); btn_excel.setStyleSheet("background-color: #28a745 !important; color: white !important;"); btn_excel.clicked.connect(self.exportar_reporte_excel)
         btn_pdf_rep = QPushButton("PDF"); btn_pdf_rep.setStyleSheet("background-color: #dc3545 !important; color: white !important;"); btn_pdf_rep.clicked.connect(self.generar_pdf_rep)
+        
         flayout.addWidget(QLabel("Desde:")); flayout.addWidget(self.rep_fecha_desde); flayout.addWidget(QLabel("Hasta:")); flayout.addWidget(self.rep_fecha_hasta); flayout.addWidget(QLabel("Suc:")); flayout.addWidget(self.rep_sucursal); flayout.addWidget(QLabel("Cliente:")); flayout.addWidget(self.rep_cliente); flayout.addWidget(QLabel("Chof:")); flayout.addWidget(self.rep_chofer); flayout.addWidget(QLabel("Est:")); flayout.addWidget(self.rep_estado); flayout.addWidget(QLabel("Fac:")); flayout.addWidget(self.rep_facturado)
         flayout.addWidget(btn_buscar); flayout.addWidget(btn_excel); flayout.addWidget(btn_pdf_rep); filtros.setLayout(flayout)
         
@@ -705,19 +712,24 @@ class PlataformaLogistica(QMainWindow):
         header_rep = self.tabla_reportes.horizontalHeader(); 
         header_rep.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
         self.tabla_reportes.setColumnWidth(0, 90)
-        self.tabla_reportes.setColumnWidth(1, 120)
+        self.tabla_reportes.setColumnWidth(1, 100)
         self.tabla_reportes.setColumnWidth(2, 140)
         self.tabla_reportes.setColumnWidth(3, 140)
         self.tabla_reportes.setColumnWidth(4, 140)
         self.tabla_reportes.setColumnWidth(5, 250)
         self.tabla_reportes.setColumnWidth(6, 140)
         self.tabla_reportes.setColumnWidth(7, 150)
-        self.tabla_reportes.setColumnWidth(8, 90)
-        self.tabla_reportes.setColumnWidth(9, 90)
+        self.tabla_reportes.setColumnWidth(8, 70)
+        self.tabla_reportes.setColumnWidth(9, 70)
         header_rep.setStretchLastSection(True)
         
         self.tabla_reportes.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows); self.tabla_reportes.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
-        self.lbl_reporte_total = QLabel("Resultados: 0 | Total Dinero: $ 0.00 | Total Guías: 0"); self.lbl_reporte_total.setStyleSheet("font-size: 16px; font-weight: bold; margin: 10px; padding: 10px; border: 1px solid #ccc;"); 
+        
+        # 🔥 PANEL GERENCIAL DE RESUMEN 🔥
+        self.lbl_reporte_total = QLabel("Presione 'Generar' para procesar las guías y ver el panel resumen.")
+        self.lbl_reporte_total.setStyleSheet("font-size: 14px; background-color: #f8f9fa; margin: 5px; padding: 15px; border: 1px solid #ced4da; border-radius: 8px;")
+        self.lbl_reporte_total.setWordWrap(True)
+        
         layout.addWidget(filtros); layout.addWidget(self.tabla_reportes); layout.addWidget(self.lbl_reporte_total)
         
     def construir_query_reportes(self):
@@ -734,13 +746,49 @@ class PlataformaLogistica(QMainWindow):
     def generar_reporte_avanzado(self):
         try:
             resultados = self.construir_query_reportes(); self.tabla_reportes.setRowCount(0); total_dinero = 0; total_guias = len(resultados)
+            
+            # 🔥 DICCIONARIOS PARA AUDITORIA GERENCIAL 🔥
+            c_est = {}; c_suc = {}; c_chof = {}; c_cli = {}
+            
             for row, op in enumerate(resultados):
                 self.tabla_reportes.insertRow(row); self.tabla_reportes.setItem(row, 0, QTableWidgetItem(op.fecha_ingreso.strftime("%d/%m/%Y"))); self.tabla_reportes.setItem(row, 1, QTableWidgetItem(op.sucursal)); self.tabla_reportes.setItem(row, 2, QTableWidgetItem(op.proveedor)); self.tabla_reportes.setItem(row, 3, QTableWidgetItem(op.guia_remito or "-")); self.tabla_reportes.setItem(row, 4, QTableWidgetItem(op.chofer_asignado or "-")); self.tabla_reportes.setItem(row, 5, QTableWidgetItem(op.destinatario)); self.tabla_reportes.setItem(row, 6, QTableWidgetItem(op.localidad)); self.tabla_reportes.setItem(row, 7, QTableWidgetItem(op.estado)); 
                 item_fac = QTableWidgetItem("SI" if op.facturado else "NO"); 
                 if op.facturado: item_fac.setForeground(QColor("green")); item_fac.setFont(QFont("Arial", 9, QFont.Weight.Bold))
-                self.tabla_reportes.setItem(row, 8, item_fac); self.tabla_reportes.setItem(row, 9, QTableWidgetItem(str(op.bultos))); self.tabla_reportes.setItem(row, 10, QTableWidgetItem(f"$ {op.monto_servicio}")); total_dinero += op.monto_servicio
-            self.lbl_reporte_total.setText(f"Resultados: {total_guias} | Total Dinero: $ {total_dinero:,.2f}")
-        except Exception: self.session.rollback()
+                self.tabla_reportes.setItem(row, 8, item_fac); self.tabla_reportes.setItem(row, 9, QTableWidgetItem(str(op.bultos))); self.tabla_reportes.setItem(row, 10, QTableWidgetItem(f"$ {op.monto_servicio}")); 
+                
+                # Sumatorias para el Dashboard
+                total_dinero += op.monto_servicio
+                c_est[op.estado] = c_est.get(op.estado, 0) + 1
+                suc = op.sucursal or "S/D"; c_suc[suc] = c_suc.get(suc, 0) + 1
+                chof = op.chofer_asignado or "Sin Chofer"; c_chof[chof] = c_chof.get(chof, 0) + 1
+                cli = op.proveedor or "S/D"; c_cli[cli] = c_cli.get(cli, 0) + 1
+
+            # 🔥 ARMADO DEL PANEL HTML RESUMEN 🔥
+            txt_est = " | ".join([f"<b>{k}:</b> {v}" for k, v in sorted(c_est.items(), key=lambda x: x[1], reverse=True)])
+            txt_suc = " | ".join([f"<b>{k}:</b> {v}" for k, v in sorted(c_suc.items(), key=lambda x: x[1], reverse=True)])
+            top_cli = " | ".join([f"<b>{k}:</b> {v}" for k, v in sorted(c_cli.items(), key=lambda x: x[1], reverse=True)[:5]])
+            top_chof = " | ".join([f"<b>{k}:</b> {v}" for k, v in sorted(c_chof.items(), key=lambda x: x[1], reverse=True)[:5]])
+            
+            html = f"""
+            <table width='100%' style='color: #333;'>
+                <tr>
+                    <td width='30%' valign='top'>
+                        <span style='font-size:18px; color:#0d6efd;'><b>Total Guías: {total_guias}</b></span><br><br>
+                        <span style='font-size:18px; color:#198754;'><b>Facturación: $ {total_dinero:,.2f}</b></span>
+                    </td>
+                    <td width='70%' valign='top' style='border-left: 1px solid #ccc; padding-left: 15px;'>
+                        <span style='color:#555;'>📊 <b>Por Estado:</b></span> {txt_est}<br><br>
+                        <span style='color:#555;'>🏢 <b>Por Sucursal:</b></span> {txt_suc}<br><br>
+                        <span style='color:#555;'>📦 <b>Top Clientes:</b></span> {top_cli}<br><br>
+                        <span style='color:#555;'>🚚 <b>Top Choferes:</b></span> {top_chof}
+                    </td>
+                </tr>
+            </table>
+            """
+            self.lbl_reporte_total.setText(html)
+        except Exception as e: 
+            self.session.rollback()
+            print(f"Error reporte: {e}")
         
     def generar_pdf_rep(self):
         try:
