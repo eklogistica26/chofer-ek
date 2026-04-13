@@ -685,18 +685,20 @@ class PlataformaLogistica(QMainWindow):
         layout = QVBoxLayout(self.tab_reportes); filtros = QGroupBox("Filtros"); flayout = QHBoxLayout()
         self.rep_fecha_desde = QDateEdit(QDate.currentDate().addDays(-30)); self.rep_fecha_hasta = QDateEdit(QDate.currentDate()); self.rep_fecha_desde.setCalendarPopup(True); self.rep_fecha_hasta.setCalendarPopup(True)
         
-        # 🔥 ENSANCHADO DE FILTROS 🔥
         self.rep_sucursal = QComboBox(); self.rep_sucursal.addItems(["Todas", "Mendoza", "San Juan"])
-        self.rep_sucursal.setMinimumWidth(120) 
+        self.rep_sucursal.setMinimumWidth(100) 
         
         self.rep_chofer = QComboBox()
-        self.rep_chofer.setMinimumWidth(250) 
+        self.rep_chofer.setMinimumWidth(200) 
         self.rep_chofer.addItem("Todos")
         
         self.rep_cliente = QComboBox(); self.rep_cliente.addItem("Todos"); self.rep_cliente.addItems(self.lista_proveedores)
         
         self.rep_estado = QComboBox(); self.rep_estado.addItem("Todos"); self.rep_estado.addItems(Estados.LISTA_TODOS)
-        self.rep_estado.setMinimumWidth(160)
+        
+        # 🔥 NUEVO FILTRO DE TIPO 🔥
+        self.rep_tipo = QComboBox()
+        self.rep_tipo.addItems(["Todos", "Entrega", "Retiro", "Flete", "Cargo Extra"])
         
         self.rep_facturado = QComboBox(); self.rep_facturado.addItems(["Todos", "Facturado", "NO Facturado"]) 
         
@@ -704,7 +706,10 @@ class PlataformaLogistica(QMainWindow):
         btn_excel = QPushButton("Excel"); btn_excel.setStyleSheet("background-color: #28a745 !important; color: white !important;"); btn_excel.clicked.connect(self.exportar_reporte_excel)
         btn_pdf_rep = QPushButton("PDF"); btn_pdf_rep.setStyleSheet("background-color: #dc3545 !important; color: white !important;"); btn_pdf_rep.clicked.connect(self.generar_pdf_rep)
         
-        flayout.addWidget(QLabel("Desde:")); flayout.addWidget(self.rep_fecha_desde); flayout.addWidget(QLabel("Hasta:")); flayout.addWidget(self.rep_fecha_hasta); flayout.addWidget(QLabel("Suc:")); flayout.addWidget(self.rep_sucursal);         flayout.addWidget(QLabel("Cliente:")); flayout.addWidget(self.rep_cliente); flayout.addWidget(QLabel("Chof:")); flayout.addWidget(self.rep_chofer); flayout.addWidget(QLabel("Est:")); flayout.addWidget(self.rep_estado);         flayout.addWidget(QLabel("Fac:")); flayout.addWidget(self.rep_facturado)
+        flayout.addWidget(QLabel("Desde:")); flayout.addWidget(self.rep_fecha_desde); flayout.addWidget(QLabel("Hasta:")); flayout.addWidget(self.rep_fecha_hasta); flayout.addWidget(QLabel("Suc:")); flayout.addWidget(self.rep_sucursal)
+        flayout.addWidget(QLabel("Cliente:")); flayout.addWidget(self.rep_cliente); flayout.addWidget(QLabel("Chof:")); flayout.addWidget(self.rep_chofer); flayout.addWidget(QLabel("Est:")); flayout.addWidget(self.rep_estado)
+        flayout.addWidget(QLabel("Tipo:")); flayout.addWidget(self.rep_tipo) # Agregado a la vista
+        flayout.addWidget(QLabel("Fac:")); flayout.addWidget(self.rep_facturado)
         flayout.addWidget(btn_buscar); flayout.addWidget(btn_excel); flayout.addWidget(btn_pdf_rep); filtros.setLayout(flayout)
         
         self.tabla_reportes = QTableWidget(); self.tabla_reportes.setAlternatingRowColors(True); self.tabla_reportes.setColumnCount(11); 
@@ -712,21 +717,13 @@ class PlataformaLogistica(QMainWindow):
         
         header_rep = self.tabla_reportes.horizontalHeader(); 
         header_rep.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
-        self.tabla_reportes.setColumnWidth(0, 90)
-        self.tabla_reportes.setColumnWidth(1, 100)
-        self.tabla_reportes.setColumnWidth(2, 140)
-        self.tabla_reportes.setColumnWidth(3, 140)
-        self.tabla_reportes.setColumnWidth(4, 140)
-        self.tabla_reportes.setColumnWidth(5, 250)
-        self.tabla_reportes.setColumnWidth(6, 140)
-        self.tabla_reportes.setColumnWidth(7, 150)
-        self.tabla_reportes.setColumnWidth(8, 70)
-        self.tabla_reportes.setColumnWidth(9, 70)
+        self.tabla_reportes.setColumnWidth(0, 90); self.tabla_reportes.setColumnWidth(1, 100); self.tabla_reportes.setColumnWidth(2, 140)
+        self.tabla_reportes.setColumnWidth(3, 140); self.tabla_reportes.setColumnWidth(4, 140); self.tabla_reportes.setColumnWidth(5, 250)
+        self.tabla_reportes.setColumnWidth(6, 140); self.tabla_reportes.setColumnWidth(7, 150); self.tabla_reportes.setColumnWidth(8, 70); self.tabla_reportes.setColumnWidth(9, 70)
         header_rep.setStretchLastSection(True)
         
         self.tabla_reportes.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows); self.tabla_reportes.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         
-        # 🔥 NUEVO PANEL GERENCIAL (QTextBrowser permite scroll y HTML avanzado) 🔥
         self.panel_resumen = QTextBrowser()
         self.panel_resumen.setOpenExternalLinks(False)
         self.panel_resumen.setMinimumHeight(250)
@@ -741,12 +738,23 @@ class PlataformaLogistica(QMainWindow):
     def construir_query_reportes(self):
         f_desde = self.rep_fecha_desde.date().toPyDate(); f_hasta = self.rep_fecha_hasta.date().toPyDate()
         query = self.session.query(Operacion).filter(Operacion.fecha_ingreso >= f_desde, Operacion.fecha_ingreso <= f_hasta)
+        
         if self.rep_sucursal.currentText() != "Todas": query = query.filter(Operacion.sucursal == self.rep_sucursal.currentText())
         if self.rep_chofer.currentText() != "Todos": query = query.filter(Operacion.chofer_asignado == self.rep_chofer.currentText())
         if self.rep_cliente.currentText() != "Todos": query = query.filter(Operacion.proveedor == self.rep_cliente.currentText())
         if self.rep_estado.currentText() != "Todos": query = query.filter(Operacion.estado == self.rep_estado.currentText())
+        
+        # 🔥 LÓGICA DEL NUEVO FILTRO TIPO 🔥
+        tipo_sel = self.rep_tipo.currentText()
+        if tipo_sel != "Todos":
+            if tipo_sel == "Entrega": query = query.filter(Operacion.tipo_servicio.ilike('%Entrega%'))
+            elif tipo_sel == "Retiro": query = query.filter(Operacion.tipo_servicio.ilike('%Retiro%'))
+            elif tipo_sel == "Flete": query = query.filter(Operacion.tipo_servicio.ilike('%Flete%'))
+            elif tipo_sel == "Cargo Extra": query = query.filter(Operacion.tipo_servicio.ilike('%Cargo%'))
+            
         if self.rep_facturado.currentText() == "Facturado": query = query.filter(Operacion.facturado == True)
         elif self.rep_facturado.currentText() == "NO Facturado": query = query.filter(Operacion.facturado == False)
+        
         return query.all()
         
     def generar_reporte_avanzado(self):

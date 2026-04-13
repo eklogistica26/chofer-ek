@@ -448,7 +448,7 @@ class TabConfiguracion(QWidget):
                 suc = op.sucursal
                 nuevo_precio = 0.0
                 
-                if op.proveedor and op.proveedor.upper() == "DHL":
+                if op.proveedor and op.proveedor.upper() == "DHL EXPRESS":
                     t = self.main.session.query(TarifaDHL).filter(TarifaDHL.sucursal == suc).first()
                     if t:
                         bultos = op.bultos if op.bultos and op.bultos > 0 else 1

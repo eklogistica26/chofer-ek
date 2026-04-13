@@ -313,7 +313,7 @@ class TabIngreso(QWidget):
 
     def actualizar_interfaz_peso(self):
         prov = self.in_prov.currentText().upper()
-        if "DHL" in prov: self.lbl_peso.show(); self.in_peso_manual.show()
+        if "DHL EXPRESS" in prov: self.lbl_peso.show(); self.in_peso_manual.show()
         else: self.lbl_peso.hide(); self.in_peso_manual.hide(); self.in_peso_manual.setValue(0.0)
 
     def cambiar_interfaz_tipo(self):
@@ -455,8 +455,8 @@ class TabIngreso(QWidget):
                 for i, d in enumerate(datos_finales):
                     if i % 15 == 0: QApplication.processEvents() 
                     if d['guia'] in set_existentes: omitidas += 1; continue
-                    peso_txt = d.get('peso', 0.0); bultos_txt = d['bultos']; precio = self.main.obtener_precio(self.main.sucursal_actual, bultos_txt, 0, proveedor="DHL", peso=peso_txt, bultos_totales=bultos_txt)
-                    op = Operacion(fecha_ingreso=d['fecha_ingreso'], sucursal=self.main.sucursal_actual, guia_remito=d['guia'], proveedor="DHL", destinatario=d['destinatario'][:100].upper(), domicilio=d['domicilio'][:150].upper(), localidad=self.main.sucursal_actual.upper(), celular=d['celular'][:50], bultos=bultos_txt, bultos_frio=0, peso=peso_txt, tipo_carga="COMUN", tipo_urgencia=Urgencia.CLASICO, monto_servicio=precio, estado=Estados.EN_DEPOSITO, tipo_servicio="Entrega (Reparto)")
+                    peso_txt = d.get('peso', 0.0); bultos_txt = d['bultos']; precio = self.main.obtener_precio(self.main.sucursal_actual, bultos_txt, 0, proveedor="DHL EXPRESS", peso=peso_txt, bultos_totales=bultos_txt)
+                    op = Operacion(fecha_ingreso=d['fecha_ingreso'], sucursal=self.main.sucursal_actual, guia_remito=d['guia'], proveedor="DHL EXPRESS", destinatario=d['destinatario'][:100].upper(), domicilio=d['domicilio'][:150].upper(), localidad=self.main.sucursal_actual.upper(), celular=d['celular'][:50], bultos=bultos_txt, bultos_frio=0, peso=peso_txt, tipo_carga="COMUN", tipo_urgencia=Urgencia.CLASICO, monto_servicio=precio, estado=Estados.EN_DEPOSITO, tipo_servicio="Entrega (Reparto)")
                     self.main.session.add(op); hist = Historial(operacion=op, usuario=self.main.usuario.username, accion="INGRESO IMPORTADO", detalle="Carga masiva por TXT DHL"); self.main.session.add(hist); agregadas += 1
                 self.main.session.commit(); QApplication.restoreOverrideCursor(); self.main.setWindowTitle(f"E.K. LOGISTICA (NUBE) - Usuario: {self.main.usuario.username.upper()}")
                 QMessageBox.information(self, "Importación Exitosa", f"✅ {agregadas} guías agregadas.\n⚠️ {omitidas} omitidas (ya existían)."); self.cargar_movimientos_dia()

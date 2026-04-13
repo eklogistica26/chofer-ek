@@ -22,16 +22,16 @@ class RestrictedComboBox(QComboBox):
     def addItem(self, *args, **kwargs):
         es_sj = not getattr(self.main_app.usuario, 'es_admin_total', False) and getattr(self.main_app.usuario, 'sucursal_asignada', '') == "San Juan"
         if es_sj:
-            if self.findText("DHL") == -1:
-                super().addItem("DHL")
+            if self.findText("DHL EXPRESS") == -1:
+                super().addItem("DHL EXPRESS")
         else:
             super().addItem(*args, **kwargs)
 
     def addItems(self, texts):
         es_sj = not getattr(self.main_app.usuario, 'es_admin_total', False) and getattr(self.main_app.usuario, 'sucursal_asignada', '') == "San Juan"
         if es_sj:
-            if self.findText("DHL") == -1:
-                super().addItem("DHL")
+            if self.findText("DHL EXPRESS") == -1:
+                super().addItem("DHL EXPRESS")
         else:
             super().addItems(texts)
 
@@ -185,7 +185,7 @@ class TabFacturacion(QWidget):
                     cant_comun=bultos_nuevos, 
                     cant_frio=0, 
                     suc_forzada=op.sucursal, 
-                    proveedor="DHL", 
+                    proveedor="DHL EXPRESS", 
                     peso=peso_nuevo, 
                     bultos_totales=bultos_nuevos
                 )
@@ -238,7 +238,7 @@ class TabFacturacion(QWidget):
                 self.tabla_cierre.insertRow(row); self.mapa_filas_cierre[row] = op.id; self.tabla_cierre.setItem(row, 0, QTableWidgetItem(op.fecha_ingreso.strftime("%d/%m/%Y") if op.fecha_ingreso else "-")); self.tabla_cierre.setItem(row, 1, QTableWidgetItem((op.sucursal or "").upper())); self.tabla_cierre.setItem(row, 2, QTableWidgetItem(op.guia_remito or "RET")); self.tabla_cierre.setItem(row, 3, QTableWidgetItem(op.localidad or "")); 
                 bultos_tot = op.bultos or 1; bultos_fr = op.bultos_frio or 0; det_b = str(bultos_tot); 
                 
-                if op.proveedor and op.proveedor.upper() == "DHL":
+                if op.proveedor and op.proveedor.upper() == "DHL EXPRESS":
                     det_b = f"{bultos_tot} Bulto(s) | {op.peso or 0} Kg"
                 else:
                     if bultos_fr > 0 and bultos_fr < bultos_tot: det_b += f" ({bultos_tot-bultos_fr}C/{bultos_fr}R)"; 
@@ -254,7 +254,7 @@ class TabFacturacion(QWidget):
                 w_acc = QWidget(); lay_acc = QHBoxLayout(w_acc); lay_acc.setContentsMargins(0,0,0,0)
                 btn_ajuste = QPushButton("✏️ Editar"); btn_ajuste.setStyleSheet("background-color: #0d6efd !important; color: white !important; font-size: 11px; font-weight: bold; padding: 4px;"); btn_ajuste.clicked.connect(lambda checked, r=row: self.abrir_dialogo_ajuste_precio(self.mapa_filas_cierre[r])); lay_acc.addWidget(btn_ajuste)
                 
-                if op.proveedor and op.proveedor.upper() == "DHL":
+                if op.proveedor and op.proveedor.upper() == "DHL EXPRESS":
                     btn_peso = QPushButton("⚖️ Peso"); btn_peso.setStyleSheet("background-color: #ff9800 !important; color: black !important; font-size: 11px; font-weight: bold; padding: 4px;"); btn_peso.clicked.connect(lambda checked, r=row: self.abrir_dialogo_peso_dhl(self.mapa_filas_cierre[r])); lay_acc.addWidget(btn_peso)
                 
                 self.tabla_cierre.setCellWidget(row, 9, w_acc)
@@ -278,7 +278,7 @@ class TabFacturacion(QWidget):
         for op in self.resultados_cierre:
             monto_serv = op.monto_servicio or 0.0; bultos_tot = op.bultos or 1; bultos_fr = op.bultos_frio or 0; precio_base = self.main.obtener_precio(op.localidad, bultos_tot-bultos_fr, bultos_fr, op.sucursal, proveedor=op.proveedor, peso=op.peso, bultos_totales=bultos_tot); extras = monto_serv - precio_base; det_b = str(bultos_tot)
             
-            if op.proveedor and op.proveedor.upper() == "DHL":
+            if op.proveedor and op.proveedor.upper() == "DHL EXPRESS":
                 det_b = f"{bultos_tot}B | {op.peso or 0}Kg"
             else:
                 if bultos_fr > 0 and bultos_fr < bultos_tot: det_b += f" ({bultos_tot-bultos_fr}C/{bultos_fr}R)"; 
