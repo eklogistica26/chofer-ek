@@ -304,7 +304,7 @@ class PlataformaLogistica(QMainWindow):
                     self.cargar_monitor_global()
         except Exception: self.session.rollback()
 
-   def setup_monitor(self):
+    def setup_monitor(self):
         layout = QVBoxLayout(self.tab_monitor)
         self.tabs_internas_monitor = QTabWidget()
         tab_tabla = QWidget(); layout_tabla = QVBoxLayout(tab_tabla); top_bar = QHBoxLayout()
