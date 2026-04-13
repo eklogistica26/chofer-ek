@@ -309,36 +309,41 @@ class PlataformaLogistica(QMainWindow):
         self.tabs_internas_monitor = QTabWidget()
         tab_tabla = QWidget(); layout_tabla = QVBoxLayout(tab_tabla); top_bar = QHBoxLayout()
         
-        # Filtros Izquierdos
         filtros_layout = QFormLayout()
         self.mon_date = QDateEdit(QDate.currentDate()); self.mon_date.setCalendarPopup(True); self.mon_date.dateChanged.connect(self.cargar_monitor_global)
         
         self.mon_chofer_combo = QComboBox()
-        self.mon_chofer_combo.setMinimumWidth(250)
+        self.mon_chofer_combo.setMinimumWidth(200)
         self.mon_chofer_combo.addItem("Todos")
         self.mon_chofer_combo.currentTextChanged.connect(self.cargar_monitor_global)
         
-        btn_refresh = QPushButton("🔄 Actualizar Ahora"); btn_refresh.clicked.connect(lambda: {self.cargar_monitor_global(), self.cargar_novedades()})
+        btn_refresh = QPushButton("🔄 Actualizar Ahora")
+        btn_refresh.setStyleSheet("background-color: #1565c0; color: white; font-weight: bold; padding: 4px 12px; border-radius: 4px;")
+        btn_refresh.clicked.connect(lambda: {self.cargar_monitor_global(), self.cargar_novedades()})
+        
+        # Agrupamos el combo y el botón en una misma línea horizontal
+        h_chofer_btn = QHBoxLayout()
+        h_chofer_btn.setContentsMargins(0, 0, 0, 0)
+        h_chofer_btn.addWidget(self.mon_chofer_combo)
+        h_chofer_btn.addWidget(btn_refresh)
         
         filtros_layout.addRow("Fecha:", self.mon_date)
-        filtros_layout.addRow("Chofer:", self.mon_chofer_combo)
-        filtros_layout.addRow("", btn_refresh)
+        filtros_layout.addRow("Chofer:", h_chofer_btn) # Acá inyectamos la línea combinada
         
-        # 🔥 MINI-DASHBOARD DERECHO 🔥
         self.lbl_mini_dash = QLabel("Cargando métricas...")
         self.lbl_mini_dash.setStyleSheet("""
             background-color: #f8f9fa; 
             border: 1px solid #ced4da; 
             border-radius: 6px; 
-            padding: 8px; 
+            padding: 10px; 
             font-size: 13px;
         """)
         self.lbl_mini_dash.setWordWrap(True)
-        self.lbl_mini_dash.setMinimumWidth(400) # Asegura que ocupe buen espacio
+        self.lbl_mini_dash.setMinimumWidth(750) # 🔥 ENSANCHADO AL MÁXIMO 🔥
 
         top_bar.addLayout(filtros_layout)
         top_bar.addStretch() 
-        top_bar.addWidget(self.lbl_mini_dash) # Inyectamos el panel a la derecha
+        top_bar.addWidget(self.lbl_mini_dash)
         
         self.tabla_monitor = QTableWidget(); self.tabla_monitor.setColumnCount(8); 
         self.tabla_monitor.setHorizontalHeaderLabels(["Estado", "Guía", "Cliente", "Destinatario", "Domicilio / Novedad", "Zona", "Bultos", "Chofer"])
@@ -367,7 +372,6 @@ class PlataformaLogistica(QMainWindow):
         self.lista_novedades = QListWidget(); self.lista_novedades.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection); self.lista_novedades.setStyleSheet("font-size: 14px; padding: 10px;")
         layout_novedades.addWidget(btn_ref_nov); layout_novedades.addWidget(self.lista_novedades)
         self.tabs_internas_monitor.addTab(tab_tabla, "📋 Listado de Guías"); self.tabs_internas_monitor.addTab(tab_novedades, "🔔 Últimas Novedades y Auditoría"); layout.addWidget(self.tabs_internas_monitor)
-
     def aplicar_filtro_monitor(self, filtro):
         self.filtro_monitor = filtro; self.cargar_monitor_global()
 
@@ -475,26 +479,25 @@ class PlataformaLogistica(QMainWindow):
                         it.setBackground(brush_bg)
                         if col_idx == 0: font = QFont(); font.setBold(True); it.setFont(font); it.setForeground(txt_color_estado)
                         else: it.setForeground(txt_color_main)
-            
             # 🔥 CONSTRUIR Y ACTUALIZAR EL MINI-DASHBOARD 🔥
             txt_est = " | ".join([f"<b>{k}:</b> {v}" for k, v in sorted(c_estados.items(), key=lambda x: x[1], reverse=True)])
             txt_tipos = f"<b>Entregas:</b> {c_tipos['Entregas']} | <b>Retiros:</b> {c_tipos['Retiros']}"
             if c_tipos['Fletes'] > 0: txt_tipos += f" | <b>Fletes:</b> {c_tipos['Fletes']}"
             
-            top_chof = " | ".join([f"<b>{k}:</b> {v}" for k, v in sorted(c_choferes.items(), key=lambda x: x[1], reverse=True)[:3]])
+            top_chof = " | ".join([f"<b>{k}:</b> {v}" for k, v in sorted(c_choferes.items(), key=lambda x: x[1], reverse=True)[:4]])
             
             if not ops:
                 dash_html = "<span style='color: #6c757d;'>No hay guías para la fecha seleccionada.</span>"
             else:
                 dash_html = f"""
-                <table width='100%' style='color: #333;'>
+                <table width='100%' style='color: #333; margin: 0; padding: 0;'>
                     <tr>
-                        <td width='50%' valign='top'>
-                            <span style='color:#0d6efd;'>📊 <b>Estados:</b></span><br>{txt_est}<br><br>
+                        <td width='45%' valign='middle'>
+                            <span style='color:#0d6efd;'>📊 <b>Estados:</b></span> {txt_est}<br>
                             <span style='color:#198754;'>📦 <b>Tipos:</b></span> {txt_tipos}
                         </td>
-                        <td width='50%' valign='top' style='border-left: 1px solid #ccc; padding-left: 10px;'>
-                            <span style='color:#495057;'>🚛 <b>Top Choferes:</b></span><br>{top_chof}
+                        <td width='55%' valign='middle' style='border-left: 1px solid #ccc; padding-left: 15px;'>
+                            <span style='color:#495057;'>🚛 <b>Top Choferes:</b></span> {top_chof}
                         </td>
                     </tr>
                 </table>
