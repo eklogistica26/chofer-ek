@@ -304,10 +304,13 @@ class PlataformaLogistica(QMainWindow):
                     self.cargar_monitor_global()
         except Exception: self.session.rollback()
 
-    def setup_monitor(self):
+   def setup_monitor(self):
         layout = QVBoxLayout(self.tab_monitor)
         self.tabs_internas_monitor = QTabWidget()
         tab_tabla = QWidget(); layout_tabla = QVBoxLayout(tab_tabla); top_bar = QHBoxLayout()
+        
+        # Filtros Izquierdos
+        filtros_layout = QFormLayout()
         self.mon_date = QDateEdit(QDate.currentDate()); self.mon_date.setCalendarPopup(True); self.mon_date.dateChanged.connect(self.cargar_monitor_global)
         
         self.mon_chofer_combo = QComboBox()
@@ -316,7 +319,26 @@ class PlataformaLogistica(QMainWindow):
         self.mon_chofer_combo.currentTextChanged.connect(self.cargar_monitor_global)
         
         btn_refresh = QPushButton("🔄 Actualizar Ahora"); btn_refresh.clicked.connect(lambda: {self.cargar_monitor_global(), self.cargar_novedades()})
-        top_bar.addWidget(QLabel("Fecha:")); top_bar.addWidget(self.mon_date); top_bar.addWidget(QLabel("Chofer:")); top_bar.addWidget(self.mon_chofer_combo); top_bar.addWidget(btn_refresh); top_bar.addStretch()
+        
+        filtros_layout.addRow("Fecha:", self.mon_date)
+        filtros_layout.addRow("Chofer:", self.mon_chofer_combo)
+        filtros_layout.addRow("", btn_refresh)
+        
+        # 🔥 MINI-DASHBOARD DERECHO 🔥
+        self.lbl_mini_dash = QLabel("Cargando métricas...")
+        self.lbl_mini_dash.setStyleSheet("""
+            background-color: #f8f9fa; 
+            border: 1px solid #ced4da; 
+            border-radius: 6px; 
+            padding: 8px; 
+            font-size: 13px;
+        """)
+        self.lbl_mini_dash.setWordWrap(True)
+        self.lbl_mini_dash.setMinimumWidth(400) # Asegura que ocupe buen espacio
+
+        top_bar.addLayout(filtros_layout)
+        top_bar.addStretch() 
+        top_bar.addWidget(self.lbl_mini_dash) # Inyectamos el panel a la derecha
         
         self.tabla_monitor = QTableWidget(); self.tabla_monitor.setColumnCount(8); 
         self.tabla_monitor.setHorizontalHeaderLabels(["Estado", "Guía", "Cliente", "Destinatario", "Domicilio / Novedad", "Zona", "Bultos", "Chofer"])
@@ -396,6 +418,11 @@ class PlataformaLogistica(QMainWindow):
                 gps_records = self.session.query(Historial.operacion_id, Historial.detalle).filter(Historial.operacion_id.in_(all_op_ids), Historial.detalle.like('%| GPS:%')).order_by(Historial.id.asc()).all()
                 for op_id, detalle in gps_records: gps_dict[op_id] = detalle 
                     
+            # Variables para el Mini-Dashboard
+            c_estados = {}
+            c_tipos = {"Entregas": 0, "Retiros": 0, "Fletes": 0}
+            c_choferes = {}
+                    
             for r, op in enumerate(ops):
                 estado_visual = op.estado; bg_color = QColor("#ffffff"); txt_color_main = QColor("#000000") 
                 if op.estado == Estados.ENTREGADO: bg_color = QColor("#d4edda"); txt_color_estado = QColor("#155724")
@@ -403,11 +430,23 @@ class PlataformaLogistica(QMainWindow):
                 elif (op.estado or "").upper() in estados_deposito:
                     if op.id in reprogramados_set: bg_color = QColor("#e2d9f3"); txt_color_estado = QColor("#4b0082"); estado_visual = "REPROGRAMADO"
                     else: bg_color = QColor("#e3f2fd"); txt_color_estado = QColor("#0c5460"); estado_visual = "EN DEPOSITO"
+                
                 if self.filtro_monitor:
                     if self.filtro_monitor == "REPROGRAMADO" and estado_visual != "REPROGRAMADO": continue
                     elif self.filtro_monitor == "EN DEPOSITO" and estado_visual != "EN DEPOSITO": continue
                     elif self.filtro_monitor not in ["REPROGRAMADO", "EN DEPOSITO"] and op.estado != self.filtro_monitor: continue
                 
+                # Sumatorias para el Mini-Dashboard
+                c_estados[estado_visual] = c_estados.get(estado_visual, 0) + 1
+                
+                t_serv = op.tipo_servicio or ""
+                if "Retiro" in t_serv: c_tipos["Retiros"] += 1
+                elif "Flete" in t_serv: c_tipos["Fletes"] += 1
+                else: c_tipos["Entregas"] += 1
+                
+                chof = op.chofer_asignado or "Sin Asignar"
+                c_choferes[chof] = c_choferes.get(chof, 0) + 1
+
                 row_idx = self.tabla_monitor.rowCount(); self.tabla_monitor.insertRow(row_idx)
                 guia_texto = op.guia_remito or "-"
                 if op.tipo_servicio and "Retiro" in op.tipo_servicio: guia_texto = f"🔄 {guia_texto}"
@@ -436,8 +475,38 @@ class PlataformaLogistica(QMainWindow):
                         it.setBackground(brush_bg)
                         if col_idx == 0: font = QFont(); font.setBold(True); it.setFont(font); it.setForeground(txt_color_estado)
                         else: it.setForeground(txt_color_main)
+            
+            # 🔥 CONSTRUIR Y ACTUALIZAR EL MINI-DASHBOARD 🔥
+            txt_est = " | ".join([f"<b>{k}:</b> {v}" for k, v in sorted(c_estados.items(), key=lambda x: x[1], reverse=True)])
+            txt_tipos = f"<b>Entregas:</b> {c_tipos['Entregas']} | <b>Retiros:</b> {c_tipos['Retiros']}"
+            if c_tipos['Fletes'] > 0: txt_tipos += f" | <b>Fletes:</b> {c_tipos['Fletes']}"
+            
+            top_chof = " | ".join([f"<b>{k}:</b> {v}" for k, v in sorted(c_choferes.items(), key=lambda x: x[1], reverse=True)[:3]])
+            
+            if not ops:
+                dash_html = "<span style='color: #6c757d;'>No hay guías para la fecha seleccionada.</span>"
+            else:
+                dash_html = f"""
+                <table width='100%' style='color: #333;'>
+                    <tr>
+                        <td width='50%' valign='top'>
+                            <span style='color:#0d6efd;'>📊 <b>Estados:</b></span><br>{txt_est}<br><br>
+                            <span style='color:#198754;'>📦 <b>Tipos:</b></span> {txt_tipos}
+                        </td>
+                        <td width='50%' valign='top' style='border-left: 1px solid #ccc; padding-left: 10px;'>
+                            <span style='color:#495057;'>🚛 <b>Top Choferes:</b></span><br>{top_chof}
+                        </td>
+                    </tr>
+                </table>
+                """
+            
+            if hasattr(self, 'lbl_mini_dash'):
+                self.lbl_mini_dash.setText(dash_html)
+
             self.tabla_monitor.setUpdatesEnabled(True); self.tabla_monitor.blockSignals(False)
-        except Exception: self.session.rollback(); self.tabla_monitor.setUpdatesEnabled(True); self.tabla_monitor.blockSignals(False)
+        except Exception: 
+            self.session.rollback()
+            self.tabla_monitor.setUpdatesEnabled(True); self.tabla_monitor.blockSignals(False)
     def setup_ruta(self):
         l = QVBoxLayout(self.tab_ruta); top_row1 = QHBoxLayout(); top_row2 = QHBoxLayout()
         
