@@ -232,17 +232,21 @@ class TabRendicion(QWidget):
         lay_res.addLayout(top_res); lay_res.addWidget(self.lbl_res_exitos); lay_res.addWidget(self.tabla_res_exitos); lay_res.addWidget(self.lbl_res_fallos); lay_res.addWidget(self.tabla_res_fallos)
         self.tabs_rendicion.addTab(tab_res, "2. Resumen Diario por Chofer")
 
-    # 🔥 SE ACTUALIZA EL MOTOR PARA QUE INCLUYA REPROGRAMADAS Y RESPETE ESTRICTAMENTE LA FECHA EN EL FLETE 🔥
+    # 🔥 SE ACTUALIZA EL MOTOR PARA QUE INCLUYA REPROGRAMADAS Y RESPETE ESTRICTAMENTE LA FECHA DE ENTREGA Y FLETE 🔥
     def cargar_resumen_chofer_vista(self):
         chofer = self.resumen_chofer.currentText(); fecha = self.resumen_fecha.date().toPyDate()
         if not chofer or chofer == "Todos": return
         try:
+            # 🔥 CORRECCIÓN DEL BUG DE ENTREGAS: Filtrado estricto por fecha real de entrega 🔥
             sql_entregados = text("""
                 SELECT DISTINCT o.id, o.guia_remito, o.destinatario, o.domicilio, o.tipo_servicio, o.proveedor, o.bultos, o.fecha_entrega 
                 FROM operaciones o 
-                JOIN historial_movimientos h ON o.id = h.operacion_id 
+                LEFT JOIN historial_movimientos h ON o.id = h.operacion_id 
                 WHERE o.chofer_asignado = :c AND o.estado = 'ENTREGADO' 
-                AND DATE(h.fecha_hora) = :f AND (h.accion LIKE '%ENTREGA%' OR h.accion = 'APP')
+                AND (
+                    DATE(o.fecha_entrega) = :f 
+                    OR (DATE(h.fecha_hora) = :f AND (h.accion LIKE '%ENTREGA%' OR h.detalle LIKE '%Recibio%'))
+                )
             """)
             entregados = self.main.session.execute(sql_entregados, {"c": chofer, "f": fecha}).fetchall()
             
