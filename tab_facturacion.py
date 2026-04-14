@@ -102,15 +102,15 @@ class PintorCeldasDelegate(QStyledItemDelegate):
 
 ESTILO_TABLAS_BLANCAS = "QTableWidget { background-color: #ffffff !important; } QTableWidget::item { background-color: transparent !important; color: #000000 !important; border-bottom: 1px solid #f0f0f0 !important; } QTableWidget::item:selected { background-color: #bbdefb !important; color: #000000 !important; }"
 
+# 🔥 EL SUPER DIÁLOGO DE AJUSTE CON INTELIGENCIA DE VISITAS 🔥
 class AjusteAvanzadoFacturacionDialog(QDialog):
     def __init__(self, op, main_app, visitas=1, parent=None):
         super().__init__(parent)
         self.op = op; self.main_app = main_app
         self.setWindowTitle(f"🛠️ Ajuste Integral de Facturación - Guía: {op.guia_remito or 'S/N'}")
-        self.setFixedSize(500, 680) # Un poco más alta para que entre todo bien
+        self.setFixedSize(500, 680) 
         layout = QVBoxLayout(self)
 
-        # --- 1. CABECERA DE INFORMACIÓN (Con detalle de Bultos y Visitas) ---
         bultos_tot = op.bultos or 1
         bultos_fr = op.bultos_frio or 0
         bultos_com = bultos_tot - bultos_fr
@@ -119,13 +119,12 @@ class AjusteAvanzadoFacturacionDialog(QDialog):
         if bultos_fr > 0: tipo_bulto_str += f" ({bultos_com} Comunes / {bultos_fr} Refrigerados)"
         else: tipo_bulto_str += " (Todos Comunes)"
 
-        info_text = f"<span style='font-size:14px;'><b>Guía:</b> {op.guia_remito or '-'}<br><b>Cliente:</b> {op.proveedor}<br><b>Destino:</b> {op.destinatario} ({op.domicilio})<br><b>Carga Inicial:</b> {tipo_bulto_str}<br><b>Estado actual:</b> <span style='color:#1565c0;'>{op.estado}</span> (Salidas a calle: <b>{visitas}</b>)</span>"
+        info_text = f"<span style='font-size:14px;'><b>Guía:</b> {op.guia_remito or '-'}<br><b>Cliente:</b> {op.proveedor}<br><b>Destino:</b> {op.destinatario} ({op.domicilio})<br><b>Carga Inicial:</b> {tipo_bulto_str}<br><b>Estado actual:</b> <span style='color:#1565c0;'>{op.estado}</span> (Salidas reales a calle: <b>{visitas}</b>)</span>"
         
         lbl_info = QLabel(info_text)
         lbl_info.setStyleSheet("background-color: #f8f9fa; padding: 12px; border: 1px solid #ced4da; border-radius: 6px;")
         layout.addWidget(lbl_info)
 
-        # --- 2. CONTROLES DINÁMICOS OPERATIVOS ---
         form = QFormLayout()
 
         from database import Tarifa 
@@ -143,7 +142,6 @@ class AjusteAvanzadoFacturacionDialog(QDialog):
         form.addRow("❄️ Bultos Refrigerados:", self.in_frio)
         layout.addLayout(form)
 
-        # --- 3. RECARGOS POR FECHA (BOTONES + INPUT EDITABLE) ---
         layout.addWidget(QLabel("<b>📅 Recargos Finde / Feriado:</b>"))
         h_botones_dia = QHBoxLayout()
         
@@ -162,30 +160,27 @@ class AjusteAvanzadoFacturacionDialog(QDialog):
         h_botones_dia.addWidget(self.in_recargo_dia)
         layout.addLayout(h_botones_dia)
 
-        # --- 4. EXTRAS, ESPERA Y CONTINGENCIAS ---
         layout.addWidget(QLabel("<b>⚠️ Extras Operativos:</b>"))
         form_extras = QFormLayout()
         
         self.in_contingencia = QDoubleSpinBox(); self.in_contingencia.setRange(0, 1000000); self.in_contingencia.setPrefix("$ "); self.in_contingencia.setSingleStep(500.0)
         self.in_doble_visita = QDoubleSpinBox(); self.in_doble_visita.setRange(0, 1000000); self.in_doble_visita.setPrefix("$ "); self.in_doble_visita.setSingleStep(500.0)
         
-        # Autocompletar / Deducir excedentes previos
         try: base_actual = self.main_app.obtener_precio(op.localidad, bultos_com, bultos_fr, op.sucursal, op.proveedor, op.peso or 0.0, bultos_tot)
         except: base_actual = 0.0
         
         excedente = max(0.0, (op.monto_servicio or 0.0) - base_actual)
-        self.in_contingencia.setValue(excedente) # Ponemos el excedente previo acá por si ya lo tenía
+        self.in_contingencia.setValue(excedente) 
         
         lbl_visita = QLabel("⏳ Espera / Doble Visita:")
         if visitas > 1:
             lbl_visita.setText(f"⏳ Espera / Doble Visita (¡Tuvo {visitas} visitas!):")
-            lbl_visita.setStyleSheet("color: #d32f2f; font-weight: bold;") # Rojo para alertar al facturador
+            lbl_visita.setStyleSheet("color: #d32f2f; font-weight: bold;") 
         
         form_extras.addRow("⚠️ Contingencia General:", self.in_contingencia)
         form_extras.addRow(lbl_visita, self.in_doble_visita)
         layout.addLayout(form_extras)
 
-        # --- 5. TOTAL EN TIEMPO REAL ---
         self.lbl_base = QLabel("Tarifa Base: $ 0.00")
         self.lbl_base.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.lbl_base.setStyleSheet("color: #6c757d; font-style: italic;")
@@ -201,17 +196,14 @@ class AjusteAvanzadoFacturacionDialog(QDialog):
         btn_guardar.clicked.connect(self.accept)
         layout.addWidget(btn_guardar)
 
-        # --- 6. CONEXIONES DEL MOTOR ---
         self.combo_zona.currentTextChanged.connect(self.recalcular)
         self.in_bultos.valueChanged.connect(self.recalcular)
         self.in_frio.valueChanged.connect(self.recalcular)
         
-        # Conexión de inputs extras
         self.in_recargo_dia.valueChanged.connect(self.recalcular_solo_total)
         self.in_contingencia.valueChanged.connect(self.recalcular_solo_total)
         self.in_doble_visita.valueChanged.connect(self.recalcular_solo_total)
         
-        # Conexión de Botones Rápidos (Calculadoras)
         self.btn_finde.clicked.connect(self.aplicar_finde)
         self.btn_feriado.clicked.connect(self.aplicar_feriado)
         
@@ -219,11 +211,9 @@ class AjusteAvanzadoFacturacionDialog(QDialog):
         self.recalcular() 
 
     def aplicar_finde(self):
-        # x2 significa sumar el 100% de la base como recargo
         self.in_recargo_dia.setValue(self.base_calculada * 1.0) 
         
     def aplicar_feriado(self):
-        # x3 significa sumar el 200% de la base como recargo
         self.in_recargo_dia.setValue(self.base_calculada * 2.0) 
 
     def recalcular(self):
@@ -246,6 +236,7 @@ class TabFacturacion(QWidget):
     def __init__(self, main_window):
         super().__init__()
         self.main = main_window; self.setup_ui()
+        
     def setup_ui(self):
         l = QVBoxLayout(self); self.tabs_fact = QTabWidget(); l.addWidget(self.tabs_fact)
         tab_rendicion = QWidget(); layout_rend = QVBoxLayout(tab_rendicion); panel = QFrame(); hl = QHBoxLayout(panel)
@@ -263,7 +254,7 @@ class TabFacturacion(QWidget):
         btn_pdf = QPushButton("Rendición PDF"); btn_pdf.setStyleSheet("background-color: #dc3545 !important; color: white !important;"); btn_pdf.clicked.connect(self.generar_pdf_fact)
         hl.addWidget(QLabel("Sucursal:")); hl.addWidget(self.cierre_sucursal); hl.addWidget(QLabel("Mes:")); hl.addWidget(self.cierre_mes); hl.addWidget(QLabel("Año:")); hl.addWidget(self.cierre_anio); hl.addWidget(QLabel("Proveedor:")); hl.addWidget(self.cierre_prov); hl.addWidget(self.btn_c); hl.addWidget(btn_pdf); btn_cargo_fijo = QPushButton("➕ Agregar Cargo Fijo"); btn_cargo_fijo.clicked.connect(self.agregar_cargo_fijo); hl.addWidget(btn_cargo_fijo)
         
-        # 🔥 ACÁ AMPLIAMOS A 11 COLUMNAS PARA QUE SE VEAN AMBAS FECHAS 🔥
+        # 🔥 LA TABLA DE 11 COLUMNAS 🔥
         self.tabla_cierre = QTableWidget(); self.tabla_cierre.setColumnCount(11); 
         self.tabla_cierre.setHorizontalHeaderLabels(["F. Ingreso", "F. Entrega", "Sucursal", "Guía", "Zona", "Bultos / Peso", "Estado", "Base ($)", "Extras ($)", "Total ($)", "Ajustes"]); 
         self.tabla_cierre.setStyleSheet(ESTILO_TABLAS_BLANCAS); self.pintor_cierre = PintorCeldasDelegate(self.tabla_cierre); self.tabla_cierre.setItemDelegate(self.pintor_cierre)
@@ -277,6 +268,7 @@ class TabFacturacion(QWidget):
         
         self.lbl_resumen = QLabel("Total Base: $0 | Total Extras: $0 | TOTAL: $0"); self.lbl_resumen.setStyleSheet("font-size: 16px; font-weight: bold; margin: 10px 15px; padding: 10px; border: 1px solid #ccc;")
         lay_abajo = QHBoxLayout(); self.btn_deshacer_fac = QPushButton("⏪ Deshacer Facturación"); self.btn_deshacer_fac.setStyleSheet("background-color: #ff9800; color: black; padding: 10px;"); self.btn_deshacer_fac.clicked.connect(self.abrir_dialogo_deshacer_facturacion); lay_abajo.addWidget(self.btn_deshacer_fac); lay_abajo.addStretch(); lay_abajo.addWidget(self.lbl_resumen); layout_rend.addWidget(panel); layout_rend.addWidget(self.tabla_cierre); layout_rend.addLayout(lay_abajo); self.tabs_fact.addTab(tab_rendicion, "1. Calcular Rendición")
+        
         tab_cta = QWidget(); layout_cta = QVBoxLayout(tab_cta); top_cta = QHBoxLayout(); btn_ref_cta = QPushButton("🔄 Actualizar Saldos"); btn_ref_cta.clicked.connect(self.cargar_ctas_ctes); btn_pago = QPushButton("💰 Registrar Pago"); btn_pago.clicked.connect(self.registrar_pago_ctacte); top_cta.addWidget(btn_ref_cta); top_cta.addStretch(); top_cta.addWidget(btn_pago)
         self.tabla_ctacte = QTableWidget(); self.tabla_ctacte.setColumnCount(4); self.tabla_ctacte.setHorizontalHeaderLabels(["Proveedor", "Total Facturado ($)", "Pagos ($)", "SALDO ($)"]); self.tabla_ctacte.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Interactive); self.tabla_ctacte.setColumnWidth(0, 250); self.tabla_ctacte.setColumnWidth(1, 180); self.tabla_ctacte.setColumnWidth(2, 180); header_cta = self.tabla_ctacte.horizontalHeader(); header_cta.setStretchLastSection(True); self.tabla_ctacte.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows); self.tabla_ctacte.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers); self.tabla_ctacte.setStyleSheet(ESTILO_TABLAS_BLANCAS); self.pintor_cta = PintorCeldasDelegate(self.tabla_ctacte); self.tabla_ctacte.setItemDelegate(self.pintor_cta); layout_cta.addLayout(top_cta); layout_cta.addWidget(self.tabla_ctacte); self.tabs_fact.addTab(tab_cta, "2. Cuentas Corrientes")
     
@@ -317,24 +309,27 @@ class TabFacturacion(QWidget):
         id_op = self.mapa_filas_cierre.get(row)
         if id_op: self.abrir_dialogo_ajuste_precio(id_op)
         
+    # 🔥 LA APERTURA DEL DIÁLOGO CON INTELIGENCIA DE RESTAR VISITAS DE OFICINA 🔥
     def abrir_dialogo_ajuste_precio(self, id_op):
         try:
             op = self.main.session.query(Operacion).get(id_op)
             if not op: return
             
-            # Inteligencia: Contamos las visitas mirando el historial
             hist_records = self.main.session.query(Historial.accion).filter(
                 Historial.operacion_id == id_op, 
-                Historial.accion.in_(['SALIDA A REPARTO', 'DESHACER (ADMIN)', 'REPROGRAMADO (ADMIN)'])
+                Historial.accion.in_([
+                    'SALIDA A REPARTO', 'SALIDA A TERCERIZADO', 
+                    'DESHACER (ADMIN)', 'REPROGRAMADO (ADMIN)', 'REPROGRAMADO (OFICINA)'
+                ])
             ).all()
             
             visitas = 0
             for (accion,) in hist_records:
-                if accion == 'SALIDA A REPARTO': visitas += 1
-                elif accion in ['DESHACER (ADMIN)', 'REPROGRAMADO (ADMIN)']: visitas -= 1
-            visitas = max(1, visitas) # Mínimo 1 visita para que tenga sentido
+                if accion in ['SALIDA A REPARTO', 'SALIDA A TERCERIZADO']: visitas += 1
+                elif accion in ['DESHACER (ADMIN)', 'REPROGRAMADO (ADMIN)', 'REPROGRAMADO (OFICINA)']: visitas -= 1
+            
+            visitas = max(1, visitas)
 
-            # Llamamos al diálogo pasándole las visitas que calculamos
             dlg = AjusteAvanzadoFacturacionDialog(op, self.main, visitas, self) 
             if dlg.exec() == QDialog.DialogCode.Accepted: 
                 op.localidad = dlg.combo_zona.currentText()
@@ -391,13 +386,20 @@ class TabFacturacion(QWidget):
                 self.btn_c.setEnabled(True)
                 return
             
+            # 🔥 INTELIGENCIA DE LISTADO PARA DESCONTAR VISITAS 🔥
             op_ids = [op.id for op in self.resultados_cierre]; conteo_repartos = {}
             if op_ids:
-                hist_records = self.main.session.query(Historial.operacion_id, Historial.accion).filter(Historial.operacion_id.in_(op_ids), Historial.accion.in_(['SALIDA A REPARTO', 'DESHACER (ADMIN)', 'REPROGRAMADO (ADMIN)', 'SALIDA A TERCERIZADO'])).all()
+                hist_records = self.main.session.query(Historial.operacion_id, Historial.accion).filter(
+                    Historial.operacion_id.in_(op_ids), 
+                    Historial.accion.in_([
+                        'SALIDA A REPARTO', 'SALIDA A TERCERIZADO', 
+                        'DESHACER (ADMIN)', 'REPROGRAMADO (ADMIN)', 'REPROGRAMADO (OFICINA)'
+                    ])
+                ).all()
                 for op_id, accion in hist_records:
                     if op_id not in conteo_repartos: conteo_repartos[op_id] = 0
-                    if accion == 'SALIDA A REPARTO': conteo_repartos[op_id] += 1
-                    elif accion in ['DESHACER (ADMIN)', 'REPROGRAMADO (ADMIN)']: conteo_repartos[op_id] -= 1
+                    if accion in ['SALIDA A REPARTO', 'SALIDA A TERCERIZADO']: conteo_repartos[op_id] += 1
+                    elif accion in ['DESHACER (ADMIN)', 'REPROGRAMADO (ADMIN)', 'REPROGRAMADO (OFICINA)']: conteo_repartos[op_id] -= 1
                     
             tot_base = 0; tot_extras = 0; tot_final = 0; self.mapa_filas_cierre = {}; total_ops = len(self.resultados_cierre)
             
@@ -415,7 +417,6 @@ class TabFacturacion(QWidget):
                     
                 self.tabla_cierre.insertRow(row); self.mapa_filas_cierre[row] = op.id; 
                 
-                # --- NUEVAS COLUMNAS DE FECHAS ---
                 f_ingreso = op.fecha_ingreso.strftime("%d/%m/%Y") if op.fecha_ingreso else "-"
                 f_entrega = op.fecha_entrega.strftime("%d/%m/%Y") if op.fecha_entrega else "-"
                 
@@ -435,7 +436,6 @@ class TabFacturacion(QWidget):
                     
                 self.tabla_cierre.setItem(row, 5, QTableWidgetItem(det_b))
                 
-                # 🔥 LA LÓGICA AHORA SE BASA EN LA ENTREGA 🔥
                 fecha_para_billing = op.fecha_entrega if op.fecha_entrega else op.fecha_ingreso
                 es_finde = fecha_para_billing and fecha_para_billing.weekday() >= 5
                 
@@ -460,7 +460,7 @@ class TabFacturacion(QWidget):
                 
                 if es_finde:
                     brush = QBrush(QColor("#fff3cd"))
-                    for col_idx in range(10): # Pintamos hasta la columna Total ($)
+                    for col_idx in range(10): 
                         it = self.tabla_cierre.item(row, col_idx)
                         if it: it.setBackground(brush)
                 
@@ -501,7 +501,6 @@ class TabFacturacion(QWidget):
                 if bultos_fr > 0 and bultos_fr < bultos_tot: det_b += f" ({bultos_tot-bultos_fr}C/{bultos_fr}R)"; 
                 elif bultos_fr == bultos_tot: det_b += " (R)"
                 
-            # Usamos la misma fecha de billing para que el PDF coincida con el cobro
             fecha_para_billing = op.fecha_entrega if op.fecha_entrega else op.fecha_ingreso
             data_filas.append([fecha_para_billing.strftime("%d/%m/%Y"), op.guia_remito or "RET", op.localidad[:15].upper(), det_b, f"$ {precio_base:,.0f}", f"$ {extras:,.0f}", f"$ {monto_serv:,.0f}"])
             if marcar_facturado: op.facturado = True
