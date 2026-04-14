@@ -264,18 +264,6 @@ class TabFacturacion(QWidget):
     def __init__(self, main_window):
         super().__init__()
         self.main = main_window
-        
-        # 🔥 AUTO-MIGRACIÓN SILENCIOSA DE BASE DE DATOS 🔥
-        # Esto crea las columnas nuevas automáticamente la primera vez que se abre la pestaña
-        try:
-            self.main.session.execute(text("ALTER TABLE operaciones ADD COLUMN monto_finde FLOAT DEFAULT 0.0"))
-            self.main.session.execute(text("ALTER TABLE operaciones ADD COLUMN monto_feriado FLOAT DEFAULT 0.0"))
-            self.main.session.execute(text("ALTER TABLE operaciones ADD COLUMN monto_contingencia FLOAT DEFAULT 0.0"))
-            self.main.session.execute(text("ALTER TABLE operaciones ADD COLUMN monto_espera FLOAT DEFAULT 0.0"))
-            self.main.session.commit()
-        except Exception:
-            self.main.session.rollback() # Si da error es porque las columnas ya existen (y está perfecto)
-            
         self.setup_ui()
         
     def setup_ui(self):
