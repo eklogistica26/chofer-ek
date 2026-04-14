@@ -102,6 +102,64 @@ class PintorCeldasDelegate(QStyledItemDelegate):
 
 ESTILO_TABLAS_BLANCAS = "QTableWidget { background-color: #ffffff !important; } QTableWidget::item { background-color: transparent !important; color: #000000 !important; border-bottom: 1px solid #f0f0f0 !important; } QTableWidget::item:selected { background-color: #bbdefb !important; color: #000000 !important; }"
 
+class AjusteAvanzadoFacturacionDialog(QDialog):
+    def __init__(self, op, main_app, parent=None):
+        super().__init__(parent)
+        self.op = op; self.main_app = main_app
+        self.setWindowTitle(f"🛠️ Ajuste de Facturación - Guía: {op.guia_remito or 'S/N'}")
+        self.setFixedSize(400, 350)
+        layout = QVBoxLayout(self)
+
+        from database import Tarifa 
+        zonas = [z[0] for z in self.main_app.session.query(Tarifa.localidad).filter(Tarifa.sucursal == op.sucursal).distinct().all()]
+
+        self.combo_zona = QComboBox()
+        self.combo_zona.addItems(sorted(zonas))
+        self.combo_zona.setCurrentText(op.localidad)
+
+        self.in_bultos = QSpinBox(); self.in_bultos.setRange(1, 1000); self.in_bultos.setValue(op.bultos or 1)
+        self.in_frio = QSpinBox(); self.in_frio.setRange(0, 1000); self.in_frio.setValue(op.bultos_frio or 0)
+
+        # Extraemos la contingencia actual restando la tarifa base del monto total guardado
+        try: base_actual = self.main_app.obtener_precio(op.localidad, (op.bultos or 1)-(op.bultos_frio or 0), op.bultos_frio or 0, op.sucursal, op.proveedor, op.peso or 0.0, op.bultos or 1)
+        except: base_actual = 0.0
+        contingencia_actual = max(0.0, (op.monto_servicio or 0.0) - base_actual)
+
+        self.in_contingencia = QDoubleSpinBox(); self.in_contingencia.setRange(0, 1000000); self.in_contingencia.setValue(contingencia_actual)
+        self.in_contingencia.setPrefix("$ ")
+        self.in_contingencia.setSingleStep(500.0)
+
+        self.lbl_total = QLabel("$ 0.00")
+        self.lbl_total.setStyleSheet("font-size: 20px; font-weight: bold; color: #1565c0; padding: 10px; border: 2px dashed #1565c0; border-radius: 5px;")
+        self.lbl_total.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
+        def add_row(texto, widget):
+            h = QHBoxLayout(); h.addWidget(QLabel(texto)); h.addWidget(widget); layout.addLayout(h)
+
+        add_row("Zona / Localidad:", self.combo_zona)
+        add_row("Bultos Totales:", self.in_bultos)
+        add_row("Bultos Frío (incluidos):", self.in_frio)
+        add_row("Contingencia / Extra ($):", self.in_contingencia)
+        layout.addWidget(self.lbl_total)
+
+        btn_guardar = QPushButton("💾 GUARDAR CAMBIOS")
+        btn_guardar.setStyleSheet("background-color: #198754; color: white; font-weight: bold; padding: 12px; margin-top: 10px;")
+        btn_guardar.clicked.connect(self.accept)
+        layout.addWidget(btn_guardar)
+
+        self.combo_zona.currentTextChanged.connect(self.recalcular)
+        self.in_bultos.valueChanged.connect(self.recalcular)
+        self.in_frio.valueChanged.connect(self.recalcular)
+        self.in_contingencia.valueChanged.connect(self.recalcular)
+        self.recalcular()
+
+    def recalcular(self):
+        b_tot = self.in_bultos.value(); b_frio = self.in_frio.value()
+        if b_frio > b_tot: self.in_frio.setValue(b_tot); b_frio = b_tot # Seguro para que frío no supere el total
+        base = self.main_app.obtener_precio(self.combo_zona.currentText(), b_tot - b_frio, b_frio, self.op.sucursal, self.op.proveedor, self.op.peso or 0.0, b_tot)
+        self.precio_final = base + self.in_contingencia.value()
+        self.lbl_total.setText(f"$ {self.precio_final:,.2f}")
+
 class TabFacturacion(QWidget):
     def __init__(self, main_window):
         super().__init__()
@@ -166,9 +224,18 @@ class TabFacturacion(QWidget):
         try:
             op = self.main.session.query(Operacion).get(id_op)
             if not op: return
-            dlg = EditarPrecioFacturacionDialog(op, self.main, self)
-            if dlg.exec() == QDialog.DialogCode.Accepted: op.monto_servicio = dlg.precio_final; self.main.session.commit(); self.calcular_cierre(); self.main.toast.mostrar("✅ Precio actualizado")
-        except Exception: self.main.session.rollback()
+            dlg = AjusteAvanzadoFacturacionDialog(op, self.main, self) # Llamamos al nuevo módulo
+            if dlg.exec() == QDialog.DialogCode.Accepted: 
+                op.localidad = dlg.combo_zona.currentText()
+                op.bultos = dlg.in_bultos.value()
+                op.bultos_frio = dlg.in_frio.value()
+                op.monto_servicio = dlg.precio_final
+                self.main.session.commit()
+                self.calcular_cierre()
+                self.main.toast.mostrar("✅ Datos operativos y tarifa actualizados")
+        except Exception as e: 
+            self.main.session.rollback()
+            QMessageBox.critical(self, "Error", f"Fallo al actualizar: {e}")
         
     def abrir_dialogo_peso_dhl(self, id_op):
         try:
@@ -235,7 +302,12 @@ class TabFacturacion(QWidget):
                     progreso.setValue(row)
                     QApplication.processEvents()
                     
-                self.tabla_cierre.insertRow(row); self.mapa_filas_cierre[row] = op.id; self.tabla_cierre.setItem(row, 0, QTableWidgetItem(op.fecha_ingreso.strftime("%d/%m/%Y") if op.fecha_ingreso else "-")); self.tabla_cierre.setItem(row, 1, QTableWidgetItem((op.sucursal or "").upper())); self.tabla_cierre.setItem(row, 2, QTableWidgetItem(op.guia_remito or "RET")); self.tabla_cierre.setItem(row, 3, QTableWidgetItem(op.localidad or "")); 
+                self.tabla_cierre.insertRow(row); self.mapa_filas_cierre[row] = op.id; 
+                self.tabla_cierre.setItem(row, 0, QTableWidgetItem(op.fecha_ingreso.strftime("%d/%m/%Y") if op.fecha_ingreso else "-")); 
+                self.tabla_cierre.setItem(row, 1, QTableWidgetItem((op.sucursal or "").upper())); 
+                self.tabla_cierre.setItem(row, 2, QTableWidgetItem(op.guia_remito or "RET")); 
+                self.tabla_cierre.setItem(row, 3, QTableWidgetItem(op.localidad or "")); 
+                
                 bultos_tot = op.bultos or 1; bultos_fr = op.bultos_frio or 0; det_b = str(bultos_tot); 
                 
                 if op.proveedor and op.proveedor.upper() == "DHL EXPRESS":
@@ -244,12 +316,35 @@ class TabFacturacion(QWidget):
                     if bultos_fr > 0 and bultos_fr < bultos_tot: det_b += f" ({bultos_tot-bultos_fr}C/{bultos_fr}R)"; 
                     elif bultos_fr == bultos_tot: det_b += " (R)"
                     
-                self.tabla_cierre.setItem(row, 4, QTableWidgetItem(det_b)); visitas = max(1, conteo_repartos.get(op.id, 1)); self.tabla_cierre.setItem(row, 5, QTableWidgetItem(f"{op.estado} ({visitas} Visitas)" if visitas > 1 else op.estado)); monto_serv = op.monto_servicio or 0.0
-                if op.guia_remito == "CARGO-FIJO" or (op.tipo_servicio and "Flete" in op.tipo_servicio): precio_base = monto_serv; extras = 0
+                self.tabla_cierre.setItem(row, 4, QTableWidgetItem(det_b)); 
+                
+                # 🔥 LÓGICA DE GUARDIA FIN DE SEMANA 🔥
+                es_finde = op.fecha_ingreso and op.fecha_ingreso.weekday() >= 5 # 5 es Sábado, 6 es Domingo
+                visitas = max(1, conteo_repartos.get(op.id, 1))
+                estado_txt = f"{op.estado} ({visitas} Visitas)" if visitas > 1 else op.estado
+                
+                if es_finde:
+                    estado_txt = f"🚨 GUARDIA FINDE | {estado_txt}"
+                    
+                self.tabla_cierre.setItem(row, 5, QTableWidgetItem(estado_txt)); 
+                
+                monto_serv = op.monto_servicio or 0.0
+                if op.guia_remito == "CARGO-FIJO" or (op.tipo_servicio and "Flete" in op.tipo_servicio): 
+                    precio_base = monto_serv; extras = 0
                 else: 
                     precio_base = self.main.obtener_precio(op.localidad, bultos_tot-bultos_fr, bultos_fr, op.sucursal, proveedor=op.proveedor, peso=op.peso, bultos_totales=bultos_tot)
                     extras = monto_serv - precio_base
-                self.tabla_cierre.setItem(row, 6, QTableWidgetItem(f"$ {precio_base:,.2f}")); self.tabla_cierre.setItem(row, 7, QTableWidgetItem(f"$ {extras:,.2f}")); self.tabla_cierre.setItem(row, 8, QTableWidgetItem(f"$ {monto_serv:,.2f}"))
+                    
+                self.tabla_cierre.setItem(row, 6, QTableWidgetItem(f"$ {precio_base:,.2f}")); 
+                self.tabla_cierre.setItem(row, 7, QTableWidgetItem(f"$ {extras:,.2f}")); 
+                self.tabla_cierre.setItem(row, 8, QTableWidgetItem(f"$ {monto_serv:,.2f}"))
+                
+                # Pintar la fila si es guardia
+                if es_finde:
+                    brush = QBrush(QColor("#fff3cd")) # Amarillo suave de advertencia
+                    for col_idx in range(9):
+                        it = self.tabla_cierre.item(row, col_idx)
+                        if it: it.setBackground(brush)
                 
                 w_acc = QWidget(); lay_acc = QHBoxLayout(w_acc); lay_acc.setContentsMargins(0,0,0,0)
                 btn_ajuste = QPushButton("✏️ Editar"); btn_ajuste.setStyleSheet("background-color: #0d6efd !important; color: white !important; font-size: 11px; font-weight: bold; padding: 4px;"); btn_ajuste.clicked.connect(lambda checked, r=row: self.abrir_dialogo_ajuste_precio(self.mapa_filas_cierre[r])); lay_acc.addWidget(btn_ajuste)
