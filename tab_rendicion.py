@@ -232,7 +232,7 @@ class TabRendicion(QWidget):
         lay_res.addLayout(top_res); lay_res.addWidget(self.lbl_res_exitos); lay_res.addWidget(self.tabla_res_exitos); lay_res.addWidget(self.lbl_res_fallos); lay_res.addWidget(self.tabla_res_fallos)
         self.tabs_rendicion.addTab(tab_res, "2. Resumen Diario por Chofer")
 
-    # 🔥 SE ACTUALIZA EL MOTOR PARA QUE INCLUYA LAS REPROGRAMADAS (AUNQUE HAYAN PERDIDO EL CHOFER) 🔥
+    # 🔥 SE ACTUALIZA EL MOTOR PARA QUE INCLUYA REPROGRAMADAS Y RESPETE ESTRICTAMENTE LA FECHA EN EL FLETE 🔥
     def cargar_resumen_chofer_vista(self):
         chofer = self.resumen_chofer.currentText(); fecha = self.resumen_fecha.date().toPyDate()
         if not chofer or chofer == "Todos": return
@@ -246,7 +246,7 @@ class TabRendicion(QWidget):
             """)
             entregados = self.main.session.execute(sql_entregados, {"c": chofer, "f": fecha}).fetchall()
             
-            # MAGIA SQL: Buscamos si fue reprogramado y si ESE DÍA se le había asignado a ESTE chofer
+            # MAGIA SQL: Arreglamos el UNION para que el "EN CALLE" respete estrictamente la fecha seleccionada
             sql_no_ent = text("""
                 SELECT o.guia_remito, o.destinatario, h.detalle, o.tipo_servicio, o.proveedor 
                 FROM historial_movimientos h 
@@ -260,7 +260,7 @@ class TabRendicion(QWidget):
                 UNION
                 SELECT guia_remito, destinatario, 'EN CALLE (Aún no gestionado)', tipo_servicio, proveedor 
                 FROM operaciones 
-                WHERE chofer_asignado = :c AND estado = 'EN REPARTO'
+                WHERE chofer_asignado = :c AND estado = 'EN REPARTO' AND DATE(fecha_salida) = :f
             """)
             no_entregados = self.main.session.execute(sql_no_ent, {"c": chofer, "f": fecha}).fetchall()
             
