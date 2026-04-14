@@ -146,6 +146,10 @@ class Operacion(Base):
     facturado = Column(Boolean, default=False)
     tipo_servicio = Column(String(50), default="Entrega (Reparto)")
     historial = relationship("Historial", back_populates="operacion", cascade="all, delete-orphan")
+    monto_finde = Column(Float, default=0.0)
+    monto_feriado = Column(Float, default=0.0)
+    monto_contingencia = Column(Float, default=0.0)
+    monto_espera = Column(Float, default=0.0)
 
 class Historial(Base):
     __tablename__ = "historial_movimientos"
