@@ -914,7 +914,7 @@ class PlataformaLogistica(QMainWindow):
             
             html += "<table width='100%' cellpadding='8'><tr>"
             
-            # Columna Izquierda: Desglose Profundo por Estados
+            # Columna Izquierda: Desglose Profundo por Estados (Formato Vertical Limpio)
             html += "<td width='60%' valign='top' style='background-color: #ffffff; border: 1px solid #dee2e6; border-radius: 6px; padding: 15px;'>"
             html += "<h3 style='color: #495057; margin-top: 0; border-bottom: 1px solid #eee; padding-bottom: 5px;'>📈 Desglose Operativo por Estado</h3>"
             
@@ -922,20 +922,28 @@ class PlataformaLogistica(QMainWindow):
                 html += "<span style='color: #6c757d;'>No hay datos operativos en este rango.</span>"
             
             for estado, data in sorted(desglose_est.items(), key=lambda x: x[1]['tot'], reverse=True):
-                html += f"<div style='margin-bottom: 12px; padding-bottom: 10px; border-bottom: 1px dashed #e9ecef;'>"
-                html += f"<span style='font-size: 16px; font-weight: bold; color: #212529;'>{estado}</span> "
-                html += f"<span style='font-size: 15px; color: #d32f2f; font-weight: bold;'>({data['tot']})</span><br>"
-                html += f"<span style='font-size: 13px; color: #6c757d;'>➤ <b>Sucursales:</b> Mendoza ({data['MZA']}) | San Juan ({data['SJ']})</span><br>"
+                html += f"<div style='margin-bottom: 15px; padding-bottom: 15px; border-bottom: 1px dashed #e9ecef;'>"
                 
-                chof_str_list = [f"{c} ({cant})" for c, cant in sorted(data['choferes'].items(), key=lambda x: x[1], reverse=True)]
-                chof_str = " - ".join(chof_str_list)
+                # Título del Estado
+                html += f"<div style='font-size: 15px; font-weight: bold; color: #212529; margin-bottom: 8px;'>{estado} ({data['tot']})</div>"
                 
-                html += f"<span style='font-size: 13px; color: #0d6efd;'>➤ <b>Choferes:</b> {chof_str}</span>"
+                # Lista de Sucursales
+                html += f"<div style='font-size: 13px; color: #495057; font-weight: bold; margin-bottom: 4px;'>SUCURSALES:</div>"
+                if data['MZA'] > 0: 
+                    html += f"<div style='font-size: 13px; color: #495057; margin-left: 15px; margin-bottom: 2px;'>• Mendoza: {data['MZA']}</div>"
+                if data['SJ'] > 0: 
+                    html += f"<div style='font-size: 13px; color: #495057; margin-left: 15px; margin-bottom: 8px;'>• San Juan: {data['SJ']}</div>"
+                
+                # Lista de Choferes
+                html += f"<div style='font-size: 13px; color: #495057; font-weight: bold; margin-bottom: 4px;'>CHOFERES:</div>"
+                for c, cant in sorted(data['choferes'].items(), key=lambda x: x[1], reverse=True):
+                    html += f"<div style='font-size: 13px; color: #495057; margin-left: 15px; margin-bottom: 2px;'>• {c}: {cant}</div>"
+                
                 html += "</div>"
                 
             html += "</td><td width='2%'></td>"
             
-            # Columna Derecha: Clientes y Choferes
+            # Columna Derecha: Clientes y Choferes (Mantiene su estilo original)
             html += "<td width='38%' valign='top'>"
             
             # Panel Clientes
