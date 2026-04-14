@@ -404,7 +404,7 @@ def crear_pdf_facturacion(nombre_archivo, data_filas, prov_nombre, periodo_str, 
     doc.build(elements, onFirstPage=add_footer, onLaterPages=add_footer)
 
 
-# 🔥 EL RESUMEN DIARIO AHORA TIENE BULTOS, FECHAS Y TEXTO CON WORD-WRAP 🔥
+# 🔥 EL RESUMEN DIARIO AHORA TIENE BULTOS, FECHAS, TEXTO CON WORD-WRAP Y REPROGRAMADAS 🔥
 def crear_pdf_resumen_diario(nombre_archivo, chofer, fecha_str, entregados, no_entregados, sucursal, usuario):
     doc = SimpleDocTemplate(nombre_archivo, pagesize=portrait(A4), rightMargin=30, leftMargin=30, topMargin=30, bottomMargin=30)
     elements = []
@@ -417,7 +417,6 @@ def crear_pdf_resumen_diario(nombre_archivo, chofer, fecha_str, entregados, no_e
         
     titulo = ParagraphStyle(name='Tit', parent=styles['Heading1'], alignment=TA_CENTER)
     
-    # Estilos especiales para que el texto baje de renglón si es largo
     estilo_celda = ParagraphStyle(name='CeldaTabla', parent=styles['Normal'], fontSize=8, leading=10, alignment=TA_CENTER, wordWrap='CJK')
     estilo_celda_izq = ParagraphStyle(name='CeldaIzq', parent=styles['Normal'], fontSize=8, leading=10, alignment=TA_LEFT, wordWrap='CJK')
     
@@ -443,7 +442,6 @@ def crear_pdf_resumen_diario(nombre_archivo, chofer, fecha_str, entregados, no_e
             if len(row) > 7 and row[7]:
                 f_ent = row[7].strftime("%d/%m %H:%M")
             
-            # Usamos Paragraph para forzar el salto de línea automático
             data_e.append([
                 Paragraph(g, estilo_celda), 
                 Paragraph(cliente, estilo_celda_izq), 
@@ -467,7 +465,8 @@ def crear_pdf_resumen_diario(nombre_archivo, chofer, fecha_str, entregados, no_e
         
     elements.append(Spacer(1, 20))
     
-    elements.append(Paragraph(f"⚠️ NO ENTREGADOS / PENDIENTES ({len(no_entregados)})", styles['Heading2']))
+    # 🔥 ACÁ INCLUIMOS LA PALABRA REPROGRAMADAS EN EL TÍTULO DEL PDF 🔥
+    elements.append(Paragraph(f"⚠️ NO ENTREGADOS / PENDIENTES / REPROGRAMADAS ({len(no_entregados)})", styles['Heading2']))
     if no_entregados:
         data_n = [["GUÍA", "CLIENTE", "DESTINATARIO", "MOTIVO"]]
         for row in no_entregados:

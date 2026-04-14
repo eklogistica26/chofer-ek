@@ -232,7 +232,7 @@ class TabRendicion(QWidget):
         lay_res.addLayout(top_res); lay_res.addWidget(self.lbl_res_exitos); lay_res.addWidget(self.tabla_res_exitos); lay_res.addWidget(self.lbl_res_fallos); lay_res.addWidget(self.tabla_res_fallos)
         self.tabs_rendicion.addTab(tab_res, "2. Resumen Diario por Chofer")
 
-    # 🔥 SE ACTUALIZA EL MOTOR PARA QUE VAYA A BUSCAR EL CLIENTE, LA FECHA Y LOS BULTOS 🔥
+    # 🔥 SE ACTUALIZA EL MOTOR PARA QUE INCLUYA LAS REPROGRAMADAS (AUNQUE HAYAN PERDIDO EL CHOFER) 🔥
     def cargar_resumen_chofer_vista(self):
         chofer = self.resumen_chofer.currentText(); fecha = self.resumen_fecha.date().toPyDate()
         if not chofer or chofer == "Todos": return
@@ -246,6 +246,7 @@ class TabRendicion(QWidget):
             """)
             entregados = self.main.session.execute(sql_entregados, {"c": chofer, "f": fecha}).fetchall()
             
+            # MAGIA SQL: Buscamos si fue reprogramado y si ESE DÍA se le había asignado a ESTE chofer
             sql_no_ent = text("""
                 SELECT o.guia_remito, o.destinatario, h.detalle, o.tipo_servicio, o.proveedor 
                 FROM historial_movimientos h 
@@ -253,7 +254,9 @@ class TabRendicion(QWidget):
                 WHERE DATE(h.fecha_hora) = :f 
                   AND ((h.usuario = :c AND h.detalle LIKE 'Motivo:%') 
                        OR (h.usuario = :c AND h.detalle LIKE 'Pendiente%') 
-                       OR (o.chofer_asignado = :c AND h.accion LIKE '%REPROGRAMADO%'))
+                       OR (h.accion LIKE '%REPROGRAMADO%' AND (o.chofer_asignado = :c OR o.id IN (
+                           SELECT operacion_id FROM historial_movimientos WHERE accion = 'SALIDA A REPARTO' AND detalle LIKE '%' || :c || '%' AND DATE(fecha_hora) = :f
+                       ))))
                 UNION
                 SELECT guia_remito, destinatario, 'EN CALLE (Aún no gestionado)', tipo_servicio, proveedor 
                 FROM operaciones 
@@ -297,7 +300,7 @@ class TabRendicion(QWidget):
                 self.tabla_res_fallos.setItem(r, 2, QTableWidgetItem(row_data[1] or "-"))
                 self.tabla_res_fallos.setItem(r, 3, QTableWidgetItem(row_data[2] or "-"))
                 
-            self.lbl_res_fallos.setText(f"⚠️ NO ENTREGADOS / PENDIENTES ({len(no_entregados)})")
+            self.lbl_res_fallos.setText(f"⚠️ NO ENTREGADOS / REPROGRAMADOS ({len(no_entregados)})")
         except Exception as e: 
             self.main.session.rollback(); QMessageBox.critical(self, "Error", str(e))
 
