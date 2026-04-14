@@ -480,27 +480,33 @@ class PlataformaLogistica(QMainWindow):
                         if col_idx == 0: font = QFont(); font.setBold(True); it.setFont(font); it.setForeground(txt_color_estado)
                         else: it.setForeground(txt_color_main)
             # 🔥 CONSTRUIR Y ACTUALIZAR EL MINI-DASHBOARD 🔥
-            txt_est = " | ".join([f"<b>{k}:</b> {v}" for k, v in sorted(c_estados.items(), key=lambda x: x[1], reverse=True)])
-            txt_tipos = f"<b>Entregas:</b> {c_tipos['Entregas']} | <b>Retiros:</b> {c_tipos['Retiros']}"
-            if c_tipos['Fletes'] > 0: txt_tipos += f" | <b>Fletes:</b> {c_tipos['Fletes']}"
+            # Formateamos como listas verticales con viñetas
+            txt_est = "<br>".join([f"&nbsp;&nbsp;• {k}: <b>{v}</b>" for k, v in sorted(c_estados.items(), key=lambda x: x[1], reverse=True)])
             
-            top_chof = " | ".join([f"<b>{k}:</b> {v}" for k, v in sorted(c_choferes.items(), key=lambda x: x[1], reverse=True)[:4]])
+            txt_tipos = f"&nbsp;&nbsp;• Entregas: <b>{c_tipos['Entregas']}</b><br>&nbsp;&nbsp;• Retiros: <b>{c_tipos['Retiros']}</b>"
+            if c_tipos['Fletes'] > 0: txt_tipos += f"<br>&nbsp;&nbsp;• Fletes: <b>{c_tipos['Fletes']}</b>"
+            
+            txt_chof = "<br>".join([f"&nbsp;&nbsp;• {k}: <b>{v}</b>" for k, v in sorted(c_choferes.items(), key=lambda x: x[1], reverse=True)])
             
             if not ops:
                 dash_html = "<span style='color: #6c757d;'>No hay guías para la fecha seleccionada.</span>"
             else:
                 dash_html = f"""
-                <table width='100%' style='color: #333; margin: 0; padding: 0;'>
-                    <tr>
-                        <td width='45%' valign='middle'>
-                            <span style='color:#0d6efd;'>📊 <b>Estados:</b></span> {txt_est}<br>
-                            <span style='color:#198754;'>📦 <b>Tipos:</b></span> {txt_tipos}
-                        </td>
-                        <td width='55%' valign='middle' style='border-left: 1px solid #ccc; padding-left: 15px;'>
-                            <span style='color:#495057;'>🚛 <b>Top Choferes:</b></span> {top_chof}
-                        </td>
-                    </tr>
-                </table>
+                <div style='color: #333; font-family: sans-serif; font-size: 13px; line-height: 1.6;'>
+                    <table width='100%' style='margin: 0; padding: 0;'>
+                        <tr>
+                            <td width='33%' valign='top'>
+                                <b>ESTADOS</b><br>{txt_est}
+                            </td>
+                            <td width='33%' valign='top' style='border-left: 1px solid #ccc; padding-left: 15px;'>
+                                <b>TIPOS DE SERVICIO</b><br>{txt_tipos}
+                            </td>
+                            <td width='33%' valign='top' style='border-left: 1px solid #ccc; padding-left: 15px;'>
+                                <b>TOP CHOFERES</b><br>{txt_chof}
+                            </td>
+                        </tr>
+                    </table>
+                </div>
                 """
             
             if hasattr(self, 'lbl_mini_dash'):
