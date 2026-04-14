@@ -103,15 +103,24 @@ class PintorCeldasDelegate(QStyledItemDelegate):
 ESTILO_TABLAS_BLANCAS = "QTableWidget { background-color: #ffffff !important; } QTableWidget::item { background-color: transparent !important; color: #000000 !important; border-bottom: 1px solid #f0f0f0 !important; } QTableWidget::item:selected { background-color: #bbdefb !important; color: #000000 !important; }"
 
 class AjusteAvanzadoFacturacionDialog(QDialog):
-    def __init__(self, op, main_app, parent=None):
+    def __init__(self, op, main_app, visitas=1, parent=None):
         super().__init__(parent)
         self.op = op; self.main_app = main_app
         self.setWindowTitle(f"🛠️ Ajuste Integral de Facturación - Guía: {op.guia_remito or 'S/N'}")
-        self.setFixedSize(450, 520)
+        self.setFixedSize(500, 680) # Un poco más alta para que entre todo bien
         layout = QVBoxLayout(self)
 
-        # --- 1. CABECERA DE INFORMACIÓN ---
-        info_text = f"<span style='font-size:14px;'><b>Guía / Remito:</b> {op.guia_remito or '-'}<br><b>Cliente:</b> {op.proveedor}<br><b>Destino:</b> {op.destinatario} ({op.domicilio})<br><b>Estado:</b> <span style='color:#1565c0;'>{op.estado}</span></span>"
+        # --- 1. CABECERA DE INFORMACIÓN (Con detalle de Bultos y Visitas) ---
+        bultos_tot = op.bultos or 1
+        bultos_fr = op.bultos_frio or 0
+        bultos_com = bultos_tot - bultos_fr
+        
+        tipo_bulto_str = f"{bultos_tot} Totales"
+        if bultos_fr > 0: tipo_bulto_str += f" ({bultos_com} Comunes / {bultos_fr} Refrigerados)"
+        else: tipo_bulto_str += " (Todos Comunes)"
+
+        info_text = f"<span style='font-size:14px;'><b>Guía:</b> {op.guia_remito or '-'}<br><b>Cliente:</b> {op.proveedor}<br><b>Destino:</b> {op.destinatario} ({op.domicilio})<br><b>Carga Inicial:</b> {tipo_bulto_str}<br><b>Estado actual:</b> <span style='color:#1565c0;'>{op.estado}</span> (Salidas a calle: <b>{visitas}</b>)</span>"
+        
         lbl_info = QLabel(info_text)
         lbl_info.setStyleSheet("background-color: #f8f9fa; padding: 12px; border: 1px solid #ced4da; border-radius: 6px;")
         layout.addWidget(lbl_info)
@@ -126,27 +135,62 @@ class AjusteAvanzadoFacturacionDialog(QDialog):
         self.combo_zona.addItems(sorted(zonas))
         self.combo_zona.setCurrentText(op.localidad)
 
-        self.in_bultos = QSpinBox(); self.in_bultos.setRange(1, 1000); self.in_bultos.setValue(op.bultos or 1)
-        self.in_frio = QSpinBox(); self.in_frio.setRange(0, 1000); self.in_frio.setValue(op.bultos_frio or 0)
-
-        # --- 3. EXTRAS Y CONTINGENCIAS ---
-        try: base_actual = self.main_app.obtener_precio(op.localidad, (op.bultos or 1)-(op.bultos_frio or 0), op.bultos_frio or 0, op.sucursal, op.proveedor, op.peso or 0.0, op.bultos or 1)
-        except: base_actual = 0.0
-        excedente = max(0.0, (op.monto_servicio or 0.0) - base_actual)
-
-        self.in_feriado = QDoubleSpinBox(); self.in_feriado.setRange(0, 1000000); self.in_feriado.setPrefix("$ "); self.in_feriado.setSingleStep(500.0)
-        self.in_contingencia = QDoubleSpinBox(); self.in_contingencia.setRange(0, 1000000); self.in_contingencia.setPrefix("$ "); self.in_contingencia.setSingleStep(500.0)
-        
-        self.in_contingencia.setValue(excedente) 
+        self.in_bultos = QSpinBox(); self.in_bultos.setRange(1, 1000); self.in_bultos.setValue(bultos_tot)
+        self.in_frio = QSpinBox(); self.in_frio.setRange(0, 1000); self.in_frio.setValue(bultos_fr)
 
         form.addRow("🗺️ Zona de Tarifa:", self.combo_zona)
         form.addRow("📦 Bultos Totales:", self.in_bultos)
         form.addRow("❄️ Bultos Refrigerados:", self.in_frio)
-        form.addRow("📅 Recargo Finde/Feriado:", self.in_feriado)
-        form.addRow("⚠️ Contingencia/Espera:", self.in_contingencia)
         layout.addLayout(form)
 
-        # --- 4. TOTAL EN TIEMPO REAL ---
+        # --- 3. RECARGOS POR FECHA (BOTONES + INPUT EDITABLE) ---
+        layout.addWidget(QLabel("<b>📅 Recargos Finde / Feriado:</b>"))
+        h_botones_dia = QHBoxLayout()
+        
+        self.btn_finde = QPushButton("🟡 Finde (x2)")
+        self.btn_finde.setStyleSheet("background-color: #ffc107; color: black; font-weight: bold; padding: 6px; border-radius: 4px;")
+        
+        self.btn_feriado = QPushButton("🔴 Feriado (x3)")
+        self.btn_feriado.setStyleSheet("background-color: #dc3545; color: white; font-weight: bold; padding: 6px; border-radius: 4px;")
+        
+        self.in_recargo_dia = QDoubleSpinBox()
+        self.in_recargo_dia.setRange(0, 1000000); self.in_recargo_dia.setPrefix("$ "); self.in_recargo_dia.setSingleStep(500.0)
+        self.in_recargo_dia.setStyleSheet("font-size: 14px; font-weight: bold;")
+        
+        h_botones_dia.addWidget(self.btn_finde)
+        h_botones_dia.addWidget(self.btn_feriado)
+        h_botones_dia.addWidget(self.in_recargo_dia)
+        layout.addLayout(h_botones_dia)
+
+        # --- 4. EXTRAS, ESPERA Y CONTINGENCIAS ---
+        layout.addWidget(QLabel("<b>⚠️ Extras Operativos:</b>"))
+        form_extras = QFormLayout()
+        
+        self.in_contingencia = QDoubleSpinBox(); self.in_contingencia.setRange(0, 1000000); self.in_contingencia.setPrefix("$ "); self.in_contingencia.setSingleStep(500.0)
+        self.in_doble_visita = QDoubleSpinBox(); self.in_doble_visita.setRange(0, 1000000); self.in_doble_visita.setPrefix("$ "); self.in_doble_visita.setSingleStep(500.0)
+        
+        # Autocompletar / Deducir excedentes previos
+        try: base_actual = self.main_app.obtener_precio(op.localidad, bultos_com, bultos_fr, op.sucursal, op.proveedor, op.peso or 0.0, bultos_tot)
+        except: base_actual = 0.0
+        
+        excedente = max(0.0, (op.monto_servicio or 0.0) - base_actual)
+        self.in_contingencia.setValue(excedente) # Ponemos el excedente previo acá por si ya lo tenía
+        
+        lbl_visita = QLabel("⏳ Espera / Doble Visita:")
+        if visitas > 1:
+            lbl_visita.setText(f"⏳ Espera / Doble Visita (¡Tuvo {visitas} visitas!):")
+            lbl_visita.setStyleSheet("color: #d32f2f; font-weight: bold;") # Rojo para alertar al facturador
+        
+        form_extras.addRow("⚠️ Contingencia General:", self.in_contingencia)
+        form_extras.addRow(lbl_visita, self.in_doble_visita)
+        layout.addLayout(form_extras)
+
+        # --- 5. TOTAL EN TIEMPO REAL ---
+        self.lbl_base = QLabel("Tarifa Base: $ 0.00")
+        self.lbl_base.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.lbl_base.setStyleSheet("color: #6c757d; font-style: italic;")
+        layout.addWidget(self.lbl_base)
+
         self.lbl_total = QLabel("$ 0.00")
         self.lbl_total.setStyleSheet("font-size: 24px; font-weight: bold; color: #1565c0; padding: 15px; border: 2px dashed #1565c0; border-radius: 8px; background-color: #e3f2fd;")
         self.lbl_total.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -157,13 +201,30 @@ class AjusteAvanzadoFacturacionDialog(QDialog):
         btn_guardar.clicked.connect(self.accept)
         layout.addWidget(btn_guardar)
 
-        # --- 5. CONEXIONES DEL MOTOR ---
+        # --- 6. CONEXIONES DEL MOTOR ---
         self.combo_zona.currentTextChanged.connect(self.recalcular)
         self.in_bultos.valueChanged.connect(self.recalcular)
         self.in_frio.valueChanged.connect(self.recalcular)
-        self.in_feriado.valueChanged.connect(self.recalcular)
-        self.in_contingencia.valueChanged.connect(self.recalcular)
+        
+        # Conexión de inputs extras
+        self.in_recargo_dia.valueChanged.connect(self.recalcular_solo_total)
+        self.in_contingencia.valueChanged.connect(self.recalcular_solo_total)
+        self.in_doble_visita.valueChanged.connect(self.recalcular_solo_total)
+        
+        # Conexión de Botones Rápidos (Calculadoras)
+        self.btn_finde.clicked.connect(self.aplicar_finde)
+        self.btn_feriado.clicked.connect(self.aplicar_feriado)
+        
+        self.base_calculada = 0.0
         self.recalcular() 
+
+    def aplicar_finde(self):
+        # x2 significa sumar el 100% de la base como recargo
+        self.in_recargo_dia.setValue(self.base_calculada * 1.0) 
+        
+    def aplicar_feriado(self):
+        # x3 significa sumar el 200% de la base como recargo
+        self.in_recargo_dia.setValue(self.base_calculada * 2.0) 
 
     def recalcular(self):
         b_tot = self.in_bultos.value(); b_frio = self.in_frio.value()
@@ -173,8 +234,12 @@ class AjusteAvanzadoFacturacionDialog(QDialog):
             b_frio = b_tot
             self.in_frio.blockSignals(False)
             
-        base = self.main_app.obtener_precio(self.combo_zona.currentText(), b_tot - b_frio, b_frio, self.op.sucursal, self.op.proveedor, self.op.peso or 0.0, b_tot)
-        self.precio_final = base + self.in_feriado.value() + self.in_contingencia.value()
+        self.base_calculada = self.main_app.obtener_precio(self.combo_zona.currentText(), b_tot - b_frio, b_frio, self.op.sucursal, self.op.proveedor, self.op.peso or 0.0, b_tot)
+        self.lbl_base.setText(f"Tarifa Base Calculada (S/ extras): $ {self.base_calculada:,.2f}")
+        self.recalcular_solo_total()
+
+    def recalcular_solo_total(self):
+        self.precio_final = self.base_calculada + self.in_recargo_dia.value() + self.in_contingencia.value() + self.in_doble_visita.value()
         self.lbl_total.setText(f"$ {self.precio_final:,.2f}")
 
 class TabFacturacion(QWidget):
@@ -256,7 +321,21 @@ class TabFacturacion(QWidget):
         try:
             op = self.main.session.query(Operacion).get(id_op)
             if not op: return
-            dlg = AjusteAvanzadoFacturacionDialog(op, self.main, self) 
+            
+            # Inteligencia: Contamos las visitas mirando el historial
+            hist_records = self.main.session.query(Historial.accion).filter(
+                Historial.operacion_id == id_op, 
+                Historial.accion.in_(['SALIDA A REPARTO', 'DESHACER (ADMIN)', 'REPROGRAMADO (ADMIN)'])
+            ).all()
+            
+            visitas = 0
+            for (accion,) in hist_records:
+                if accion == 'SALIDA A REPARTO': visitas += 1
+                elif accion in ['DESHACER (ADMIN)', 'REPROGRAMADO (ADMIN)']: visitas -= 1
+            visitas = max(1, visitas) # Mínimo 1 visita para que tenga sentido
+
+            # Llamamos al diálogo pasándole las visitas que calculamos
+            dlg = AjusteAvanzadoFacturacionDialog(op, self.main, visitas, self) 
             if dlg.exec() == QDialog.DialogCode.Accepted: 
                 op.localidad = dlg.combo_zona.currentText()
                 op.bultos = dlg.in_bultos.value()
