@@ -4,7 +4,7 @@ from datetime import datetime, date
 from PyQt6.QtWidgets import (QApplication, QDialog, QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, 
                              QComboBox, QPushButton, QTableWidget, QTableWidgetItem, 
                              QHeaderView, QMessageBox, QSpinBox, QDoubleSpinBox, QFrame, QFileDialog, QTabWidget, 
-                             QAbstractItemView, QStyledItemDelegate, QProgressDialog)
+                             QAbstractItemView, QStyledItemDelegate, QProgressDialog, QFormLayout)
 from PyQt6.QtCore import Qt, QDate
 from PyQt6.QtGui import QColor, QFont, QBrush
 from sqlalchemy import text
