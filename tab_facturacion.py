@@ -4,10 +4,10 @@ from datetime import datetime, date
 from PyQt6.QtWidgets import (QApplication, QDialog, QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, 
                              QComboBox, QPushButton, QTableWidget, QTableWidgetItem, 
                              QHeaderView, QMessageBox, QSpinBox, QDoubleSpinBox, QFrame, QFileDialog, QTabWidget, 
-                             QAbstractItemView, QStyledItemDelegate, QProgressDialog, QFormLayout, QCheckBox)
+                             QAbstractItemView, QStyledItemDelegate, QProgressDialog, QFormLayout, QCheckBox, QDateEdit)
 from PyQt6.QtCore import Qt, QDate
 from PyQt6.QtGui import QColor, QFont, QBrush
-from sqlalchemy import text
+from sqlalchemy import text, func
 
 from database import Operacion, Historial, Estados, ReciboPago
 from utilidades import crear_pdf_facturacion
@@ -102,13 +102,13 @@ class PintorCeldasDelegate(QStyledItemDelegate):
 
 ESTILO_TABLAS_BLANCAS = "QTableWidget { background-color: #ffffff !important; } QTableWidget::item { background-color: transparent !important; color: #000000 !important; border-bottom: 1px solid #f0f0f0 !important; } QTableWidget::item:selected { background-color: #bbdefb !important; color: #000000 !important; }"
 
-# 🔥 EL SUPER DIÁLOGO DE LECTURA DIRECTA A LA BASE DE DATOS 🔥
+# 🔥 EL SUPER DIÁLOGO DE COMPATIBILIDAD Y EDICIÓN DE FECHAS 🔥
 class AjusteAvanzadoFacturacionDialog(QDialog):
     def __init__(self, op, main_app, visitas=1, parent=None):
         super().__init__(parent)
         self.op = op; self.main_app = main_app
         self.setWindowTitle(f"🛠️ Ajuste Integral de Facturación - Guía: {op.guia_remito or 'S/N'}")
-        self.setFixedSize(520, 780) 
+        self.setFixedSize(520, 800) 
         layout = QVBoxLayout(self)
 
         bultos_tot = int(op.bultos) if op.bultos else 1
@@ -119,13 +119,29 @@ class AjusteAvanzadoFacturacionDialog(QDialog):
         if bultos_fr > 0: tipo_bulto_str += f" ({bultos_com} Comunes / {bultos_fr} Refrigerados)"
         else: tipo_bulto_str += " (Todos Comunes)"
 
-        info_text = f"<span style='font-size:14px;'><b>Guía:</b> {op.guia_remito or '-'}<br><b>Cliente:</b> {op.proveedor}<br><b>Destino:</b> {op.destinatario} ({op.domicilio})<br><b>Carga Inicial:</b> {tipo_bulto_str}<br><b>Estado actual:</b> <span style='color:#1565c0;'>{op.estado}</span> (Salidas reales a calle: <b>{visitas}</b>)</span>"
+        info_text = f"<span style='font-size:14px;'><b>Guía:</b> {op.guia_remito or '-'}<br><b>Cliente:</b> {op.proveedor}<br><b>Destino:</b> {op.destinatario} ({op.domicilio})<br><b>Carga Inicial:</b> {tipo_bulto_str}<br><b>Estado actual:</b> <span style='color:#1565c0;'>{op.estado}</span> (Salidas reales: <b>{visitas}</b>)</span>"
         
         lbl_info = QLabel(info_text)
         lbl_info.setStyleSheet("background-color: #f8f9fa; padding: 12px; border: 1px solid #ced4da; border-radius: 6px;")
         layout.addWidget(lbl_info)
 
         form = QFormLayout()
+
+        # 🔥 CONTROL DE FECHA PARA ELIMINAR FALSOS FINES DE SEMANA 🔥
+        self.in_fecha = QDateEdit()
+        self.in_fecha.setCalendarPopup(True)
+        self.in_fecha.setDisplayFormat("dd/MM/yyyy")
+        if op.fecha_entrega:
+            d = op.fecha_entrega.date()
+            self.in_fecha.setDate(QDate(d.year, d.month, d.day))
+        elif op.fecha_ingreso:
+            d = op.fecha_ingreso
+            if isinstance(d, datetime): d = d.date()
+            self.in_fecha.setDate(QDate(d.year, d.month, d.day))
+        else:
+            self.in_fecha.setDate(QDate.currentDate())
+        
+        form.addRow("📅 Fecha Real de Entrega:", self.in_fecha)
 
         from database import Tarifa 
         zonas = [z[0] for z in self.main_app.session.query(Tarifa.localidad).filter(Tarifa.sucursal == op.sucursal).distinct().all()]
@@ -176,11 +192,35 @@ class AjusteAvanzadoFacturacionDialog(QDialog):
         self.in_contingencia = QDoubleSpinBox(); self.in_contingencia.setRange(0, 1000000); self.in_contingencia.setPrefix("$ "); self.in_contingencia.setSingleStep(500.0)
         self.in_doble_visita = QDoubleSpinBox(); self.in_doble_visita.setRange(0, 1000000); self.in_doble_visita.setPrefix("$ "); self.in_doble_visita.setSingleStep(500.0)
         
-        # 🔥 LECTURA DIRECTA DE LA BASE DE DATOS. CERO ADIVINANZAS 🔥
-        self.in_finde.setValue(getattr(op, 'monto_finde', 0.0) or 0.0)
-        self.in_feriado.setValue(getattr(op, 'monto_feriado', 0.0) or 0.0)
-        self.in_contingencia.setValue(getattr(op, 'monto_contingencia', 0.0) or 0.0)
-        self.in_doble_visita.setValue(getattr(op, 'monto_espera', 0.0) or 0.0)
+        # 🔥 MODO COMPATIBILIDAD (Para Guías Viejas de la DB) 🔥
+        fecha_para_billing = op.fecha_entrega if op.fecha_entrega else op.fecha_ingreso
+        es_finde = fecha_para_billing and fecha_para_billing.weekday() >= 5
+        
+        try: base_actual = self.main_app.obtener_precio(op.localidad, bultos_com, bultos_fr, op.sucursal, op.proveedor, op.peso or 0.0, bultos_tot)
+        except: base_actual = 0.0
+        
+        monto_serv = op.monto_servicio or 0.0
+        
+        monto_finde_db = getattr(op, 'monto_finde', 0.0) or 0.0
+        monto_feriado_db = getattr(op, 'monto_feriado', 0.0) or 0.0
+        monto_cont_db = getattr(op, 'monto_contingencia', 0.0) or 0.0
+        monto_esp_db = getattr(op, 'monto_espera', 0.0) or 0.0
+        
+        # Si las cajas nuevas están vacías, pero había plata extra cobrada en el sistema viejo:
+        if monto_finde_db == 0 and monto_feriado_db == 0 and monto_cont_db == 0 and monto_esp_db == 0 and monto_serv > base_actual:
+            excedente = monto_serv - base_actual
+            if es_finde and excedente >= (base_actual * 0.9):
+                monto_finde_db = base_actual
+                excedente -= base_actual
+            if visitas > 1 and excedente > 0:
+                monto_esp_db = excedente
+                excedente = 0.0
+            monto_cont_db = excedente
+            
+        self.in_finde.setValue(monto_finde_db)
+        self.in_feriado.setValue(monto_feriado_db)
+        self.in_contingencia.setValue(monto_cont_db)
+        self.in_doble_visita.setValue(monto_esp_db)
         
         lbl_visita = QLabel("⏳ Espera / Doble Visita:")
         if visitas > 1:
@@ -283,7 +323,6 @@ class TabFacturacion(QWidget):
         btn_pdf = QPushButton("Rendición PDF"); btn_pdf.setStyleSheet("background-color: #dc3545 !important; color: white !important;"); btn_pdf.clicked.connect(self.generar_pdf_fact)
         hl.addWidget(QLabel("Sucursal:")); hl.addWidget(self.cierre_sucursal); hl.addWidget(QLabel("Mes:")); hl.addWidget(self.cierre_mes); hl.addWidget(QLabel("Año:")); hl.addWidget(self.cierre_anio); hl.addWidget(QLabel("Proveedor:")); hl.addWidget(self.cierre_prov); hl.addWidget(self.btn_c); hl.addWidget(btn_pdf); btn_cargo_fijo = QPushButton("➕ Agregar Cargo Fijo"); btn_cargo_fijo.clicked.connect(self.agregar_cargo_fijo); hl.addWidget(btn_cargo_fijo)
         
-        # 🔥 NUEVA TABLA CON 12 COLUMNAS (Desglose Finde / Extras) 🔥
         self.tabla_cierre = QTableWidget(); self.tabla_cierre.setColumnCount(12); 
         self.tabla_cierre.setHorizontalHeaderLabels(["F. Ingreso", "F. Entrega", "Sucursal", "Guía", "Zona", "Bultos", "Estado", "Base ($)", "Finde/Fer ($)", "Otros Extras ($)", "Total ($)", "Ajustes"]); 
         self.tabla_cierre.setStyleSheet(ESTILO_TABLAS_BLANCAS); self.pintor_cierre = PintorCeldasDelegate(self.tabla_cierre); self.tabla_cierre.setItemDelegate(self.pintor_cierre)
@@ -360,16 +399,19 @@ class TabFacturacion(QWidget):
 
             dlg = AjusteAvanzadoFacturacionDialog(op, self.main, visitas, self) 
             if dlg.exec() == QDialog.DialogCode.Accepted: 
+                # 🔥 GUARDAR LA NUEVA FECHA SI EL USUARIO LA MODIFICÓ 🔥
+                qdate = dlg.in_fecha.date()
+                op.fecha_entrega = datetime(qdate.year(), qdate.month(), qdate.day(), 12, 0, 0)
+                
                 op.localidad = dlg.combo_zona.currentText()
                 op.bultos = dlg.in_bultos.value()
                 op.bultos_frio = dlg.in_frio.value()
                 
-                # 🔥 GUARDADO DIRECTO A LA BASE DE DATOS 🔥
                 op.monto_finde = dlg.in_finde.value()
                 op.monto_feriado = dlg.in_feriado.value()
                 op.monto_contingencia = dlg.in_contingencia.value()
                 op.monto_espera = dlg.in_doble_visita.value()
-                op.monto_servicio = dlg.precio_final # Mantenemos el total para compatibilidad
+                op.monto_servicio = dlg.precio_final 
                 
                 self.main.session.commit()
                 self.calcular_cierre()
@@ -410,7 +452,17 @@ class TabFacturacion(QWidget):
         self.btn_c.setEnabled(False)
         mes = self.cierre_mes.currentIndex() + 1; anio = self.cierre_anio.value(); prov = self.cierre_prov.currentText().strip(); sucursal = self.cierre_sucursal.currentText(); self.tabla_cierre.setRowCount(0)
         try:
-            _, last_day = calendar.monthrange(anio, mes); start_date = date(anio, mes, 1); end_date = date(anio, mes, last_day); query = self.main.session.query(Operacion).filter(Operacion.fecha_ingreso >= start_date, Operacion.fecha_ingreso <= end_date, (Operacion.facturado == False) | (Operacion.facturado == None), Operacion.estado.ilike('ENTREGADO'))
+            _, last_day = calendar.monthrange(anio, mes); start_date = date(anio, mes, 1); end_date = date(anio, mes, last_day)
+            
+            # 🔥 MOTOR DE FILTRADO ARREGLADO (AHORA MIRA FECHA DE ENTREGA O DE INGRESO PARA EL MES) 🔥
+            fecha_ref = func.coalesce(Operacion.fecha_entrega, Operacion.fecha_ingreso)
+            query = self.main.session.query(Operacion).filter(
+                func.date(fecha_ref) >= start_date, 
+                func.date(fecha_ref) <= end_date, 
+                (Operacion.facturado == False) | (Operacion.facturado == None), 
+                Operacion.estado.ilike('ENTREGADO')
+            )
+            
             if prov != "Todos" and prov != "": query = query.filter(Operacion.proveedor.ilike(prov))
             else: query = query.filter(~Operacion.proveedor.ilike('JetPaq'))
             if sucursal != "Todas": query = query.filter(Operacion.sucursal == sucursal)
@@ -478,9 +530,8 @@ class TabFacturacion(QWidget):
                 visitas = max(1, conteo_repartos.get(op.id, 1))
                 estado_txt = f"{op.estado} ({visitas} Visitas)" if visitas > 1 else op.estado
                 
-                # Si el usuario reseteó el monto a 0, le sacamos la alerta de finde
-                monto_finde = getattr(op, 'monto_finde', 0.0) or 0.0
-                if es_finde and monto_finde > 0:
+                # 🔥 AHORA SIEMPRE QUE SEA FINDE TE AVISA PARA QUE SEAS VOS EL QUE TOME LA DECISIÓN 🔥
+                if es_finde:
                     estado_txt = f"🚨 GUARDIA FINDE | {estado_txt}"
                     
                 self.tabla_cierre.setItem(row, 6, QTableWidgetItem(estado_txt))
@@ -491,11 +542,9 @@ class TabFacturacion(QWidget):
                 else: 
                     precio_base = self.main.obtener_precio(op.localidad, bultos_tot-bultos_fr, bultos_fr, op.sucursal, proveedor=op.proveedor, peso=op.peso, bultos_totales=bultos_tot)
                     
-                    # 🔥 LECTURA DIRECTA DE LA BASE DE DATOS 🔥
-                    monto_finde_tabla = monto_finde + (getattr(op, 'monto_feriado', 0.0) or 0.0)
+                    monto_finde_tabla = (getattr(op, 'monto_finde', 0.0) or 0.0) + (getattr(op, 'monto_feriado', 0.0) or 0.0)
                     monto_otros_tabla = (getattr(op, 'monto_contingencia', 0.0) or 0.0) + (getattr(op, 'monto_espera', 0.0) or 0.0)
                     
-                    # Si la base de datos vieja no tiene datos separados, sumamos la diferencia general
                     if monto_finde_tabla == 0 and monto_otros_tabla == 0 and monto_serv > precio_base:
                         monto_otros_tabla = monto_serv - precio_base
                         
@@ -506,7 +555,7 @@ class TabFacturacion(QWidget):
                 self.tabla_cierre.setItem(row, 9, QTableWidgetItem(f"$ {monto_otros_tabla:,.2f}"))
                 self.tabla_cierre.setItem(row, 10, QTableWidgetItem(f"$ {monto_serv:,.2f}"))
                 
-                if es_finde and monto_finde > 0:
+                if es_finde:
                     brush = QBrush(QColor("#fff3cd"))
                     for col_idx in range(11): 
                         it = self.tabla_cierre.item(row, col_idx)
