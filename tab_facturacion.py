@@ -11,7 +11,7 @@ from sqlalchemy import text
 
 from database import Operacion, Historial, Estados, ReciboPago
 from utilidades import crear_pdf_facturacion
-from dialogos import EditarPrecioFacturacionDialog, AgregarCargoDialog, CargarPagoDialog
+from dialogos import AgregarCargoDialog, CargarPagoDialog
 
 # 🔥 CORTAFUEGOS DE SEGURIDAD PARA COMBOS DE PROVEEDORES 🔥
 class RestrictedComboBox(QComboBox):
@@ -106,9 +106,18 @@ class AjusteAvanzadoFacturacionDialog(QDialog):
     def __init__(self, op, main_app, parent=None):
         super().__init__(parent)
         self.op = op; self.main_app = main_app
-        self.setWindowTitle(f"🛠️ Ajuste de Facturación - Guía: {op.guia_remito or 'S/N'}")
-        self.setFixedSize(400, 350)
+        self.setWindowTitle(f"🛠️ Ajuste Integral de Facturación - Guía: {op.guia_remito or 'S/N'}")
+        self.setFixedSize(450, 520)
         layout = QVBoxLayout(self)
+
+        # --- 1. CABECERA DE INFORMACIÓN (Tu diseño original) ---
+        info_text = f"<span style='font-size:14px;'><b>Guía / Remito:</b> {op.guia_remito or '-'}<br><b>Cliente:</b> {op.proveedor}<br><b>Destino:</b> {op.destinatario} ({op.domicilio})<br><b>Estado:</b> <span style='color:#1565c0;'>{op.estado}</span></span>"
+        lbl_info = QLabel(info_text)
+        lbl_info.setStyleSheet("background-color: #f8f9fa; padding: 12px; border: 1px solid #ced4da; border-radius: 6px;")
+        layout.addWidget(lbl_info)
+
+        # --- 2. CONTROLES DINÁMICOS OPERATIVOS ---
+        form = QFormLayout()
 
         from database import Tarifa 
         zonas = [z[0] for z in self.main_app.session.query(Tarifa.localidad).filter(Tarifa.sucursal == op.sucursal).distinct().all()]
@@ -120,44 +129,53 @@ class AjusteAvanzadoFacturacionDialog(QDialog):
         self.in_bultos = QSpinBox(); self.in_bultos.setRange(1, 1000); self.in_bultos.setValue(op.bultos or 1)
         self.in_frio = QSpinBox(); self.in_frio.setRange(0, 1000); self.in_frio.setValue(op.bultos_frio or 0)
 
-        # Extraemos la contingencia actual restando la tarifa base del monto total guardado
+        # --- 3. EXTRAS Y CONTINGENCIAS ---
         try: base_actual = self.main_app.obtener_precio(op.localidad, (op.bultos or 1)-(op.bultos_frio or 0), op.bultos_frio or 0, op.sucursal, op.proveedor, op.peso or 0.0, op.bultos or 1)
         except: base_actual = 0.0
-        contingencia_actual = max(0.0, (op.monto_servicio or 0.0) - base_actual)
+        excedente = max(0.0, (op.monto_servicio or 0.0) - base_actual)
 
-        self.in_contingencia = QDoubleSpinBox(); self.in_contingencia.setRange(0, 1000000); self.in_contingencia.setValue(contingencia_actual)
-        self.in_contingencia.setPrefix("$ ")
-        self.in_contingencia.setSingleStep(500.0)
+        self.in_feriado = QDoubleSpinBox(); self.in_feriado.setRange(0, 1000000); self.in_feriado.setPrefix("$ "); self.in_feriado.setSingleStep(500.0)
+        self.in_contingencia = QDoubleSpinBox(); self.in_contingencia.setRange(0, 1000000); self.in_contingencia.setPrefix("$ "); self.in_contingencia.setSingleStep(500.0)
+        
+        # Asumimos que si había un excedente previo, era contingencia. Si el usuario quiere, lo pasa a feriado.
+        self.in_contingencia.setValue(excedente) 
 
+        form.addRow("🗺️ Zona de Tarifa:", self.combo_zona)
+        form.addRow("📦 Bultos Totales:", self.in_bultos)
+        form.addRow("❄️ Bultos Refrigerados:", self.in_frio)
+        form.addRow("📅 Recargo Finde/Feriado:", self.in_feriado)
+        form.addRow("⚠️ Contingencia/Espera:", self.in_contingencia)
+        layout.addLayout(form)
+
+        # --- 4. TOTAL EN TIEMPO REAL ---
         self.lbl_total = QLabel("$ 0.00")
-        self.lbl_total.setStyleSheet("font-size: 20px; font-weight: bold; color: #1565c0; padding: 10px; border: 2px dashed #1565c0; border-radius: 5px;")
+        self.lbl_total.setStyleSheet("font-size: 24px; font-weight: bold; color: #1565c0; padding: 15px; border: 2px dashed #1565c0; border-radius: 8px; background-color: #e3f2fd;")
         self.lbl_total.setAlignment(Qt.AlignmentFlag.AlignCenter)
-
-        def add_row(texto, widget):
-            h = QHBoxLayout(); h.addWidget(QLabel(texto)); h.addWidget(widget); layout.addLayout(h)
-
-        add_row("Zona / Localidad:", self.combo_zona)
-        add_row("Bultos Totales:", self.in_bultos)
-        add_row("Bultos Frío (incluidos):", self.in_frio)
-        add_row("Contingencia / Extra ($):", self.in_contingencia)
         layout.addWidget(self.lbl_total)
 
         btn_guardar = QPushButton("💾 GUARDAR CAMBIOS")
-        btn_guardar.setStyleSheet("background-color: #198754; color: white; font-weight: bold; padding: 12px; margin-top: 10px;")
+        btn_guardar.setStyleSheet("background-color: #198754; color: white; font-weight: bold; padding: 12px; margin-top: 10px; font-size: 14px; border-radius: 6px;")
         btn_guardar.clicked.connect(self.accept)
         layout.addWidget(btn_guardar)
 
+        # --- 5. CONEXIONES DEL MOTOR ---
         self.combo_zona.currentTextChanged.connect(self.recalcular)
         self.in_bultos.valueChanged.connect(self.recalcular)
         self.in_frio.valueChanged.connect(self.recalcular)
+        self.in_feriado.valueChanged.connect(self.recalcular)
         self.in_contingencia.valueChanged.connect(self.recalcular)
-        self.recalcular()
+        self.recalcular() # Primer cálculo al abrir
 
     def recalcular(self):
         b_tot = self.in_bultos.value(); b_frio = self.in_frio.value()
-        if b_frio > b_tot: self.in_frio.setValue(b_tot); b_frio = b_tot # Seguro para que frío no supere el total
+        if b_frio > b_tot: 
+            self.in_frio.blockSignals(True)
+            self.in_frio.setValue(b_tot)
+            b_frio = b_tot
+            self.in_frio.blockSignals(False)
+            
         base = self.main_app.obtener_precio(self.combo_zona.currentText(), b_tot - b_frio, b_frio, self.op.sucursal, self.op.proveedor, self.op.peso or 0.0, b_tot)
-        self.precio_final = base + self.in_contingencia.value()
+        self.precio_final = base + self.in_feriado.value() + self.in_contingencia.value()
         self.lbl_total.setText(f"$ {self.precio_final:,.2f}")
 
 class TabFacturacion(QWidget):
