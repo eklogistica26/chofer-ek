@@ -317,25 +317,28 @@ class TabFacturacion(QWidget):
         btn_pdf = QPushButton("Rendición PDF"); btn_pdf.setStyleSheet("background-color: #dc3545 !important; color: white !important; font-weight: bold; padding: 6px;"); btn_pdf.clicked.connect(self.generar_pdf_fact)
         hl.addWidget(QLabel("Sucursal:")); hl.addWidget(self.cierre_sucursal); hl.addWidget(QLabel("Mes:")); hl.addWidget(self.cierre_mes); hl.addWidget(QLabel("Año:")); hl.addWidget(self.cierre_anio); hl.addWidget(QLabel("Proveedor:")); hl.addWidget(self.cierre_prov); hl.addWidget(self.btn_c); hl.addWidget(btn_pdf); btn_cargo_fijo = QPushButton("➕ Agregar Cargo Fijo"); btn_cargo_fijo.clicked.connect(self.agregar_cargo_fijo); hl.addWidget(btn_cargo_fijo)
         
-        # 🔥 REDISTRIBUCIÓN DE ANCHOS (GUÍA MÁS GRANDE) 🔥
-        self.tabla_cierre = QTableWidget(); self.tabla_cierre.setColumnCount(13); 
-        self.tabla_cierre.setHorizontalHeaderLabels(["Sel.", "F. Ingreso", "F. Entrega", "Sucursal", "Guía", "Zona", "Bultos", "Estado", "Base ($)", "Finde/Fer ($)", "Otros Extras ($)", "Total ($)", "Ajustes"]); 
+        # 🔥 TABLA CON 14 COLUMNAS (Se suma Destino) 🔥
+        self.tabla_cierre = QTableWidget(); self.tabla_cierre.setColumnCount(14); 
+        self.tabla_cierre.setHorizontalHeaderLabels(["Sel.", "F. Ingreso", "F. Entrega", "Sucursal", "Guía", "Destino", "Zona", "Bultos", "Estado", "Base ($)", "Finde/Fer ($)", "Otros Extras ($)", "Total ($)", "Ajustes"]); 
         self.tabla_cierre.setStyleSheet(ESTILO_TABLAS_BLANCAS); self.pintor_cierre = PintorCeldasDelegate(self.tabla_cierre); self.tabla_cierre.setItemDelegate(self.pintor_cierre)
         
         header = self.tabla_cierre.horizontalHeader(); header.setSectionResizeMode(QHeaderView.ResizeMode.Interactive); 
+        
+        # Ajuste inteligente de anchos para que el botón de editar quede perfecto
         self.tabla_cierre.setColumnWidth(0, 40)   # Sel.
-        self.tabla_cierre.setColumnWidth(1, 85)   # F. Ingreso
-        self.tabla_cierre.setColumnWidth(2, 85)   # F. Entrega
-        self.tabla_cierre.setColumnWidth(3, 90)   # Sucursal
-        self.tabla_cierre.setColumnWidth(4, 220)  # Guía (Ampliando espacio)
-        self.tabla_cierre.setColumnWidth(5, 130)  # Zona
-        self.tabla_cierre.setColumnWidth(6, 110)  # Bultos
-        self.tabla_cierre.setColumnWidth(7, 130)  # Estado
-        self.tabla_cierre.setColumnWidth(8, 90)   # Base
-        self.tabla_cierre.setColumnWidth(9, 90)   # Finde/Fer
-        self.tabla_cierre.setColumnWidth(10, 90)  # Otros Extras
-        self.tabla_cierre.setColumnWidth(11, 90)  # Total
-        self.tabla_cierre.setColumnWidth(12, 85)  # Ajustes
+        self.tabla_cierre.setColumnWidth(1, 80)   # F. Ingreso
+        self.tabla_cierre.setColumnWidth(2, 80)   # F. Entrega
+        self.tabla_cierre.setColumnWidth(3, 85)   # Sucursal
+        self.tabla_cierre.setColumnWidth(4, 140)  # Guía
+        self.tabla_cierre.setColumnWidth(5, 160)  # Destino (NUEVO)
+        self.tabla_cierre.setColumnWidth(6, 120)  # Zona
+        self.tabla_cierre.setColumnWidth(7, 100)  # Bultos
+        self.tabla_cierre.setColumnWidth(8, 130)  # Estado
+        self.tabla_cierre.setColumnWidth(9, 85)   # Base
+        self.tabla_cierre.setColumnWidth(10, 85)  # Finde/Fer
+        self.tabla_cierre.setColumnWidth(11, 85)  # Otros Extras
+        self.tabla_cierre.setColumnWidth(12, 85)  # Total
+        self.tabla_cierre.setColumnWidth(13, 85)  # Ajustes
         
         header.setStretchLastSection(True); self.tabla_cierre.verticalHeader().setFixedWidth(30); self.tabla_cierre.verticalHeader().setDefaultSectionSize(45); self.tabla_cierre.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows); self.tabla_cierre.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers); self.tabla_cierre.cellDoubleClicked.connect(self.doble_clic_ajuste_precio)
         
@@ -536,7 +539,7 @@ class TabFacturacion(QWidget):
             query = query.order_by(Operacion.fecha_ingreso.asc()); self.resultados_cierre = query.all()
             
             if not self.resultados_cierre: 
-                self.tabla_cierre.setRowCount(1); item_empty = QTableWidgetItem("❌ Sin guías entregadas para facturar."); item_empty.setTextAlignment(Qt.AlignmentFlag.AlignCenter); self.tabla_cierre.setItem(0, 0, item_empty); self.tabla_cierre.setSpan(0, 0, 1, 13); self.lbl_resumen.setText("Total Base: $0 | Total Extras: $0 | TOTAL SELECCIONADO: $0")
+                self.tabla_cierre.setRowCount(1); item_empty = QTableWidgetItem("❌ Sin guías entregadas para facturar."); item_empty.setTextAlignment(Qt.AlignmentFlag.AlignCenter); self.tabla_cierre.setItem(0, 0, item_empty); self.tabla_cierre.setSpan(0, 0, 1, 14); self.lbl_resumen.setText("Total Base: $0 | Total Extras: $0 | TOTAL SELECCIONADO: $0")
                 self.btn_c.setEnabled(True)
                 self.tabla_cierre.blockSignals(False)
                 return
@@ -583,7 +586,10 @@ class TabFacturacion(QWidget):
                 self.tabla_cierre.setItem(row, 2, QTableWidgetItem(f_entrega))
                 self.tabla_cierre.setItem(row, 3, QTableWidgetItem((op.sucursal or "").upper()))
                 self.tabla_cierre.setItem(row, 4, QTableWidgetItem(op.guia_remito or "RET"))
-                self.tabla_cierre.setItem(row, 5, QTableWidgetItem(op.localidad or ""))
+                
+                # 🔥 CAMPO DESTINO INYECTADO 🔥
+                self.tabla_cierre.setItem(row, 5, QTableWidgetItem(op.destinatario or ""))
+                self.tabla_cierre.setItem(row, 6, QTableWidgetItem(op.localidad or ""))
                 
                 bultos_tot = int(op.bultos) if op.bultos else 1
                 bultos_fr = int(op.bultos_frio) if op.bultos_frio else 0
@@ -595,7 +601,7 @@ class TabFacturacion(QWidget):
                     if bultos_fr > 0 and bultos_fr < bultos_tot: det_b += f" ({bultos_tot-bultos_fr}C/{bultos_fr}R)"
                     elif bultos_fr == bultos_tot: det_b += " (R)"
                     
-                self.tabla_cierre.setItem(row, 6, QTableWidgetItem(det_b))
+                self.tabla_cierre.setItem(row, 7, QTableWidgetItem(det_b))
                 
                 fecha_para_billing = op.fecha_entrega if op.fecha_entrega else op.fecha_ingreso
                 es_finde = fecha_para_billing and fecha_para_billing.weekday() >= 5
@@ -607,7 +613,7 @@ class TabFacturacion(QWidget):
                 if es_finde and monto_finde > 0:
                     estado_txt = f"🚨 GUARDIA FINDE | {estado_txt}"
                     
-                self.tabla_cierre.setItem(row, 7, QTableWidgetItem(estado_txt))
+                self.tabla_cierre.setItem(row, 8, QTableWidgetItem(estado_txt))
                 
                 monto_serv = op.monto_servicio or 0.0
                 if op.guia_remito == "CARGO-FIJO" or (op.tipo_servicio and "Flete" in op.tipo_servicio): 
@@ -623,14 +629,14 @@ class TabFacturacion(QWidget):
                         
                     extras = monto_finde_tabla + monto_otros_tabla
 
-                self.tabla_cierre.setItem(row, 8, QTableWidgetItem(f"$ {precio_base:,.2f}"))
-                self.tabla_cierre.setItem(row, 9, QTableWidgetItem(f"$ {monto_finde_tabla:,.2f}"))
-                self.tabla_cierre.setItem(row, 10, QTableWidgetItem(f"$ {monto_otros_tabla:,.2f}"))
-                self.tabla_cierre.setItem(row, 11, QTableWidgetItem(f"$ {monto_serv:,.2f}"))
+                self.tabla_cierre.setItem(row, 9, QTableWidgetItem(f"$ {precio_base:,.2f}"))
+                self.tabla_cierre.setItem(row, 10, QTableWidgetItem(f"$ {monto_finde_tabla:,.2f}"))
+                self.tabla_cierre.setItem(row, 11, QTableWidgetItem(f"$ {monto_otros_tabla:,.2f}"))
+                self.tabla_cierre.setItem(row, 12, QTableWidgetItem(f"$ {monto_serv:,.2f}"))
                 
                 if es_finde and monto_finde > 0:
                     brush = QBrush(QColor("#fff3cd"))
-                    for col_idx in range(12): 
+                    for col_idx in range(13): 
                         it = self.tabla_cierre.item(row, col_idx)
                         if it: it.setBackground(brush)
                 
@@ -644,7 +650,7 @@ class TabFacturacion(QWidget):
                     btn_peso.clicked.connect(lambda checked, r=row: self.abrir_dialogo_peso_dhl(self.mapa_filas_cierre[r]))
                     lay_acc.addWidget(btn_peso)
                 
-                self.tabla_cierre.setCellWidget(row, 12, w_acc)
+                self.tabla_cierre.setCellWidget(row, 13, w_acc)
                 
             progreso.setValue(total_ops)
             
@@ -707,12 +713,11 @@ class TabFacturacion(QWidget):
             try: self.main.session.commit(); self.calcular_cierre(); self.cargar_ctas_ctes()
             except: self.main.session.rollback()
             
-        # 🔥 CÁLCULOS DEL IVA Y SEPARADORES EN EL PDF 🔥
         tb, te, tf = self.totales_cierre
         iva = tf * 0.21
         total_final_iva = tf + iva
         
-        data_filas.append(['', '', '', '', '', '', '', '']) # Fila vacía para separar
+        data_filas.append(['', '', '', '', '', '', '', '']) 
         data_filas.append(['SUBTOTALES:', '', '', '', f"$ {tb:,.2f}", f"$ {te:,.2f}", '-', f"$ {tf:,.2f}"])
         data_filas.append(['', '', '', '', '', '', 'IVA (21%):', f"$ {iva:,.2f}"])
         data_filas.append(['', '', '', '', '', '', 'TOTAL FACTURA:', f"$ {total_final_iva:,.2f}"])
