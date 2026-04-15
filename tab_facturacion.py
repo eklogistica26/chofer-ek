@@ -102,7 +102,6 @@ class PintorCeldasDelegate(QStyledItemDelegate):
 
 ESTILO_TABLAS_BLANCAS = "QTableWidget { background-color: #ffffff !important; } QTableWidget::item { background-color: transparent !important; color: #000000 !important; border-bottom: 1px solid #f0f0f0 !important; } QTableWidget::item:selected { background-color: #bbdefb !important; color: #000000 !important; }"
 
-# 🔥 EL SUPER DIÁLOGO DE COMPATIBILIDAD Y EDICIÓN DE FECHAS 🔥
 class AjusteAvanzadoFacturacionDialog(QDialog):
     def __init__(self, op, main_app, visitas=1, parent=None):
         super().__init__(parent)
@@ -318,19 +317,29 @@ class TabFacturacion(QWidget):
         btn_pdf = QPushButton("Rendición PDF"); btn_pdf.setStyleSheet("background-color: #dc3545 !important; color: white !important; font-weight: bold; padding: 6px;"); btn_pdf.clicked.connect(self.generar_pdf_fact)
         hl.addWidget(QLabel("Sucursal:")); hl.addWidget(self.cierre_sucursal); hl.addWidget(QLabel("Mes:")); hl.addWidget(self.cierre_mes); hl.addWidget(QLabel("Año:")); hl.addWidget(self.cierre_anio); hl.addWidget(QLabel("Proveedor:")); hl.addWidget(self.cierre_prov); hl.addWidget(self.btn_c); hl.addWidget(btn_pdf); btn_cargo_fijo = QPushButton("➕ Agregar Cargo Fijo"); btn_cargo_fijo.clicked.connect(self.agregar_cargo_fijo); hl.addWidget(btn_cargo_fijo)
         
-        # 🔥 TABLA CON 13 COLUMNAS (Se suma Checkbox en la pos 0) 🔥
+        # 🔥 TABLA CON ANCHOS REDISTRIBUIDOS PARA ACHICAR LA ÚLTIMA COLUMNA 🔥
         self.tabla_cierre = QTableWidget(); self.tabla_cierre.setColumnCount(13); 
         self.tabla_cierre.setHorizontalHeaderLabels(["Sel.", "F. Ingreso", "F. Entrega", "Sucursal", "Guía", "Zona", "Bultos", "Estado", "Base ($)", "Finde/Fer ($)", "Otros Extras ($)", "Total ($)", "Ajustes"]); 
         self.tabla_cierre.setStyleSheet(ESTILO_TABLAS_BLANCAS); self.pintor_cierre = PintorCeldasDelegate(self.tabla_cierre); self.tabla_cierre.setItemDelegate(self.pintor_cierre)
         
         header = self.tabla_cierre.horizontalHeader(); header.setSectionResizeMode(QHeaderView.ResizeMode.Interactive); 
-        self.tabla_cierre.setColumnWidth(0, 40); self.tabla_cierre.setColumnWidth(1, 80); self.tabla_cierre.setColumnWidth(2, 80); self.tabla_cierre.setColumnWidth(3, 85); 
-        self.tabla_cierre.setColumnWidth(4, 120); self.tabla_cierre.setColumnWidth(5, 120); self.tabla_cierre.setColumnWidth(6, 100); 
-        self.tabla_cierre.setColumnWidth(7, 130); self.tabla_cierre.setColumnWidth(8, 85); self.tabla_cierre.setColumnWidth(9, 90); 
-        self.tabla_cierre.setColumnWidth(10, 100); self.tabla_cierre.setColumnWidth(11, 85); 
+        
+        # Distribución de anchos ensanchando todo lo posible
+        self.tabla_cierre.setColumnWidth(0, 40)   # Sel.
+        self.tabla_cierre.setColumnWidth(1, 95)   # F. Ingreso
+        self.tabla_cierre.setColumnWidth(2, 95)   # F. Entrega
+        self.tabla_cierre.setColumnWidth(3, 100)  # Sucursal
+        self.tabla_cierre.setColumnWidth(4, 160)  # Guía (Piden hacerla un poco más grande)
+        self.tabla_cierre.setColumnWidth(5, 140)  # Zona
+        self.tabla_cierre.setColumnWidth(6, 110)  # Bultos
+        self.tabla_cierre.setColumnWidth(7, 140)  # Estado
+        self.tabla_cierre.setColumnWidth(8, 100)  # Base
+        self.tabla_cierre.setColumnWidth(9, 100)  # Finde/Fer
+        self.tabla_cierre.setColumnWidth(10, 100) # Otros
+        self.tabla_cierre.setColumnWidth(11, 100) # Total
+        
         header.setStretchLastSection(True); self.tabla_cierre.verticalHeader().setFixedWidth(30); self.tabla_cierre.verticalHeader().setDefaultSectionSize(45); self.tabla_cierre.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows); self.tabla_cierre.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers); self.tabla_cierre.cellDoubleClicked.connect(self.doble_clic_ajuste_precio)
         
-        # 🔥 SEÑAL EN TIEMPO REAL: Calcula si tildás/destildás algo 🔥
         self.tabla_cierre.itemChanged.connect(self.recalcular_totales_seleccionados)
         
         self.lbl_resumen = QLabel("Total Base: $0 | Total Extras: $0 | TOTAL: $0"); self.lbl_resumen.setStyleSheet("font-size: 16px; font-weight: bold; margin: 10px 15px; padding: 10px; border: 1px solid #ccc; background-color: #e3f2fd;")
@@ -338,7 +347,6 @@ class TabFacturacion(QWidget):
         
         self.btn_deshacer_fac = QPushButton("⏪ Deshacer Facturación"); self.btn_deshacer_fac.setStyleSheet("background-color: #ff9800; color: black; padding: 8px; font-weight: bold;"); self.btn_deshacer_fac.clicked.connect(self.abrir_dialogo_deshacer_facturacion); 
         
-        # 🔥 NUEVO BOTÓN SELECCIONAR TODO 🔥
         self.btn_seleccionar_todo = QPushButton("☑️ Deseleccionar Todo")
         self.btn_seleccionar_todo.setStyleSheet("background-color: #17a2b8; color: white; padding: 8px; font-weight: bold;")
         self.btn_seleccionar_todo.clicked.connect(self.toggle_seleccionar_todo)
@@ -352,9 +360,8 @@ class TabFacturacion(QWidget):
         tab_cta = QWidget(); layout_cta = QVBoxLayout(tab_cta); top_cta = QHBoxLayout(); btn_ref_cta = QPushButton("🔄 Actualizar Saldos"); btn_ref_cta.clicked.connect(self.cargar_ctas_ctes); btn_pago = QPushButton("💰 Registrar Pago"); btn_pago.clicked.connect(self.registrar_pago_ctacte); top_cta.addWidget(btn_ref_cta); top_cta.addStretch(); top_cta.addWidget(btn_pago)
         self.tabla_ctacte = QTableWidget(); self.tabla_ctacte.setColumnCount(4); self.tabla_ctacte.setHorizontalHeaderLabels(["Proveedor", "Total Facturado ($)", "Pagos ($)", "SALDO ($)"]); self.tabla_ctacte.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Interactive); self.tabla_ctacte.setColumnWidth(0, 250); self.tabla_ctacte.setColumnWidth(1, 180); self.tabla_ctacte.setColumnWidth(2, 180); header_cta = self.tabla_ctacte.horizontalHeader(); header_cta.setStretchLastSection(True); self.tabla_ctacte.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows); self.tabla_ctacte.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers); self.tabla_ctacte.setStyleSheet(ESTILO_TABLAS_BLANCAS); self.pintor_cta = PintorCeldasDelegate(self.tabla_ctacte); self.tabla_ctacte.setItemDelegate(self.pintor_cta); layout_cta.addLayout(top_cta); layout_cta.addWidget(self.tabla_ctacte); self.tabs_fact.addTab(tab_cta, "2. Cuentas Corrientes")
     
-    # 🔥 FUNCIÓN DE BOTÓN SELECCIONAR TODO 🔥
     def toggle_seleccionar_todo(self):
-        self.tabla_cierre.blockSignals(True) # Bloquear para que no calcule mil veces
+        self.tabla_cierre.blockSignals(True) 
         marcar = True
         if "Deseleccionar" in self.btn_seleccionar_todo.text():
             marcar = False
@@ -370,9 +377,8 @@ class TabFacturacion(QWidget):
         self.tabla_cierre.blockSignals(False)
         self.recalcular_totales_seleccionados()
 
-    # 🔥 MOTOR DE RECALCULO EN TIEMPO REAL 🔥
     def recalcular_totales_seleccionados(self, item=None):
-        if item and item.column() != 0: return # Solo se activa si tocás el tilde
+        if item and item.column() != 0: return 
         
         tot_base = 0; tot_extras = 0; tot_final = 0
         for r in range(self.tabla_cierre.rowCount()):
@@ -463,9 +469,11 @@ class TabFacturacion(QWidget):
             if dlg.exec() == QDialog.DialogCode.Accepted: 
                 qdate = dlg.in_fecha.date()
                 op.fecha_entrega = datetime(qdate.year(), qdate.month(), qdate.day(), 12, 0, 0)
+                
                 op.localidad = dlg.combo_zona.currentText()
                 op.bultos = dlg.in_bultos.value()
                 op.bultos_frio = dlg.in_frio.value()
+                
                 op.monto_finde = dlg.in_finde.value()
                 op.monto_feriado = dlg.in_feriado.value()
                 op.monto_contingencia = dlg.in_contingencia.value()
@@ -509,7 +517,7 @@ class TabFacturacion(QWidget):
         
     def calcular_cierre(self):
         self.btn_c.setEnabled(False)
-        self.tabla_cierre.blockSignals(True) # 🔥 Pausa la actualización visual
+        self.tabla_cierre.blockSignals(True) 
         
         mes = self.cierre_mes.currentIndex() + 1; anio = self.cierre_anio.value(); prov = self.cierre_prov.currentText().strip(); sucursal = self.cierre_sucursal.currentText(); self.tabla_cierre.setRowCount(0)
         try:
@@ -564,7 +572,6 @@ class TabFacturacion(QWidget):
                     
                 self.tabla_cierre.insertRow(row); self.mapa_filas_cierre[row] = op.id; 
                 
-                # 🔥 CHECKBOX EN LA COLUMNA 0 🔥
                 chk = QTableWidgetItem()
                 chk.setFlags(Qt.ItemFlag.ItemIsUserCheckable | Qt.ItemFlag.ItemIsEnabled)
                 chk.setCheckState(Qt.CheckState.Checked)
@@ -609,7 +616,7 @@ class TabFacturacion(QWidget):
                 else: 
                     precio_base = self.main.obtener_precio(op.localidad, bultos_tot-bultos_fr, bultos_fr, op.sucursal, proveedor=op.proveedor, peso=op.peso, bultos_totales=bultos_tot)
                     
-                    monto_finde_tabla = monto_finde + (getattr(op, 'monto_feriado', 0.0) or 0.0)
+                    monto_finde_tabla = (getattr(op, 'monto_finde', 0.0) or 0.0) + (getattr(op, 'monto_feriado', 0.0) or 0.0)
                     monto_otros_tabla = (getattr(op, 'monto_contingencia', 0.0) or 0.0) + (getattr(op, 'monto_espera', 0.0) or 0.0)
                     
                     if monto_finde_tabla == 0 and monto_otros_tabla == 0 and monto_serv > precio_base:
@@ -642,7 +649,6 @@ class TabFacturacion(QWidget):
                 
             progreso.setValue(total_ops)
             
-            # 🔥 Reanuda y calcula la primera vez (Todo tildado por defecto)
             self.tabla_cierre.blockSignals(False)
             self.btn_seleccionar_todo.setText("☑️ Deseleccionar Todo")
             self.recalcular_totales_seleccionados()
@@ -658,7 +664,6 @@ class TabFacturacion(QWidget):
     def generar_pdf_fact(self):
         if not hasattr(self, 'resultados_cierre') or not self.resultados_cierre: return
         
-        # 🔥 FILTRA SOLO LAS SELECCIONADAS 🔥
         ops_seleccionadas = []
         for r in range(self.tabla_cierre.rowCount()):
             it = self.tabla_cierre.item(r, 0)
