@@ -127,7 +127,6 @@ class AjusteAvanzadoFacturacionDialog(QDialog):
 
         form = QFormLayout()
 
-        # 🔥 CONTROL DE FECHA PARA ELIMINAR FALSOS FINES DE SEMANA 🔥
         self.in_fecha = QDateEdit()
         self.in_fecha.setCalendarPopup(True)
         self.in_fecha.setDisplayFormat("dd/MM/yyyy")
@@ -192,7 +191,6 @@ class AjusteAvanzadoFacturacionDialog(QDialog):
         self.in_contingencia = QDoubleSpinBox(); self.in_contingencia.setRange(0, 1000000); self.in_contingencia.setPrefix("$ "); self.in_contingencia.setSingleStep(500.0)
         self.in_doble_visita = QDoubleSpinBox(); self.in_doble_visita.setRange(0, 1000000); self.in_doble_visita.setPrefix("$ "); self.in_doble_visita.setSingleStep(500.0)
         
-        # 🔥 MODO COMPATIBILIDAD (Para Guías Viejas de la DB) 🔥
         fecha_para_billing = op.fecha_entrega if op.fecha_entrega else op.fecha_ingreso
         es_finde = fecha_para_billing and fecha_para_billing.weekday() >= 5
         
@@ -200,13 +198,11 @@ class AjusteAvanzadoFacturacionDialog(QDialog):
         except: base_actual = 0.0
         
         monto_serv = op.monto_servicio or 0.0
-        
         monto_finde_db = getattr(op, 'monto_finde', 0.0) or 0.0
         monto_feriado_db = getattr(op, 'monto_feriado', 0.0) or 0.0
         monto_cont_db = getattr(op, 'monto_contingencia', 0.0) or 0.0
         monto_esp_db = getattr(op, 'monto_espera', 0.0) or 0.0
         
-        # Si las cajas nuevas están vacías, pero había plata extra cobrada en el sistema viejo:
         if monto_finde_db == 0 and monto_feriado_db == 0 and monto_cont_db == 0 and monto_esp_db == 0 and monto_serv > base_actual:
             excedente = monto_serv - base_actual
             if es_finde and excedente >= (base_actual * 0.9):
@@ -246,7 +242,6 @@ class AjusteAvanzadoFacturacionDialog(QDialog):
         btn_guardar.clicked.connect(self.accept)
         layout.addWidget(btn_guardar)
 
-        # --- CONEXIONES ---
         self.combo_zona.currentTextChanged.connect(self.recalcular)
         self.in_bultos.valueChanged.connect(self.recalcular)
         self.in_frio.valueChanged.connect(self.recalcular)
@@ -320,26 +315,93 @@ class TabFacturacion(QWidget):
         
         self.btn_c = QPushButton("Calcular Listado"); self.btn_c.clicked.connect(self.calcular_cierre)
         
-        btn_pdf = QPushButton("Rendición PDF"); btn_pdf.setStyleSheet("background-color: #dc3545 !important; color: white !important;"); btn_pdf.clicked.connect(self.generar_pdf_fact)
+        btn_pdf = QPushButton("Rendición PDF"); btn_pdf.setStyleSheet("background-color: #dc3545 !important; color: white !important; font-weight: bold; padding: 6px;"); btn_pdf.clicked.connect(self.generar_pdf_fact)
         hl.addWidget(QLabel("Sucursal:")); hl.addWidget(self.cierre_sucursal); hl.addWidget(QLabel("Mes:")); hl.addWidget(self.cierre_mes); hl.addWidget(QLabel("Año:")); hl.addWidget(self.cierre_anio); hl.addWidget(QLabel("Proveedor:")); hl.addWidget(self.cierre_prov); hl.addWidget(self.btn_c); hl.addWidget(btn_pdf); btn_cargo_fijo = QPushButton("➕ Agregar Cargo Fijo"); btn_cargo_fijo.clicked.connect(self.agregar_cargo_fijo); hl.addWidget(btn_cargo_fijo)
         
-        self.tabla_cierre = QTableWidget(); self.tabla_cierre.setColumnCount(12); 
-        self.tabla_cierre.setHorizontalHeaderLabels(["F. Ingreso", "F. Entrega", "Sucursal", "Guía", "Zona", "Bultos", "Estado", "Base ($)", "Finde/Fer ($)", "Otros Extras ($)", "Total ($)", "Ajustes"]); 
+        # 🔥 TABLA CON 13 COLUMNAS (Se suma Checkbox en la pos 0) 🔥
+        self.tabla_cierre = QTableWidget(); self.tabla_cierre.setColumnCount(13); 
+        self.tabla_cierre.setHorizontalHeaderLabels(["Sel.", "F. Ingreso", "F. Entrega", "Sucursal", "Guía", "Zona", "Bultos", "Estado", "Base ($)", "Finde/Fer ($)", "Otros Extras ($)", "Total ($)", "Ajustes"]); 
         self.tabla_cierre.setStyleSheet(ESTILO_TABLAS_BLANCAS); self.pintor_cierre = PintorCeldasDelegate(self.tabla_cierre); self.tabla_cierre.setItemDelegate(self.pintor_cierre)
         
         header = self.tabla_cierre.horizontalHeader(); header.setSectionResizeMode(QHeaderView.ResizeMode.Interactive); 
-        self.tabla_cierre.setColumnWidth(0, 80); self.tabla_cierre.setColumnWidth(1, 80); self.tabla_cierre.setColumnWidth(2, 85); 
-        self.tabla_cierre.setColumnWidth(3, 120); self.tabla_cierre.setColumnWidth(4, 120); self.tabla_cierre.setColumnWidth(5, 100); 
-        self.tabla_cierre.setColumnWidth(6, 130); self.tabla_cierre.setColumnWidth(7, 85); self.tabla_cierre.setColumnWidth(8, 90); 
-        self.tabla_cierre.setColumnWidth(9, 100); self.tabla_cierre.setColumnWidth(10, 85); 
+        self.tabla_cierre.setColumnWidth(0, 40); self.tabla_cierre.setColumnWidth(1, 80); self.tabla_cierre.setColumnWidth(2, 80); self.tabla_cierre.setColumnWidth(3, 85); 
+        self.tabla_cierre.setColumnWidth(4, 120); self.tabla_cierre.setColumnWidth(5, 120); self.tabla_cierre.setColumnWidth(6, 100); 
+        self.tabla_cierre.setColumnWidth(7, 130); self.tabla_cierre.setColumnWidth(8, 85); self.tabla_cierre.setColumnWidth(9, 90); 
+        self.tabla_cierre.setColumnWidth(10, 100); self.tabla_cierre.setColumnWidth(11, 85); 
         header.setStretchLastSection(True); self.tabla_cierre.verticalHeader().setFixedWidth(30); self.tabla_cierre.verticalHeader().setDefaultSectionSize(45); self.tabla_cierre.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows); self.tabla_cierre.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers); self.tabla_cierre.cellDoubleClicked.connect(self.doble_clic_ajuste_precio)
         
-        self.lbl_resumen = QLabel("Total Base: $0 | Total Extras: $0 | TOTAL: $0"); self.lbl_resumen.setStyleSheet("font-size: 16px; font-weight: bold; margin: 10px 15px; padding: 10px; border: 1px solid #ccc;")
-        lay_abajo = QHBoxLayout(); self.btn_deshacer_fac = QPushButton("⏪ Deshacer Facturación"); self.btn_deshacer_fac.setStyleSheet("background-color: #ff9800; color: black; padding: 10px;"); self.btn_deshacer_fac.clicked.connect(self.abrir_dialogo_deshacer_facturacion); lay_abajo.addWidget(self.btn_deshacer_fac); lay_abajo.addStretch(); lay_abajo.addWidget(self.lbl_resumen); layout_rend.addWidget(panel); layout_rend.addWidget(self.tabla_cierre); layout_rend.addLayout(lay_abajo); self.tabs_fact.addTab(tab_rendicion, "1. Calcular Rendición")
+        # 🔥 SEÑAL EN TIEMPO REAL: Calcula si tildás/destildás algo 🔥
+        self.tabla_cierre.itemChanged.connect(self.recalcular_totales_seleccionados)
+        
+        self.lbl_resumen = QLabel("Total Base: $0 | Total Extras: $0 | TOTAL: $0"); self.lbl_resumen.setStyleSheet("font-size: 16px; font-weight: bold; margin: 10px 15px; padding: 10px; border: 1px solid #ccc; background-color: #e3f2fd;")
+        lay_abajo = QHBoxLayout(); 
+        
+        self.btn_deshacer_fac = QPushButton("⏪ Deshacer Facturación"); self.btn_deshacer_fac.setStyleSheet("background-color: #ff9800; color: black; padding: 8px; font-weight: bold;"); self.btn_deshacer_fac.clicked.connect(self.abrir_dialogo_deshacer_facturacion); 
+        
+        # 🔥 NUEVO BOTÓN SELECCIONAR TODO 🔥
+        self.btn_seleccionar_todo = QPushButton("☑️ Deseleccionar Todo")
+        self.btn_seleccionar_todo.setStyleSheet("background-color: #17a2b8; color: white; padding: 8px; font-weight: bold;")
+        self.btn_seleccionar_todo.clicked.connect(self.toggle_seleccionar_todo)
+
+        lay_abajo.addWidget(self.btn_deshacer_fac); 
+        lay_abajo.addWidget(self.btn_seleccionar_todo);
+        lay_abajo.addStretch(); 
+        lay_abajo.addWidget(self.lbl_resumen); 
+        layout_rend.addWidget(panel); layout_rend.addWidget(self.tabla_cierre); layout_rend.addLayout(lay_abajo); self.tabs_fact.addTab(tab_rendicion, "1. Calcular Rendición")
         
         tab_cta = QWidget(); layout_cta = QVBoxLayout(tab_cta); top_cta = QHBoxLayout(); btn_ref_cta = QPushButton("🔄 Actualizar Saldos"); btn_ref_cta.clicked.connect(self.cargar_ctas_ctes); btn_pago = QPushButton("💰 Registrar Pago"); btn_pago.clicked.connect(self.registrar_pago_ctacte); top_cta.addWidget(btn_ref_cta); top_cta.addStretch(); top_cta.addWidget(btn_pago)
         self.tabla_ctacte = QTableWidget(); self.tabla_ctacte.setColumnCount(4); self.tabla_ctacte.setHorizontalHeaderLabels(["Proveedor", "Total Facturado ($)", "Pagos ($)", "SALDO ($)"]); self.tabla_ctacte.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Interactive); self.tabla_ctacte.setColumnWidth(0, 250); self.tabla_ctacte.setColumnWidth(1, 180); self.tabla_ctacte.setColumnWidth(2, 180); header_cta = self.tabla_ctacte.horizontalHeader(); header_cta.setStretchLastSection(True); self.tabla_ctacte.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows); self.tabla_ctacte.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers); self.tabla_ctacte.setStyleSheet(ESTILO_TABLAS_BLANCAS); self.pintor_cta = PintorCeldasDelegate(self.tabla_ctacte); self.tabla_ctacte.setItemDelegate(self.pintor_cta); layout_cta.addLayout(top_cta); layout_cta.addWidget(self.tabla_ctacte); self.tabs_fact.addTab(tab_cta, "2. Cuentas Corrientes")
     
+    # 🔥 FUNCIÓN DE BOTÓN SELECCIONAR TODO 🔥
+    def toggle_seleccionar_todo(self):
+        self.tabla_cierre.blockSignals(True) # Bloquear para que no calcule mil veces
+        marcar = True
+        if "Deseleccionar" in self.btn_seleccionar_todo.text():
+            marcar = False
+            self.btn_seleccionar_todo.setText("☑️ Seleccionar Todo")
+        else:
+            self.btn_seleccionar_todo.setText("☑️ Deseleccionar Todo")
+
+        estado = Qt.CheckState.Checked if marcar else Qt.CheckState.Unchecked
+        for r in range(self.tabla_cierre.rowCount()):
+            it = self.tabla_cierre.item(r, 0)
+            if it:
+                it.setCheckState(estado)
+        self.tabla_cierre.blockSignals(False)
+        self.recalcular_totales_seleccionados()
+
+    # 🔥 MOTOR DE RECALCULO EN TIEMPO REAL 🔥
+    def recalcular_totales_seleccionados(self, item=None):
+        if item and item.column() != 0: return # Solo se activa si tocás el tilde
+        
+        tot_base = 0; tot_extras = 0; tot_final = 0
+        for r in range(self.tabla_cierre.rowCount()):
+            it = self.tabla_cierre.item(r, 0)
+            if it and it.checkState() == Qt.CheckState.Checked:
+                op_id = self.mapa_filas_cierre.get(r)
+                op = next((o for o in self.resultados_cierre if o.id == op_id), None)
+                if op:
+                    bultos_tot = int(op.bultos) if op.bultos else 1
+                    bultos_fr = int(op.bultos_frio) if op.bultos_frio else 0
+                    monto_serv = op.monto_servicio or 0.0
+                    
+                    if op.guia_remito == "CARGO-FIJO" or (op.tipo_servicio and "Flete" in op.tipo_servicio):
+                        precio_base = monto_serv; extras = 0
+                    else:
+                        precio_base = self.main.obtener_precio(op.localidad, bultos_tot-bultos_fr, bultos_fr, op.sucursal, proveedor=op.proveedor, peso=op.peso, bultos_totales=bultos_tot)
+                        monto_finde_tabla = (getattr(op, 'monto_finde', 0.0) or 0.0) + (getattr(op, 'monto_feriado', 0.0) or 0.0)
+                        monto_otros_tabla = (getattr(op, 'monto_contingencia', 0.0) or 0.0) + (getattr(op, 'monto_espera', 0.0) or 0.0)
+                        if monto_finde_tabla == 0 and monto_otros_tabla == 0 and monto_serv > precio_base:
+                            monto_otros_tabla = monto_serv - precio_base
+                        extras = monto_finde_tabla + monto_otros_tabla
+                        
+                    tot_base += precio_base
+                    tot_extras += extras
+                    tot_final += monto_serv
+                    
+        self.totales_cierre = (tot_base, tot_extras, tot_final)
+        self.lbl_resumen.setText(f"Total Base: ${tot_base:,.2f} | Extras: ${tot_extras:,.2f} | TOTAL SELECCIONADO: ${tot_final:,.2f}")
+
     def abrir_dialogo_deshacer_facturacion(self):
         dlg = DeshacerFacturacionDialog(self.main, self)
         if dlg.exec() == QDialog.DialogCode.Accepted: self.calcular_cierre(); self.cargar_ctas_ctes()
@@ -399,14 +461,11 @@ class TabFacturacion(QWidget):
 
             dlg = AjusteAvanzadoFacturacionDialog(op, self.main, visitas, self) 
             if dlg.exec() == QDialog.DialogCode.Accepted: 
-                # 🔥 GUARDAR LA NUEVA FECHA SI EL USUARIO LA MODIFICÓ 🔥
                 qdate = dlg.in_fecha.date()
                 op.fecha_entrega = datetime(qdate.year(), qdate.month(), qdate.day(), 12, 0, 0)
-                
                 op.localidad = dlg.combo_zona.currentText()
                 op.bultos = dlg.in_bultos.value()
                 op.bultos_frio = dlg.in_frio.value()
-                
                 op.monto_finde = dlg.in_finde.value()
                 op.monto_feriado = dlg.in_feriado.value()
                 op.monto_contingencia = dlg.in_contingencia.value()
@@ -450,11 +509,12 @@ class TabFacturacion(QWidget):
         
     def calcular_cierre(self):
         self.btn_c.setEnabled(False)
+        self.tabla_cierre.blockSignals(True) # 🔥 Pausa la actualización visual
+        
         mes = self.cierre_mes.currentIndex() + 1; anio = self.cierre_anio.value(); prov = self.cierre_prov.currentText().strip(); sucursal = self.cierre_sucursal.currentText(); self.tabla_cierre.setRowCount(0)
         try:
             _, last_day = calendar.monthrange(anio, mes); start_date = date(anio, mes, 1); end_date = date(anio, mes, last_day)
             
-            # 🔥 MOTOR DE FILTRADO ARREGLADO (AHORA MIRA FECHA DE ENTREGA O DE INGRESO PARA EL MES) 🔥
             fecha_ref = func.coalesce(Operacion.fecha_entrega, Operacion.fecha_ingreso)
             query = self.main.session.query(Operacion).filter(
                 func.date(fecha_ref) >= start_date, 
@@ -469,8 +529,9 @@ class TabFacturacion(QWidget):
             query = query.order_by(Operacion.fecha_ingreso.asc()); self.resultados_cierre = query.all()
             
             if not self.resultados_cierre: 
-                self.tabla_cierre.setRowCount(1); item_empty = QTableWidgetItem("❌ Sin guías entregadas para facturar."); item_empty.setTextAlignment(Qt.AlignmentFlag.AlignCenter); self.tabla_cierre.setItem(0, 0, item_empty); self.tabla_cierre.setSpan(0, 0, 1, 12); self.lbl_resumen.setText("Total Base: $0 | Total Extras: $0 | TOTAL: $0")
+                self.tabla_cierre.setRowCount(1); item_empty = QTableWidgetItem("❌ Sin guías entregadas para facturar."); item_empty.setTextAlignment(Qt.AlignmentFlag.AlignCenter); self.tabla_cierre.setItem(0, 0, item_empty); self.tabla_cierre.setSpan(0, 0, 1, 13); self.lbl_resumen.setText("Total Base: $0 | Total Extras: $0 | TOTAL SELECCIONADO: $0")
                 self.btn_c.setEnabled(True)
+                self.tabla_cierre.blockSignals(False)
                 return
             
             op_ids = [op.id for op in self.resultados_cierre]; conteo_repartos = {}
@@ -487,7 +548,7 @@ class TabFacturacion(QWidget):
                     if accion in ['SALIDA A REPARTO', 'SALIDA A TERCERIZADO']: conteo_repartos[op_id] += 1
                     elif accion in ['DESHACER (ADMIN)', 'REPROGRAMADO (ADMIN)', 'REPROGRAMADO (OFICINA)']: conteo_repartos[op_id] -= 1
                     
-            tot_base = 0; tot_extras = 0; tot_final = 0; self.mapa_filas_cierre = {}; total_ops = len(self.resultados_cierre)
+            self.mapa_filas_cierre = {}; total_ops = len(self.resultados_cierre)
             
             progreso = QProgressDialog("Preparando datos de facturación...", None, 0, total_ops, self)
             progreso.setWindowTitle("⏳ Calculando Facturación")
@@ -503,14 +564,20 @@ class TabFacturacion(QWidget):
                     
                 self.tabla_cierre.insertRow(row); self.mapa_filas_cierre[row] = op.id; 
                 
+                # 🔥 CHECKBOX EN LA COLUMNA 0 🔥
+                chk = QTableWidgetItem()
+                chk.setFlags(Qt.ItemFlag.ItemIsUserCheckable | Qt.ItemFlag.ItemIsEnabled)
+                chk.setCheckState(Qt.CheckState.Checked)
+                self.tabla_cierre.setItem(row, 0, chk)
+                
                 f_ingreso = op.fecha_ingreso.strftime("%d/%m/%Y") if op.fecha_ingreso else "-"
                 f_entrega = op.fecha_entrega.strftime("%d/%m/%Y") if op.fecha_entrega else "-"
                 
-                self.tabla_cierre.setItem(row, 0, QTableWidgetItem(f_ingreso))
-                self.tabla_cierre.setItem(row, 1, QTableWidgetItem(f_entrega))
-                self.tabla_cierre.setItem(row, 2, QTableWidgetItem((op.sucursal or "").upper()))
-                self.tabla_cierre.setItem(row, 3, QTableWidgetItem(op.guia_remito or "RET"))
-                self.tabla_cierre.setItem(row, 4, QTableWidgetItem(op.localidad or ""))
+                self.tabla_cierre.setItem(row, 1, QTableWidgetItem(f_ingreso))
+                self.tabla_cierre.setItem(row, 2, QTableWidgetItem(f_entrega))
+                self.tabla_cierre.setItem(row, 3, QTableWidgetItem((op.sucursal or "").upper()))
+                self.tabla_cierre.setItem(row, 4, QTableWidgetItem(op.guia_remito or "RET"))
+                self.tabla_cierre.setItem(row, 5, QTableWidgetItem(op.localidad or ""))
                 
                 bultos_tot = int(op.bultos) if op.bultos else 1
                 bultos_fr = int(op.bultos_frio) if op.bultos_frio else 0
@@ -522,7 +589,7 @@ class TabFacturacion(QWidget):
                     if bultos_fr > 0 and bultos_fr < bultos_tot: det_b += f" ({bultos_tot-bultos_fr}C/{bultos_fr}R)"
                     elif bultos_fr == bultos_tot: det_b += " (R)"
                     
-                self.tabla_cierre.setItem(row, 5, QTableWidgetItem(det_b))
+                self.tabla_cierre.setItem(row, 6, QTableWidgetItem(det_b))
                 
                 fecha_para_billing = op.fecha_entrega if op.fecha_entrega else op.fecha_ingreso
                 es_finde = fecha_para_billing and fecha_para_billing.weekday() >= 5
@@ -530,11 +597,11 @@ class TabFacturacion(QWidget):
                 visitas = max(1, conteo_repartos.get(op.id, 1))
                 estado_txt = f"{op.estado} ({visitas} Visitas)" if visitas > 1 else op.estado
                 
-                # 🔥 AHORA SIEMPRE QUE SEA FINDE TE AVISA PARA QUE SEAS VOS EL QUE TOME LA DECISIÓN 🔥
-                if es_finde:
+                monto_finde = getattr(op, 'monto_finde', 0.0) or 0.0
+                if es_finde and monto_finde > 0:
                     estado_txt = f"🚨 GUARDIA FINDE | {estado_txt}"
                     
-                self.tabla_cierre.setItem(row, 6, QTableWidgetItem(estado_txt))
+                self.tabla_cierre.setItem(row, 7, QTableWidgetItem(estado_txt))
                 
                 monto_serv = op.monto_servicio or 0.0
                 if op.guia_remito == "CARGO-FIJO" or (op.tipo_servicio and "Flete" in op.tipo_servicio): 
@@ -542,7 +609,7 @@ class TabFacturacion(QWidget):
                 else: 
                     precio_base = self.main.obtener_precio(op.localidad, bultos_tot-bultos_fr, bultos_fr, op.sucursal, proveedor=op.proveedor, peso=op.peso, bultos_totales=bultos_tot)
                     
-                    monto_finde_tabla = (getattr(op, 'monto_finde', 0.0) or 0.0) + (getattr(op, 'monto_feriado', 0.0) or 0.0)
+                    monto_finde_tabla = monto_finde + (getattr(op, 'monto_feriado', 0.0) or 0.0)
                     monto_otros_tabla = (getattr(op, 'monto_contingencia', 0.0) or 0.0) + (getattr(op, 'monto_espera', 0.0) or 0.0)
                     
                     if monto_finde_tabla == 0 and monto_otros_tabla == 0 and monto_serv > precio_base:
@@ -550,14 +617,14 @@ class TabFacturacion(QWidget):
                         
                     extras = monto_finde_tabla + monto_otros_tabla
 
-                self.tabla_cierre.setItem(row, 7, QTableWidgetItem(f"$ {precio_base:,.2f}"))
-                self.tabla_cierre.setItem(row, 8, QTableWidgetItem(f"$ {monto_finde_tabla:,.2f}"))
-                self.tabla_cierre.setItem(row, 9, QTableWidgetItem(f"$ {monto_otros_tabla:,.2f}"))
-                self.tabla_cierre.setItem(row, 10, QTableWidgetItem(f"$ {monto_serv:,.2f}"))
+                self.tabla_cierre.setItem(row, 8, QTableWidgetItem(f"$ {precio_base:,.2f}"))
+                self.tabla_cierre.setItem(row, 9, QTableWidgetItem(f"$ {monto_finde_tabla:,.2f}"))
+                self.tabla_cierre.setItem(row, 10, QTableWidgetItem(f"$ {monto_otros_tabla:,.2f}"))
+                self.tabla_cierre.setItem(row, 11, QTableWidgetItem(f"$ {monto_serv:,.2f}"))
                 
-                if es_finde:
+                if es_finde and monto_finde > 0:
                     brush = QBrush(QColor("#fff3cd"))
-                    for col_idx in range(11): 
+                    for col_idx in range(12): 
                         it = self.tabla_cierre.item(row, col_idx)
                         if it: it.setBackground(brush)
                 
@@ -571,26 +638,47 @@ class TabFacturacion(QWidget):
                     btn_peso.clicked.connect(lambda checked, r=row: self.abrir_dialogo_peso_dhl(self.mapa_filas_cierre[r]))
                     lay_acc.addWidget(btn_peso)
                 
-                self.tabla_cierre.setCellWidget(row, 11, w_acc)
-                
-                tot_base += precio_base; tot_extras += extras; tot_final += monto_serv
+                self.tabla_cierre.setCellWidget(row, 12, w_acc)
                 
             progreso.setValue(total_ops)
-            self.totales_cierre = (tot_base, tot_extras, tot_final)
-            self.lbl_resumen.setText(f"Total Base: ${tot_base:,.2f} | Extras: ${tot_extras:,.2f} | TOTAL: ${tot_final:,.2f}")
+            
+            # 🔥 Reanuda y calcula la primera vez (Todo tildado por defecto)
+            self.tabla_cierre.blockSignals(False)
+            self.btn_seleccionar_todo.setText("☑️ Deseleccionar Todo")
+            self.recalcular_totales_seleccionados()
+            
         except Exception as e: 
             self.main.session.rollback()
             self.lbl_resumen.setText("Total Base: $0 | Total Extras: $0 | TOTAL: $0")
             QMessageBox.critical(self, "Error", str(e))
         finally:
+            self.tabla_cierre.blockSignals(False)
             self.btn_c.setEnabled(True)
         
     def generar_pdf_fact(self):
         if not hasattr(self, 'resultados_cierre') or not self.resultados_cierre: return
-        reply = QMessageBox.question(self, "Cerrar Facturación", "¿Desea marcar estas guías como FACTURADAS?", QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No); marcar_facturado = (reply == QMessageBox.StandardButton.Yes); mes_nombre = self.cierre_mes.currentText(); anio_num = self.cierre_anio.value(); prov_nombre = self.cierre_prov.currentText(); descargas_dir = os.path.join(os.path.expanduser('~'), 'Downloads'); os.makedirs(descargas_dir, exist_ok=True); ruta_pdf = os.path.join(descargas_dir, f"Facturacion_{prov_nombre}_{mes_nombre}_{anio_num}.pdf")
+        
+        # 🔥 FILTRA SOLO LAS SELECCIONADAS 🔥
+        ops_seleccionadas = []
+        for r in range(self.tabla_cierre.rowCount()):
+            it = self.tabla_cierre.item(r, 0)
+            if it and it.checkState() == Qt.CheckState.Checked:
+                op_id = self.mapa_filas_cierre.get(r)
+                op = next((o for o in self.resultados_cierre if o.id == op_id), None)
+                if op: ops_seleccionadas.append(op)
+
+        if not ops_seleccionadas:
+            QMessageBox.warning(self, "Aviso", "⚠️ No hay guías seleccionadas para facturar. Tildá al menos una.")
+            return
+
+        reply = QMessageBox.question(self, "Cerrar Facturación", f"¿Desea marcar estas {len(ops_seleccionadas)} guías como FACTURADAS?", QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+        marcar_facturado = (reply == QMessageBox.StandardButton.Yes)
+        mes_nombre = self.cierre_mes.currentText(); anio_num = self.cierre_anio.value(); prov_nombre = self.cierre_prov.currentText()
+        descargas_dir = os.path.join(os.path.expanduser('~'), 'Downloads'); os.makedirs(descargas_dir, exist_ok=True)
+        ruta_pdf = os.path.join(descargas_dir, f"Facturacion_{prov_nombre}_{mes_nombre}_{anio_num}.pdf")
         
         data_filas = [['FECHA', 'GUÍA', 'ZONA', 'BULTOS', 'BASE ($)', 'FINDE ($)', 'EXTRAS ($)', 'TOTAL ($)']]
-        for op in self.resultados_cierre:
+        for op in ops_seleccionadas:
             monto_serv = op.monto_servicio or 0.0; bultos_tot = int(op.bultos) if op.bultos else 1; bultos_fr = int(op.bultos_frio) if op.bultos_frio else 0; precio_base = self.main.obtener_precio(op.localidad, bultos_tot-bultos_fr, bultos_fr, op.sucursal, proveedor=op.proveedor, peso=op.peso, bultos_totales=bultos_tot); extras = monto_serv - precio_base; det_b = str(bultos_tot)
             
             if op.proveedor and op.proveedor.upper() == "DHL EXPRESS":
