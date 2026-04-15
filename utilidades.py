@@ -310,8 +310,10 @@ def crear_pdf_reporte(nombre_archivo, resultados, sucursal, usuario, fecha_gener
         canvas.drawCentredString(page_width / 2.0, 20, f"Generado por: {usuario} | Pág. {doc.page}"); canvas.restoreState()
     doc.build(elements, onFirstPage=add_footer, onLaterPages=add_footer)
 
+# 🔥 NUEVO GENERADOR DE FACTURACIÓN: HOJA APAISADA + CALCULO DE IVA 🔥
 def crear_pdf_facturacion(nombre_archivo, data_filas, prov_nombre, periodo_str, usuario, fecha_generacion):
-    doc = SimpleDocTemplate(nombre_archivo, pagesize=A4, rightMargin=20, leftMargin=20, topMargin=25, bottomMargin=25)
+    # 1. Hoja Apaisada (landscape) para que entren todas las columnas sin cortar los bordes
+    doc = SimpleDocTemplate(nombre_archivo, pagesize=landscape(A4), rightMargin=20, leftMargin=20, topMargin=25, bottomMargin=25)
     elements = []
     styles = getSampleStyleSheet()
     
@@ -326,85 +328,81 @@ def crear_pdf_facturacion(nombre_archivo, data_filas, prov_nombre, periodo_str, 
     elements.append(Paragraph(f"RENDICIÓN {prov_nombre.upper()}", title_style))
     elements.append(Paragraph(f"Período: {periodo_str}", client_style))
     
-    estilo_celda = ParagraphStyle(name='CeldaTabla', parent=styles['Normal'], fontSize=8, leading=10, alignment=TA_CENTER)
-    estilo_guia = ParagraphStyle(name='CeldaGuia', parent=styles['Normal'], fontSize=8, leading=10, alignment=TA_CENTER, wordWrap='CJK')
-    estilo_monto = ParagraphStyle(name='CeldaMonto', parent=styles['Normal'], fontSize=9, alignment=TA_RIGHT)
-    estilo_subtotal = ParagraphStyle(name='CeldaSub', parent=styles['Normal'], fontSize=10, alignment=TA_RIGHT, fontName='Helvetica-Bold')
+    # 2. Estilos específicos para la tabla
+    estilo_centro = ParagraphStyle(name='Cent', parent=styles['Normal'], fontSize=8, alignment=TA_CENTER)
+    estilo_izq = ParagraphStyle(name='Izq', parent=styles['Normal'], fontSize=8, alignment=TA_LEFT, wordWrap='CJK')
+    estilo_der = ParagraphStyle(name='Der', parent=styles['Normal'], fontSize=8, alignment=TA_RIGHT)
+    estilo_head = ParagraphStyle(name='Head', parent=styles['Normal'], fontSize=9, fontName='Helvetica-Bold', alignment=TA_CENTER)
+    estilo_tot_der = ParagraphStyle(name='TotDer', parent=styles['Normal'], fontSize=10, fontName='Helvetica-Bold', alignment=TA_RIGHT)
     
     processed_data = []
     
+    # Convertimos los textos sueltos en Párrafos procesables por ReportLab
     for i, row in enumerate(data_filas):
-        if i == 0:
-            processed_data.append(row) 
-            continue
-            
         new_row = []
-        es_totales = (i >= len(data_filas) - 3)
+        es_totales = (i >= len(data_filas) - 4) # Detecta las últimas 4 filas (Separador, Subtotal, IVA, Total Final)
         
         for j, cell in enumerate(row):
             cell_str = str(cell) if cell is not None else ""
             
-            if j == 1 and not es_totales and cell_str:
-                new_row.append(Paragraph(cell_str, estilo_guia))
-                
-            elif j in [4, 5, 6] and cell_str:
-                if "$" in cell_str:
-                    num_str = cell_str.replace("$", "").replace(",", "").strip()
-                    try:
-                        num = float(num_str)
-                        val_formatted = f"$ {num:,.2f}"
-                    except:
-                        val_formatted = cell_str
-                else:
-                    val_formatted = cell_str
-                    
-                if es_totales:
-                    new_row.append(Paragraph(val_formatted, estilo_subtotal))
-                else:
-                    new_row.append(Paragraph(val_formatted, estilo_monto))
-                    
-            elif j == 0 and es_totales:
-                new_row.append(Paragraph(cell_str, estilo_subtotal))
-                
-            else:
-                if cell_str:
-                    new_row.append(Paragraph(cell_str, estilo_celda))
-                else:
-                    new_row.append("")
+            if i == 0: # Fila Título
+                new_row.append(Paragraph(cell_str, estilo_head))
+            elif es_totales: # Fila de IVA y Totales
+                new_row.append(Paragraph(cell_str, estilo_tot_der))
+            else: # Filas de datos normales
+                if j in [1, 2]: # Guia, Zona -> Alineado a la izquierda
+                    new_row.append(Paragraph(cell_str, estilo_izq))
+                elif j >= 4: # Montos -> Alineado a la derecha
+                    new_row.append(Paragraph(cell_str, estilo_der))
+                else: # Fecha y Bultos -> Centrados
+                    new_row.append(Paragraph(cell_str, estilo_centro))
                     
         processed_data.append(new_row)
         
-    t = Table(processed_data, colWidths=[55, 130, 90, 55, 75, 70, 80], repeatRows=1)
+    # 3. Anchos fijos y calculados matemáticamente para llenar exacto la hoja A4 Horizontal (Total = 795 pts)
+    t = Table(processed_data, colWidths=[75, 190, 120, 60, 85, 85, 85, 95], repeatRows=1)
     
+    # Estilo base de la grilla
     t_style = [
         ('GRID', (0,0), (-1,-1), 0.5, colors.black), 
         ('BACKGROUND', (0,0), (-1,0), colors.lightgrey), 
-        ('TEXTCOLOR', (0,0), (-1,0), colors.black), 
-        ('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold'), 
-        ('ALIGN', (0,0), (-1,0), 'CENTER'), 
         ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
         ('TOPPADDING', (0,0), (-1,-1), 4),
         ('BOTTOMPADDING', (0,0), (-1,-1), 4),
-        
-        ('BACKGROUND', (0,-3), (-1,-1), colors.whitesmoke), 
-        ('SPAN', (0, -3), (3, -3)), ('ALIGN', (0,-3), (3,-3), 'RIGHT'),
-        ('SPAN', (0, -2), (5, -2)), ('ALIGN', (0,-2), (5,-2), 'RIGHT'),
-        ('SPAN', (0, -1), (5, -1)), ('ALIGN', (0,-1), (5,-1), 'RIGHT')
     ]
+    
+    # 4. Estilos condicionales para la zona del IVA y totales al final de la página
+    if len(data_filas) >= 5: 
+        t_style.extend([
+            # Borrar bordes de la fila vacía (-4) para que funcione como "Espacio en blanco"
+            ('LINEABOVE', (0,-4), (-1,-4), 0, colors.white),
+            ('LINEBELOW', (0,-4), (-1,-4), 0, colors.white),
+            ('LINEBEFORE', (0,-4), (-1,-4), 0, colors.white),
+            ('LINEAFTER', (0,-4), (-1,-4), 0, colors.white),
+            ('BACKGROUND', (0,-4), (-1,-4), colors.white),
+            
+            # Pintar de gris y enmarcar la zona de resultados (-3 a -1)
+            ('BACKGROUND', (0,-3), (-1,-1), colors.whitesmoke), 
+            ('LINEABOVE', (0,-3), (-1,-3), 1.5, colors.black), 
+            
+            # Combinar las columnas vacías para que el texto encaje hermoso a la derecha
+            ('SPAN', (0, -3), (3, -3)), # SUBTOTALES
+            ('SPAN', (0, -2), (5, -2)), # IVA
+            ('SPAN', (0, -1), (5, -1)), # TOTAL FACTURA
+        ])
+        
     t.setStyle(TableStyle(t_style))
     elements.append(t)
     
     def add_footer(canvas, doc): 
         canvas.saveState()
         canvas.setFont('Helvetica', 8)
-        page_width, _ = A4
+        page_width, _ = landscape(A4)
         canvas.drawCentredString(page_width / 2.0, 20, f"Generado por: {usuario} | Fecha: {fecha_generacion} | Pág. {doc.page}")
         canvas.restoreState()
         
     doc.build(elements, onFirstPage=add_footer, onLaterPages=add_footer)
 
-
-# 🔥 EL RESUMEN DIARIO AHORA TIENE BULTOS, FECHAS, TEXTO CON WORD-WRAP Y REPROGRAMADAS 🔥
 def crear_pdf_resumen_diario(nombre_archivo, chofer, fecha_str, entregados, no_entregados, sucursal, usuario):
     doc = SimpleDocTemplate(nombre_archivo, pagesize=portrait(A4), rightMargin=30, leftMargin=30, topMargin=30, bottomMargin=30)
     elements = []
@@ -465,7 +463,6 @@ def crear_pdf_resumen_diario(nombre_archivo, chofer, fecha_str, entregados, no_e
         
     elements.append(Spacer(1, 20))
     
-    # 🔥 ACÁ INCLUIMOS LA PALABRA REPROGRAMADAS EN EL TÍTULO DEL PDF 🔥
     elements.append(Paragraph(f"⚠️ NO ENTREGADOS / PENDIENTES / REPROGRAMADAS ({len(no_entregados)})", styles['Heading2']))
     if no_entregados:
         data_n = [["GUÍA", "CLIENTE", "DESTINATARIO", "MOTIVO"]]

@@ -317,26 +317,25 @@ class TabFacturacion(QWidget):
         btn_pdf = QPushButton("Rendición PDF"); btn_pdf.setStyleSheet("background-color: #dc3545 !important; color: white !important; font-weight: bold; padding: 6px;"); btn_pdf.clicked.connect(self.generar_pdf_fact)
         hl.addWidget(QLabel("Sucursal:")); hl.addWidget(self.cierre_sucursal); hl.addWidget(QLabel("Mes:")); hl.addWidget(self.cierre_mes); hl.addWidget(QLabel("Año:")); hl.addWidget(self.cierre_anio); hl.addWidget(QLabel("Proveedor:")); hl.addWidget(self.cierre_prov); hl.addWidget(self.btn_c); hl.addWidget(btn_pdf); btn_cargo_fijo = QPushButton("➕ Agregar Cargo Fijo"); btn_cargo_fijo.clicked.connect(self.agregar_cargo_fijo); hl.addWidget(btn_cargo_fijo)
         
-        # 🔥 TABLA CON ANCHOS REDISTRIBUIDOS PARA ACHICAR LA ÚLTIMA COLUMNA 🔥
+        # 🔥 REDISTRIBUCIÓN DE ANCHOS (GUÍA MÁS GRANDE) 🔥
         self.tabla_cierre = QTableWidget(); self.tabla_cierre.setColumnCount(13); 
         self.tabla_cierre.setHorizontalHeaderLabels(["Sel.", "F. Ingreso", "F. Entrega", "Sucursal", "Guía", "Zona", "Bultos", "Estado", "Base ($)", "Finde/Fer ($)", "Otros Extras ($)", "Total ($)", "Ajustes"]); 
         self.tabla_cierre.setStyleSheet(ESTILO_TABLAS_BLANCAS); self.pintor_cierre = PintorCeldasDelegate(self.tabla_cierre); self.tabla_cierre.setItemDelegate(self.pintor_cierre)
         
         header = self.tabla_cierre.horizontalHeader(); header.setSectionResizeMode(QHeaderView.ResizeMode.Interactive); 
-        
-        # Distribución de anchos ensanchando todo lo posible
         self.tabla_cierre.setColumnWidth(0, 40)   # Sel.
-        self.tabla_cierre.setColumnWidth(1, 95)   # F. Ingreso
-        self.tabla_cierre.setColumnWidth(2, 95)   # F. Entrega
-        self.tabla_cierre.setColumnWidth(3, 100)  # Sucursal
-        self.tabla_cierre.setColumnWidth(4, 160)  # Guía (Piden hacerla un poco más grande)
-        self.tabla_cierre.setColumnWidth(5, 140)  # Zona
+        self.tabla_cierre.setColumnWidth(1, 85)   # F. Ingreso
+        self.tabla_cierre.setColumnWidth(2, 85)   # F. Entrega
+        self.tabla_cierre.setColumnWidth(3, 90)   # Sucursal
+        self.tabla_cierre.setColumnWidth(4, 220)  # Guía (Ampliando espacio)
+        self.tabla_cierre.setColumnWidth(5, 130)  # Zona
         self.tabla_cierre.setColumnWidth(6, 110)  # Bultos
-        self.tabla_cierre.setColumnWidth(7, 140)  # Estado
-        self.tabla_cierre.setColumnWidth(8, 100)  # Base
-        self.tabla_cierre.setColumnWidth(9, 100)  # Finde/Fer
-        self.tabla_cierre.setColumnWidth(10, 100) # Otros
-        self.tabla_cierre.setColumnWidth(11, 100) # Total
+        self.tabla_cierre.setColumnWidth(7, 130)  # Estado
+        self.tabla_cierre.setColumnWidth(8, 90)   # Base
+        self.tabla_cierre.setColumnWidth(9, 90)   # Finde/Fer
+        self.tabla_cierre.setColumnWidth(10, 90)  # Otros Extras
+        self.tabla_cierre.setColumnWidth(11, 90)  # Total
+        self.tabla_cierre.setColumnWidth(12, 85)  # Ajustes
         
         header.setStretchLastSection(True); self.tabla_cierre.verticalHeader().setFixedWidth(30); self.tabla_cierre.verticalHeader().setDefaultSectionSize(45); self.tabla_cierre.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows); self.tabla_cierre.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers); self.tabla_cierre.cellDoubleClicked.connect(self.doble_clic_ajuste_precio)
         
@@ -708,4 +707,15 @@ class TabFacturacion(QWidget):
             try: self.main.session.commit(); self.calcular_cierre(); self.cargar_ctas_ctes()
             except: self.main.session.rollback()
             
-        tb, te, tf = self.totales_cierre; data_filas.append(['SUBTOTALES:', '', '', '', f"$ {tb:,.0f}", '-', '-', f"$ {tf:,.0f}"]); crear_pdf_facturacion(ruta_pdf, data_filas, prov_nombre, f"{mes_nombre} {anio_num}", self.main.usuario.username, datetime.now().strftime('%d/%m/%Y %H:%M')); os.startfile(ruta_pdf)
+        # 🔥 CÁLCULOS DEL IVA Y SEPARADORES EN EL PDF 🔥
+        tb, te, tf = self.totales_cierre
+        iva = tf * 0.21
+        total_final_iva = tf + iva
+        
+        data_filas.append(['', '', '', '', '', '', '', '']) # Fila vacía para separar
+        data_filas.append(['SUBTOTALES:', '', '', '', f"$ {tb:,.2f}", f"$ {te:,.2f}", '-', f"$ {tf:,.2f}"])
+        data_filas.append(['', '', '', '', '', '', 'IVA (21%):', f"$ {iva:,.2f}"])
+        data_filas.append(['', '', '', '', '', '', 'TOTAL FACTURA:', f"$ {total_final_iva:,.2f}"])
+        
+        crear_pdf_facturacion(ruta_pdf, data_filas, prov_nombre, f"{mes_nombre} {anio_num}", self.main.usuario.username, datetime.now().strftime('%d/%m/%Y %H:%M'))
+        os.startfile(ruta_pdf)
