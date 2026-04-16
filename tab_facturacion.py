@@ -10,7 +10,7 @@ from PyQt6.QtGui import QColor, QFont, QBrush
 from sqlalchemy import text, func
 
 from database import Operacion, Historial, Estados, ReciboPago
-from utilidades import crear_pdf_facturacion
+from utilidades import crear_pdf_facturacion, crear_pdf_despacho_papeles
 from dialogos import AgregarCargoDialog, CargarPagoDialog
 
 # 🔥 CORTAFUEGOS DE SEGURIDAD PARA COMBOS DE PROVEEDORES 🔥
@@ -302,6 +302,8 @@ class TabFacturacion(QWidget):
         
     def setup_ui(self):
         l = QVBoxLayout(self); self.tabs_fact = QTabWidget(); l.addWidget(self.tabs_fact)
+        
+        # --- TAB 1: RENDICIÓN / FACTURACIÓN ---
         tab_rendicion = QWidget(); layout_rend = QVBoxLayout(tab_rendicion); panel = QFrame(); hl = QHBoxLayout(panel)
         self.cierre_mes = QComboBox(); self.cierre_mes.addItems(["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"]); self.cierre_mes.setCurrentIndex(datetime.now().month - 1) 
         self.cierre_anio = QSpinBox(); self.cierre_anio.setRange(2020, 2030); self.cierre_anio.setValue(datetime.now().year)
@@ -312,56 +314,174 @@ class TabFacturacion(QWidget):
         self.cierre_prov.addItem("Todos")
         self.cierre_prov.addItems(self.main.lista_proveedores)
         
+        # 🔥 FILTRO NINJA PARA AUDITORÍA 🔥
+        self.filtro_control = QComboBox()
+        self.filtro_control.addItems(["Pendientes de Control", "Controladas", "Mostrar Todas"])
+        self.filtro_control.setStyleSheet("background-color: #e8f5e9; font-weight: bold; color: #2e7d32; padding: 4px;")
+        self.filtro_control.currentTextChanged.connect(self.calcular_cierre)
+        
         self.btn_c = QPushButton("Calcular Listado"); self.btn_c.clicked.connect(self.calcular_cierre)
         
         btn_pdf = QPushButton("Rendición PDF"); btn_pdf.setStyleSheet("background-color: #dc3545 !important; color: white !important; font-weight: bold; padding: 6px;"); btn_pdf.clicked.connect(self.generar_pdf_fact)
-        hl.addWidget(QLabel("Sucursal:")); hl.addWidget(self.cierre_sucursal); hl.addWidget(QLabel("Mes:")); hl.addWidget(self.cierre_mes); hl.addWidget(QLabel("Año:")); hl.addWidget(self.cierre_anio); hl.addWidget(QLabel("Proveedor:")); hl.addWidget(self.cierre_prov); hl.addWidget(self.btn_c); hl.addWidget(btn_pdf); btn_cargo_fijo = QPushButton("➕ Agregar Cargo Fijo"); btn_cargo_fijo.clicked.connect(self.agregar_cargo_fijo); hl.addWidget(btn_cargo_fijo)
         
-        # 🔥 TABLA CON 14 COLUMNAS (Se suma Destino) 🔥
+        hl.addWidget(QLabel("Sucursal:")); hl.addWidget(self.cierre_sucursal); hl.addWidget(QLabel("Mes:")); hl.addWidget(self.cierre_mes); hl.addWidget(QLabel("Año:")); hl.addWidget(self.cierre_anio); hl.addWidget(QLabel("Proveedor:")); hl.addWidget(self.cierre_prov); 
+        hl.addWidget(QLabel("🔎 Filtro:")); hl.addWidget(self.filtro_control); 
+        hl.addWidget(self.btn_c); hl.addWidget(btn_pdf); btn_cargo_fijo = QPushButton("➕ Agregar Cargo Fijo"); btn_cargo_fijo.clicked.connect(self.agregar_cargo_fijo); hl.addWidget(btn_cargo_fijo)
+        
         self.tabla_cierre = QTableWidget(); self.tabla_cierre.setColumnCount(14); 
         self.tabla_cierre.setHorizontalHeaderLabels(["Sel.", "F. Ingreso", "F. Entrega", "Sucursal", "Guía", "Destino", "Zona", "Bultos", "Estado", "Base ($)", "Finde/Fer ($)", "Otros Extras ($)", "Total ($)", "Ajustes"]); 
         self.tabla_cierre.setStyleSheet(ESTILO_TABLAS_BLANCAS); self.pintor_cierre = PintorCeldasDelegate(self.tabla_cierre); self.tabla_cierre.setItemDelegate(self.pintor_cierre)
         
         header = self.tabla_cierre.horizontalHeader(); header.setSectionResizeMode(QHeaderView.ResizeMode.Interactive); 
-        
-        # Ajuste inteligente de anchos para que el botón de editar quede perfecto
-        self.tabla_cierre.setColumnWidth(0, 40)   # Sel.
-        self.tabla_cierre.setColumnWidth(1, 80)   # F. Ingreso
-        self.tabla_cierre.setColumnWidth(2, 80)   # F. Entrega
-        self.tabla_cierre.setColumnWidth(3, 85)   # Sucursal
-        self.tabla_cierre.setColumnWidth(4, 140)  # Guía
-        self.tabla_cierre.setColumnWidth(5, 160)  # Destino (NUEVO)
-        self.tabla_cierre.setColumnWidth(6, 120)  # Zona
-        self.tabla_cierre.setColumnWidth(7, 100)  # Bultos
-        self.tabla_cierre.setColumnWidth(8, 130)  # Estado
-        self.tabla_cierre.setColumnWidth(9, 85)   # Base
-        self.tabla_cierre.setColumnWidth(10, 85)  # Finde/Fer
-        self.tabla_cierre.setColumnWidth(11, 85)  # Otros Extras
-        self.tabla_cierre.setColumnWidth(12, 85)  # Total
-        self.tabla_cierre.setColumnWidth(13, 85)  # Ajustes
-        
+        self.tabla_cierre.setColumnWidth(0, 40); self.tabla_cierre.setColumnWidth(1, 80); self.tabla_cierre.setColumnWidth(2, 80); self.tabla_cierre.setColumnWidth(3, 85); self.tabla_cierre.setColumnWidth(4, 140); self.tabla_cierre.setColumnWidth(5, 160); self.tabla_cierre.setColumnWidth(6, 120); self.tabla_cierre.setColumnWidth(7, 85); self.tabla_cierre.setColumnWidth(8, 120); self.tabla_cierre.setColumnWidth(9, 80); self.tabla_cierre.setColumnWidth(10, 80); self.tabla_cierre.setColumnWidth(11, 80); self.tabla_cierre.setColumnWidth(12, 80); self.tabla_cierre.setColumnWidth(13, 140)
         header.setStretchLastSection(True); self.tabla_cierre.verticalHeader().setFixedWidth(30); self.tabla_cierre.verticalHeader().setDefaultSectionSize(45); self.tabla_cierre.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows); self.tabla_cierre.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers); self.tabla_cierre.cellDoubleClicked.connect(self.doble_clic_ajuste_precio)
-        
         self.tabla_cierre.itemChanged.connect(self.recalcular_totales_seleccionados)
         
         self.lbl_resumen = QLabel("Total Base: $0 | Total Extras: $0 | TOTAL: $0"); self.lbl_resumen.setStyleSheet("font-size: 16px; font-weight: bold; margin: 10px 15px; padding: 10px; border: 1px solid #ccc; background-color: #e3f2fd;")
         lay_abajo = QHBoxLayout(); 
-        
         self.btn_deshacer_fac = QPushButton("⏪ Deshacer Facturación"); self.btn_deshacer_fac.setStyleSheet("background-color: #ff9800; color: black; padding: 8px; font-weight: bold;"); self.btn_deshacer_fac.clicked.connect(self.abrir_dialogo_deshacer_facturacion); 
-        
         self.btn_seleccionar_todo = QPushButton("☑️ Deseleccionar Todo")
         self.btn_seleccionar_todo.setStyleSheet("background-color: #17a2b8; color: white; padding: 8px; font-weight: bold;")
         self.btn_seleccionar_todo.clicked.connect(self.toggle_seleccionar_todo)
-
-        lay_abajo.addWidget(self.btn_deshacer_fac); 
-        lay_abajo.addWidget(self.btn_seleccionar_todo);
-        lay_abajo.addStretch(); 
-        lay_abajo.addWidget(self.lbl_resumen); 
+        lay_abajo.addWidget(self.btn_deshacer_fac); lay_abajo.addWidget(self.btn_seleccionar_todo); lay_abajo.addStretch(); lay_abajo.addWidget(self.lbl_resumen); 
         layout_rend.addWidget(panel); layout_rend.addWidget(self.tabla_cierre); layout_rend.addLayout(lay_abajo); self.tabs_fact.addTab(tab_rendicion, "1. Calcular Rendición")
         
+        # --- TAB 2: CUENTAS CORRIENTES ---
         tab_cta = QWidget(); layout_cta = QVBoxLayout(tab_cta); top_cta = QHBoxLayout(); btn_ref_cta = QPushButton("🔄 Actualizar Saldos"); btn_ref_cta.clicked.connect(self.cargar_ctas_ctes); btn_pago = QPushButton("💰 Registrar Pago"); btn_pago.clicked.connect(self.registrar_pago_ctacte); top_cta.addWidget(btn_ref_cta); top_cta.addStretch(); top_cta.addWidget(btn_pago)
         self.tabla_ctacte = QTableWidget(); self.tabla_ctacte.setColumnCount(4); self.tabla_ctacte.setHorizontalHeaderLabels(["Proveedor", "Total Facturado ($)", "Pagos ($)", "SALDO ($)"]); self.tabla_ctacte.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Interactive); self.tabla_ctacte.setColumnWidth(0, 250); self.tabla_ctacte.setColumnWidth(1, 180); self.tabla_ctacte.setColumnWidth(2, 180); header_cta = self.tabla_ctacte.horizontalHeader(); header_cta.setStretchLastSection(True); self.tabla_ctacte.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows); self.tabla_ctacte.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers); self.tabla_ctacte.setStyleSheet(ESTILO_TABLAS_BLANCAS); self.pintor_cta = PintorCeldasDelegate(self.tabla_ctacte); self.tabla_ctacte.setItemDelegate(self.pintor_cta); layout_cta.addLayout(top_cta); layout_cta.addWidget(self.tabla_ctacte); self.tabs_fact.addTab(tab_cta, "2. Cuentas Corrientes")
-    
+
+        # --- TAB 3: DESPACHO DE PAPELES (LOGÍSTICA INVERSA) ---
+        tab_despacho = QWidget(); layout_despacho = QVBoxLayout(tab_despacho)
+        
+        # Buscador superior
+        frame_busc = QFrame(); lay_busc = QHBoxLayout(frame_busc)
+        lay_busc.addWidget(QLabel("🔍 <b>Rastrear Remito Original (Nº Guía):</b>"))
+        self.in_buscar_papel = QLineEdit(); self.in_buscar_papel.setFixedWidth(200)
+        btn_buscar_papel = QPushButton("Buscar"); btn_buscar_papel.clicked.connect(self.buscar_papel_fisico)
+        self.lbl_resultado_papel = QLabel("Ingrese una guía para ver si ya se envió el papel al cliente.")
+        lay_busc.addWidget(self.in_buscar_papel); lay_busc.addWidget(btn_buscar_papel); lay_busc.addWidget(self.lbl_resultado_papel)
+        lay_busc.addStretch()
+        layout_despacho.addWidget(frame_busc)
+        
+        # Filtro Selectivo por Proveedor
+        frame_lote = QFrame(); lay_lote = QHBoxLayout(frame_lote)
+        lay_lote.addWidget(QLabel("<b>📦 Armar Lote para Proveedor:</b>"))
+        self.combo_prov_papel = QComboBox()
+        # 🔥 Ahora ES OBLIGATORIO elegir UNO específico 🔥
+        self.combo_prov_papel.addItems(["C Y E (AEROTRANSPORTADORA)", "JORGE SANJURJO", "EMAKI"])
+        self.combo_prov_papel.setStyleSheet("font-weight: bold; padding: 4px;")
+        btn_cargar_papeles = QPushButton("🔄 Traer Pendientes de Envío"); btn_cargar_papeles.clicked.connect(self.cargar_papeles_pendientes)
+        lay_lote.addWidget(self.combo_prov_papel); lay_lote.addWidget(btn_cargar_papeles); lay_lote.addStretch()
+        layout_despacho.addWidget(frame_lote)
+        
+        self.tabla_papeles = QTableWidget(); self.tabla_papeles.setColumnCount(5); 
+        self.tabla_papeles.setHorizontalHeaderLabels(["Sel.", "F. Entrega", "Guía / Remito", "Proveedor", "Destinatario"])
+        self.tabla_papeles.setStyleSheet(ESTILO_TABLAS_BLANCAS); header_papeles = self.tabla_papeles.horizontalHeader()
+        self.tabla_papeles.setColumnWidth(0, 40); self.tabla_papeles.setColumnWidth(1, 100); self.tabla_papeles.setColumnWidth(2, 180); self.tabla_papeles.setColumnWidth(3, 220)
+        header_papeles.setStretchLastSection(True); self.tabla_papeles.verticalHeader().setDefaultSectionSize(35); self.tabla_papeles.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        layout_despacho.addWidget(self.tabla_papeles)
+        
+        btn_generar_lote = QPushButton("📦 Generar Lote PDF y Marcar como Enviados")
+        btn_generar_lote.setStyleSheet("background-color: #198754; color: white; padding: 12px; font-weight: bold; font-size: 14px; border-radius: 6px;")
+        btn_generar_lote.clicked.connect(self.generar_lote_papeles)
+        layout_despacho.addWidget(btn_generar_lote)
+        
+        self.tabs_fact.addTab(tab_despacho, "3. Despacho Papeles (Log. Inversa)")
+
+    # 🔥 FUNCIONES PARA DESPACHO DE PAPELES 🔥
+    def buscar_papel_fisico(self):
+        texto = self.in_buscar_papel.text().strip()
+        if not texto: return
+        try:
+            op = self.main.session.query(Operacion).filter(Operacion.guia_remito.ilike(f"%{texto}%")).first()
+            if op:
+                if getattr(op, 'papel_enviado', False):
+                    lote = getattr(op, 'lote_papel', 'DESCONOCIDO')
+                    self.lbl_resultado_papel.setText(f"✅ Guía {op.guia_remito}: ENVIADA FÍSICAMENTE en el {lote}")
+                    self.lbl_resultado_papel.setStyleSheet("font-weight: bold; color: #198754; font-size: 14px;")
+                else:
+                    self.lbl_resultado_papel.setText(f"⚠️ Guía {op.guia_remito}: ORIGINAL AÚN EN OFICINA (No despachado)")
+                    self.lbl_resultado_papel.setStyleSheet("font-weight: bold; color: #dc3545; font-size: 14px;")
+            else:
+                self.lbl_resultado_papel.setText("❌ Guía no encontrada en el sistema.")
+                self.lbl_resultado_papel.setStyleSheet("font-weight: bold; color: #dc3545; font-size: 14px;")
+        except Exception as e:
+            self.main.session.rollback()
+
+    def cargar_papeles_pendientes(self):
+        prov = self.combo_prov_papel.currentText()
+        try:
+            self.tabla_papeles.setRowCount(0)
+            
+            # 🔥 REGLA DE ORO APLICADA: Solo trae los que ESTÁN FACTURADOS 🔥
+            query = self.main.session.query(Operacion).filter(
+                Operacion.estado.ilike('ENTREGADO'), 
+                Operacion.facturado == True, 
+                (Operacion.papel_enviado == False) | (Operacion.papel_enviado == None),
+                Operacion.proveedor == prov
+            )
+            
+            query = query.order_by(Operacion.fecha_entrega.desc().nullslast())
+            self.resultados_papeles = query.all()
+            self.mapa_filas_papeles = {}
+            
+            for row, op in enumerate(self.resultados_papeles):
+                self.tabla_papeles.insertRow(row)
+                self.mapa_filas_papeles[row] = op.id
+                chk = QTableWidgetItem(); chk.setFlags(Qt.ItemFlag.ItemIsUserCheckable | Qt.ItemFlag.ItemIsEnabled); chk.setCheckState(Qt.CheckState.Checked)
+                f_ent = op.fecha_entrega.strftime("%d/%m/%Y") if op.fecha_entrega else "-"
+                self.tabla_papeles.setItem(row, 0, chk)
+                self.tabla_papeles.setItem(row, 1, QTableWidgetItem(f_ent))
+                self.tabla_papeles.setItem(row, 2, QTableWidgetItem(op.guia_remito or ""))
+                self.tabla_papeles.setItem(row, 3, QTableWidgetItem(op.proveedor or ""))
+                self.tabla_papeles.setItem(row, 4, QTableWidgetItem(op.destinatario or ""))
+                
+            if not self.resultados_papeles:
+                QMessageBox.information(self, "Aviso", f"No hay papeles pendientes de envío para {prov} (O aún no fueron facturados).")
+        except Exception as e:
+            self.main.session.rollback()
+
+    def generar_lote_papeles(self):
+        if not hasattr(self, 'resultados_papeles') or not self.resultados_papeles: return
+        ops_sel = []
+        for r in range(self.tabla_papeles.rowCount()):
+            it = self.tabla_papeles.item(r, 0)
+            if it and it.checkState() == Qt.CheckState.Checked:
+                op_id = self.mapa_filas_papeles.get(r)
+                op = next((o for o in self.resultados_papeles if o.id == op_id), None)
+                if op: ops_sel.append(op)
+        if not ops_sel: return
+        reply = QMessageBox.question(self, "Generar Lote", f"¿Generar PDF y despachar {len(ops_sel)} papeles físicos?", QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+        if reply == QMessageBox.StandardButton.Yes:
+            lote_id = f"LOTE-{datetime.now().strftime('%Y%m%d-%H%M')}"
+            prov_nombre = self.combo_prov_papel.currentText()
+            try:
+                for op in ops_sel:
+                    op.papel_enviado = True
+                    op.lote_papel = lote_id
+                self.main.session.commit()
+                descargas_dir = os.path.join(os.path.expanduser('~'), 'Downloads')
+                ruta_pdf = os.path.join(descargas_dir, f"Despacho_Papeles_{lote_id}.pdf")
+                crear_pdf_despacho_papeles(ruta_pdf, lote_id, ops_sel, prov_nombre, self.main.usuario.username, datetime.now().strftime('%d/%m/%Y %H:%M'))
+                os.startfile(ruta_pdf)
+                self.cargar_papeles_pendientes()
+                QMessageBox.information(self, "Éxito", f"Lote generado correctamente.")
+            except Exception as e:
+                self.main.session.rollback(); QMessageBox.critical(self, "Error", str(e))
+
+    # 🔥 FUNCIONES DE TAB 1 (AUDITORÍA NINJA Y FACTURACIÓN) 🔥
+    def alternar_control(self, id_op):
+        try:
+            op = self.main.session.query(Operacion).get(id_op)
+            if op:
+                estado_actual = getattr(op, 'controlada', False)
+                op.controlada = not estado_actual
+                self.main.session.commit()
+                self.calcular_cierre() 
+        except Exception as e:
+            self.main.session.rollback()
+            QMessageBox.critical(self, "Error", f"No se pudo cambiar el estado: {e}")
+
     def toggle_seleccionar_todo(self):
         self.tabla_cierre.blockSignals(True) 
         marcar = True
@@ -533,13 +653,18 @@ class TabFacturacion(QWidget):
                 Operacion.estado.ilike('ENTREGADO')
             )
             
+            if self.filtro_control.currentText() == "Pendientes de Control":
+                query = query.filter((Operacion.controlada == False) | (Operacion.controlada == None))
+            elif self.filtro_control.currentText() == "Controladas":
+                query = query.filter(Operacion.controlada == True)
+            
             if prov != "Todos" and prov != "": query = query.filter(Operacion.proveedor.ilike(prov))
             else: query = query.filter(~Operacion.proveedor.ilike('JetPaq'))
             if sucursal != "Todas": query = query.filter(Operacion.sucursal == sucursal)
             query = query.order_by(Operacion.fecha_ingreso.asc()); self.resultados_cierre = query.all()
             
             if not self.resultados_cierre: 
-                self.tabla_cierre.setRowCount(1); item_empty = QTableWidgetItem("❌ Sin guías entregadas para facturar."); item_empty.setTextAlignment(Qt.AlignmentFlag.AlignCenter); self.tabla_cierre.setItem(0, 0, item_empty); self.tabla_cierre.setSpan(0, 0, 1, 14); self.lbl_resumen.setText("Total Base: $0 | Total Extras: $0 | TOTAL SELECCIONADO: $0")
+                self.tabla_cierre.setRowCount(1); item_empty = QTableWidgetItem("❌ Sin guías entregadas para facturar (o ya validaste todo)."); item_empty.setTextAlignment(Qt.AlignmentFlag.AlignCenter); self.tabla_cierre.setItem(0, 0, item_empty); self.tabla_cierre.setSpan(0, 0, 1, 14); self.lbl_resumen.setText("Total Base: $0 | Total Extras: $0 | TOTAL SELECCIONADO: $0")
                 self.btn_c.setEnabled(True)
                 self.tabla_cierre.blockSignals(False)
                 return
@@ -586,8 +711,6 @@ class TabFacturacion(QWidget):
                 self.tabla_cierre.setItem(row, 2, QTableWidgetItem(f_entrega))
                 self.tabla_cierre.setItem(row, 3, QTableWidgetItem((op.sucursal or "").upper()))
                 self.tabla_cierre.setItem(row, 4, QTableWidgetItem(op.guia_remito or "RET"))
-                
-                # 🔥 CAMPO DESTINO INYECTADO 🔥
                 self.tabla_cierre.setItem(row, 5, QTableWidgetItem(op.destinatario or ""))
                 self.tabla_cierre.setItem(row, 6, QTableWidgetItem(op.localidad or ""))
                 
@@ -620,13 +743,10 @@ class TabFacturacion(QWidget):
                     precio_base = monto_serv; extras = 0; monto_finde_tabla = 0.0; monto_otros_tabla = 0.0
                 else: 
                     precio_base = self.main.obtener_precio(op.localidad, bultos_tot-bultos_fr, bultos_fr, op.sucursal, proveedor=op.proveedor, peso=op.peso, bultos_totales=bultos_tot)
-                    
                     monto_finde_tabla = (getattr(op, 'monto_finde', 0.0) or 0.0) + (getattr(op, 'monto_feriado', 0.0) or 0.0)
                     monto_otros_tabla = (getattr(op, 'monto_contingencia', 0.0) or 0.0) + (getattr(op, 'monto_espera', 0.0) or 0.0)
-                    
                     if monto_finde_tabla == 0 and monto_otros_tabla == 0 and monto_serv > precio_base:
                         monto_otros_tabla = monto_serv - precio_base
-                        
                     extras = monto_finde_tabla + monto_otros_tabla
 
                 self.tabla_cierre.setItem(row, 9, QTableWidgetItem(f"$ {precio_base:,.2f}"))
@@ -634,21 +754,33 @@ class TabFacturacion(QWidget):
                 self.tabla_cierre.setItem(row, 11, QTableWidgetItem(f"$ {monto_otros_tabla:,.2f}"))
                 self.tabla_cierre.setItem(row, 12, QTableWidgetItem(f"$ {monto_serv:,.2f}"))
                 
-                if es_finde and monto_finde > 0:
-                    brush = QBrush(QColor("#fff3cd"))
+                esta_controlada = getattr(op, 'controlada', False)
+                if esta_controlada:
+                    text_brush = QBrush(QColor("#006400")) 
                     for col_idx in range(13): 
                         it = self.tabla_cierre.item(row, col_idx)
-                        if it: it.setBackground(brush)
+                        if it: 
+                            it.setForeground(text_brush)
+                            font = it.font()
+                            font.setBold(True)
+                            it.setFont(font)
+                
+                if es_finde and monto_finde > 0:
+                    bg_brush = QBrush(QColor("#fff3cd"))
+                    for col_idx in range(13): 
+                        it = self.tabla_cierre.item(row, col_idx)
+                        if it: it.setBackground(bg_brush)
                 
                 w_acc = QWidget(); lay_acc = QHBoxLayout(w_acc); lay_acc.setContentsMargins(0,0,0,0)
+                btn_validar = QPushButton("✔️ Validar" if not esta_controlada else "❌ Revertir")
+                color_btn = "#198754" if not esta_controlada else "#6c757d"
+                btn_validar.setStyleSheet(f"background-color: {color_btn} !important; color: white !important; font-size: 11px; font-weight: bold; padding: 4px;")
+                btn_validar.clicked.connect(lambda checked, r=row: self.alternar_control(self.mapa_filas_cierre[r]))
+                lay_acc.addWidget(btn_validar)
+                
                 btn_ajuste = QPushButton("✏️ Editar"); btn_ajuste.setStyleSheet("background-color: #0d6efd !important; color: white !important; font-size: 11px; font-weight: bold; padding: 4px;")
                 btn_ajuste.clicked.connect(lambda checked, r=row: self.abrir_dialogo_ajuste_precio(self.mapa_filas_cierre[r]))
                 lay_acc.addWidget(btn_ajuste)
-                
-                if op.proveedor and op.proveedor.upper() == "DHL EXPRESS":
-                    btn_peso = QPushButton("⚖️ Peso"); btn_peso.setStyleSheet("background-color: #ff9800 !important; color: black !important; font-size: 11px; font-weight: bold; padding: 4px;")
-                    btn_peso.clicked.connect(lambda checked, r=row: self.abrir_dialogo_peso_dhl(self.mapa_filas_cierre[r]))
-                    lay_acc.addWidget(btn_peso)
                 
                 self.tabla_cierre.setCellWidget(row, 13, w_acc)
                 

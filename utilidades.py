@@ -495,3 +495,61 @@ def crear_pdf_resumen_diario(nombre_archivo, chofer, fecha_str, entregados, no_e
         elements.append(Paragraph("No hay fallos registrados.", styles['Normal']))
         
     doc.build(elements)
+
+def crear_pdf_despacho_papeles(nombre_archivo, numero_lote, ops, proveedor_nombre, usuario, fecha_generacion):
+    doc = SimpleDocTemplate(nombre_archivo, pagesize=portrait(A4), rightMargin=30, leftMargin=30, topMargin=30, bottomMargin=30)
+    elements = []; styles = getSampleStyleSheet()
+
+    logo_path = "eklogo.png" if os.path.exists("eklogo.png") else ("logo.png" if os.path.exists("logo.png") else None)
+    if logo_path:
+        elements.append(Image(logo_path, width=65, height=40, hAlign='CENTER'))
+        elements.append(Spacer(1, 10))
+
+    titulo = ParagraphStyle(name='Tit', parent=styles['Heading1'], alignment=TA_CENTER)
+    subtit = ParagraphStyle(name='Sub', parent=styles['Normal'], alignment=TA_CENTER, fontSize=11)
+
+    elements.append(Paragraph(f"REMITO DE ENTREGA DE DOCUMENTACIÓN FÍSICA", titulo))
+    elements.append(Spacer(1, 5))
+    elements.append(Paragraph(f"<b>LOTE N°:</b> {numero_lote}", subtit))
+    elements.append(Paragraph(f"<b>PROVEEDOR/DESTINO:</b> {proveedor_nombre.upper()}", subtit))
+    elements.append(Paragraph(f"<b>Generado por:</b> {usuario} &nbsp;&nbsp;&nbsp; <b>Fecha:</b> {fecha_generacion}", subtit))
+    elements.append(Spacer(1, 20))
+
+    elements.append(Paragraph(f"Se hace entrega de los siguientes <b>{len(ops)} documentos originales (Remitos/Guías)</b> correspondientes a entregas finalizadas:", styles['Normal']))
+    elements.append(Spacer(1, 10))
+
+    data = [["#", "FECHA ENTREGA", "GUÍA / REMITO", "DESTINATARIO", "BULTOS"]]
+    estilo_celda = ParagraphStyle(name='Celda', parent=styles['Normal'], fontSize=9, alignment=TA_CENTER)
+    estilo_izq = ParagraphStyle(name='Izq', parent=styles['Normal'], fontSize=9, alignment=TA_LEFT)
+
+    for i, op in enumerate(ops, 1):
+        f_ent = op.fecha_entrega.strftime("%d/%m/%Y") if op.fecha_entrega else (op.fecha_ingreso.strftime("%d/%m/%Y") if op.fecha_ingreso else "-")
+        data.append([
+            str(i),
+            Paragraph(f_ent, estilo_celda),
+            Paragraph(op.guia_remito or "-", estilo_celda),
+            Paragraph(op.destinatario or "-", estilo_izq),
+            str(int(op.bultos) if op.bultos else 1)
+        ])
+
+    t = Table(data, colWidths=[30, 90, 140, 220, 50], repeatRows=1)
+    t.setStyle(TableStyle([
+        ('GRID', (0,0), (-1,-1), 0.5, colors.black),
+        ('BACKGROUND', (0,0), (-1,0), colors.lightgrey),
+        ('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold'),
+        ('ALIGN', (0,0), (-1,-1), 'CENTER'),
+        ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
+        ('TOPPADDING', (0,0), (-1,-1), 4),
+        ('BOTTOMPADDING', (0,0), (-1,-1), 4),
+    ]))
+    elements.append(t)
+
+    elements.append(Spacer(1, 60))
+    firma_data = [["______________________________", "______________________________"],
+                  ["Entregado por (E.K. Logística)", "Recibido por (Firma y Aclaración)"]]
+    t_firma = Table(firma_data, colWidths=[250, 250])
+    t_firma.setStyle(TableStyle([('ALIGN', (0,0), (-1,-1), 'CENTER')]))
+    elements.append(t_firma)
+
+    doc.build(elements)
+    
