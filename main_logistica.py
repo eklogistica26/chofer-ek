@@ -243,7 +243,7 @@ class PlataformaLogistica(QMainWindow):
     def obtener_precio(self, loc, cant_comun, cant_frio, suc_forzada=None, proveedor="", peso=0.0, bultos_totales=1):
         suc = suc_forzada if suc_forzada else self.sucursal_actual
         try:
-            if proveedor.upper() == "DHL":
+            if "DHL" in proveedor.upper():
                 t = self.session.query(TarifaDHL).filter(TarifaDHL.sucursal == suc).first()
                 if not t: return 0.0
                 if bultos_totales <= 0: bultos_totales = 1
