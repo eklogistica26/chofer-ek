@@ -79,7 +79,7 @@ class TabIngreso(QWidget):
         self.lbl_guia = QLabel("Guía / Remito:"); self.in_guia = QLineEdit()
         self.lbl_cli_ret = QLabel("Buscar Cliente:"); self.in_cliente_retiro = QComboBox(); self.in_cliente_retiro.setEditable(True); self.in_cliente_retiro.completer().setFilterMode(Qt.MatchFlag.MatchContains); self.in_cliente_retiro.currentIndexChanged.connect(self.cargar_datos_cliente); self.lbl_cli_ret.hide(); self.in_cliente_retiro.hide()
         
-        self.in_prov = QComboBox(); self.in_prov.addItems(self.main.lista_proveedores); self.in_prov.setEditable(True)
+        self.in_prov = QComboBox(); self.in_prov.addItems(self.main.lista_proveedores); self.in_prov.setEditable(False)
         self.in_prov.currentTextChanged.connect(self.cargar_destinos_frecuentes_combo)
         self.in_prov.currentTextChanged.connect(self.actualizar_interfaz_peso)
         
