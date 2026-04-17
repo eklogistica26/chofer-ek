@@ -150,6 +150,10 @@ class Operacion(Base):
     monto_feriado = Column(Float, default=0.0)
     monto_contingencia = Column(Float, default=0.0)
     monto_espera = Column(Float, default=0.0)
+    # 🔥 NUEVAS COLUMNAS DE AUDITORÍA Y LOGÍSTICA INVERSA 🔥
+    controlada = Column(Boolean, default=False)
+    papel_enviado = Column(Boolean, default=False)
+    lote_papel = Column(String(100), nullable=True)
 
 class Historial(Base):
     __tablename__ = "historial_movimientos"
