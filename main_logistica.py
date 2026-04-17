@@ -1002,7 +1002,14 @@ class PlataformaLogistica(QMainWindow):
         try:
             import pandas as pd
             resultados = self.construir_query_reportes(); data = []
-            for op in resultados: data.append({"Fecha": op.fecha_ingreso, "Sucursal": op.sucursal, "Cliente": op.proveedor, "Guia": op.guia_remito, "Destinatario": op.destinatario, "Estado": op.estado, "Facturado": "SI" if op.facturado else "NO", "Monto": op.monto_servicio})
+            for op in resultados: 
+                guia_val = op.guia_remito
+                
+                # 🔥 FIX PARA EXCEL: CONVERTIR A NÚMERO SI SON SOLO DÍGITOS 🔥
+                if guia_val and str(guia_val).strip().isdigit():
+                    guia_val = int(str(guia_val).strip())
+                    
+                data.append({"Fecha": op.fecha_ingreso, "Sucursal": op.sucursal, "Cliente": op.proveedor, "Guia": guia_val, "Destinatario": op.destinatario, "Estado": op.estado, "Facturado": "SI" if op.facturado else "NO", "Monto": op.monto_servicio})
             df = pd.DataFrame(data)
             
             descargas_dir = os.path.join(os.path.expanduser('~'), 'Downloads')
