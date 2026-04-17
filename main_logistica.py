@@ -244,14 +244,18 @@ class PlataformaLogistica(QMainWindow):
         suc = suc_forzada if suc_forzada else self.sucursal_actual
         proveedor_str = proveedor or ""
         try:
-            # 🔥 CORRECCIÓN: Detecta 'DHL EXPRESS' y evita errores de mayúsculas en la sucursal 🔥
             if "DHL" in proveedor_str.upper():
+                p_val = float(peso) if peso else 0.0
+                
+                # 🔥 REGLA ANTI-CERO: Si pesa 0 Kg, el costo es $0 automático 🔥
+                if p_val <= 0.0:
+                    return 0.0
+                    
                 t = self.session.query(TarifaDHL).filter(TarifaDHL.sucursal.ilike(suc)).first()
                 if not t: return 0.0
                 
                 b_tot = int(bultos_totales) if bultos_totales else 1
                 if b_tot <= 0: b_tot = 1
-                p_val = float(peso) if peso else 0.0
                 
                 if p_val <= b_tot * 2: base = b_tot * (t.t2 or 0.0)
                 elif p_val <= b_tot * 5: base = b_tot * (t.t5 or 0.0)
