@@ -242,21 +242,29 @@ class PlataformaLogistica(QMainWindow):
             
     def obtener_precio(self, loc, cant_comun, cant_frio, suc_forzada=None, proveedor="", peso=0.0, bultos_totales=1):
         suc = suc_forzada if suc_forzada else self.sucursal_actual
+        proveedor_str = proveedor or ""
         try:
-            if "DHL" in proveedor.upper():
-                t = self.session.query(TarifaDHL).filter(TarifaDHL.sucursal == suc).first()
+            # 🔥 CORRECCIÓN: Detecta 'DHL EXPRESS' y evita errores de mayúsculas en la sucursal 🔥
+            if "DHL" in proveedor_str.upper():
+                t = self.session.query(TarifaDHL).filter(TarifaDHL.sucursal.ilike(suc)).first()
                 if not t: return 0.0
-                if bultos_totales <= 0: bultos_totales = 1
-                if peso <= bultos_totales * 2: base = bultos_totales * t.t2
-                elif peso <= bultos_totales * 5: base = bultos_totales * t.t5
-                elif peso <= bultos_totales * 10: base = bultos_totales * t.t10
-                elif peso <= bultos_totales * 20: base = bultos_totales * t.t20
-                else: base = bultos_totales * t.t30 
-                excedente_kg = max(0.0, peso - (bultos_totales * 30))
-                costo_exc = excedente_kg * t.excedente
+                
+                b_tot = int(bultos_totales) if bultos_totales else 1
+                if b_tot <= 0: b_tot = 1
+                p_val = float(peso) if peso else 0.0
+                
+                if p_val <= b_tot * 2: base = b_tot * (t.t2 or 0.0)
+                elif p_val <= b_tot * 5: base = b_tot * (t.t5 or 0.0)
+                elif p_val <= b_tot * 10: base = b_tot * (t.t10 or 0.0)
+                elif p_val <= b_tot * 20: base = b_tot * (t.t20 or 0.0)
+                else: base = b_tot * (t.t30 or 0.0)
+                
+                excedente_kg = max(0.0, p_val - (b_tot * 30))
+                costo_exc = excedente_kg * (t.excedente or 0.0)
                 return base + costo_exc
             else:
                 loc_limpia = loc.strip()
+                # ... ACÁ ABAJO DEJÁS INTACTO TU CÓDIGO ORIGINAL ...
                 t = self.session.query(Tarifa).filter(Tarifa.localidad.ilike(loc_limpia), Tarifa.sucursal == suc).first()
                 if not t: return 0.0
                 if cant_comun > 0 and cant_frio > 0:

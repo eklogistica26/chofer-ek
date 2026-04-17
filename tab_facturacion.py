@@ -314,7 +314,6 @@ class TabFacturacion(QWidget):
         self.cierre_prov.addItem("Todos")
         self.cierre_prov.addItems(self.main.lista_proveedores)
         
-        # 🔥 FILTRO NINJA PARA AUDITORÍA 🔥
         self.filtro_control = QComboBox()
         self.filtro_control.addItems(["Pendientes de Control", "Controladas", "Mostrar Todas"])
         self.filtro_control.setStyleSheet("background-color: #e8f5e9; font-weight: bold; color: #2e7d32; padding: 4px;")
@@ -353,7 +352,6 @@ class TabFacturacion(QWidget):
         # --- TAB 3: DESPACHO DE PAPELES (LOGÍSTICA INVERSA) ---
         tab_despacho = QWidget(); layout_despacho = QVBoxLayout(tab_despacho)
         
-        # Buscador superior
         frame_busc = QFrame(); lay_busc = QHBoxLayout(frame_busc)
         lay_busc.addWidget(QLabel("🔍 <b>Rastrear Remito Original (Nº Guía):</b>"))
         self.in_buscar_papel = QLineEdit(); self.in_buscar_papel.setFixedWidth(200)
@@ -363,11 +361,9 @@ class TabFacturacion(QWidget):
         lay_busc.addStretch()
         layout_despacho.addWidget(frame_busc)
         
-        # Filtro Selectivo por Proveedor
         frame_lote = QFrame(); lay_lote = QHBoxLayout(frame_lote)
         lay_lote.addWidget(QLabel("<b>📦 Armar Lote para Proveedor:</b>"))
         self.combo_prov_papel = QComboBox()
-        # 🔥 Ahora ES OBLIGATORIO elegir UNO específico 🔥
         self.combo_prov_papel.addItems(["C Y E (AEROTRANSPORTADORA)", "JORGE SANJURJO", "EMAKI"])
         self.combo_prov_papel.setStyleSheet("font-weight: bold; padding: 4px;")
         btn_cargar_papeles = QPushButton("🔄 Traer Pendientes de Envío"); btn_cargar_papeles.clicked.connect(self.cargar_papeles_pendientes)
@@ -388,7 +384,6 @@ class TabFacturacion(QWidget):
         
         self.tabs_fact.addTab(tab_despacho, "3. Despacho Papeles (Log. Inversa)")
 
-    # 🔥 FUNCIONES PARA DESPACHO DE PAPELES 🔥
     def buscar_papel_fisico(self):
         texto = self.in_buscar_papel.text().strip()
         if not texto: return
@@ -412,15 +407,12 @@ class TabFacturacion(QWidget):
         prov = self.combo_prov_papel.currentText()
         try:
             self.tabla_papeles.setRowCount(0)
-            
-            # 🔥 REGLA DE ORO APLICADA: Solo trae los que ESTÁN FACTURADOS 🔥
             query = self.main.session.query(Operacion).filter(
                 Operacion.estado.ilike('ENTREGADO'), 
                 Operacion.facturado == True, 
                 (Operacion.papel_enviado == False) | (Operacion.papel_enviado == None),
                 Operacion.proveedor == prov
             )
-            
             query = query.order_by(Operacion.fecha_entrega.desc().nullslast())
             self.resultados_papeles = query.all()
             self.mapa_filas_papeles = {}
@@ -469,7 +461,6 @@ class TabFacturacion(QWidget):
             except Exception as e:
                 self.main.session.rollback(); QMessageBox.critical(self, "Error", str(e))
 
-    # 🔥 FUNCIONES DE TAB 1 (AUDITORÍA NINJA Y FACTURACIÓN) 🔥
     def alternar_control(self, id_op):
         try:
             op = self.main.session.query(Operacion).get(id_op)
@@ -691,6 +682,8 @@ class TabFacturacion(QWidget):
             progreso.setMinimumDuration(0)
             progreso.setValue(0)
             
+            hubo_reparacion = False  # Bandera para saber si curamos cargas viejas
+            
             for row, op in enumerate(self.resultados_cierre):
                 if row % 2 == 0 or row == total_ops - 1: 
                     progreso.setLabelText(f"Calculando tarifa: guía {row + 1} de {total_ops}...")
@@ -718,7 +711,7 @@ class TabFacturacion(QWidget):
                 bultos_fr = int(op.bultos_frio) if op.bultos_frio else 0
                 det_b = str(bultos_tot)
                 
-                if op.proveedor and op.proveedor.upper() == "DHL EXPRESS":
+                if op.proveedor and "DHL" in op.proveedor.upper():
                     det_b = f"{bultos_tot} B | {op.peso or 0} Kg"
                 else:
                     if bultos_fr > 0 and bultos_fr < bultos_tot: det_b += f" ({bultos_tot-bultos_fr}C/{bultos_fr}R)"
@@ -743,10 +736,19 @@ class TabFacturacion(QWidget):
                     precio_base = monto_serv; extras = 0; monto_finde_tabla = 0.0; monto_otros_tabla = 0.0
                 else: 
                     precio_base = self.main.obtener_precio(op.localidad, bultos_tot-bultos_fr, bultos_fr, op.sucursal, proveedor=op.proveedor, peso=op.peso, bultos_totales=bultos_tot)
+                    
+                    # 🔥 AUTO-REPARADOR DE PRECIOS VIEJOS 🔥
+                    if monto_serv == 0 and precio_base > 0:
+                        monto_serv = precio_base
+                        op.monto_servicio = precio_base
+                        hubo_reparacion = True
+                        
                     monto_finde_tabla = (getattr(op, 'monto_finde', 0.0) or 0.0) + (getattr(op, 'monto_feriado', 0.0) or 0.0)
                     monto_otros_tabla = (getattr(op, 'monto_contingencia', 0.0) or 0.0) + (getattr(op, 'monto_espera', 0.0) or 0.0)
+                    
                     if monto_finde_tabla == 0 and monto_otros_tabla == 0 and monto_serv > precio_base:
                         monto_otros_tabla = monto_serv - precio_base
+                        
                     extras = monto_finde_tabla + monto_otros_tabla
 
                 self.tabla_cierre.setItem(row, 9, QTableWidgetItem(f"$ {precio_base:,.2f}"))
@@ -786,6 +788,9 @@ class TabFacturacion(QWidget):
                 
             progreso.setValue(total_ops)
             
+            if hubo_reparacion:
+                self.main.session.commit()
+            
             self.tabla_cierre.blockSignals(False)
             self.btn_seleccionar_todo.setText("☑️ Deseleccionar Todo")
             self.recalcular_totales_seleccionados()
@@ -823,7 +828,7 @@ class TabFacturacion(QWidget):
         for op in ops_seleccionadas:
             monto_serv = op.monto_servicio or 0.0; bultos_tot = int(op.bultos) if op.bultos else 1; bultos_fr = int(op.bultos_frio) if op.bultos_frio else 0; precio_base = self.main.obtener_precio(op.localidad, bultos_tot-bultos_fr, bultos_fr, op.sucursal, proveedor=op.proveedor, peso=op.peso, bultos_totales=bultos_tot); extras = monto_serv - precio_base; det_b = str(bultos_tot)
             
-            if op.proveedor and op.proveedor.upper() == "DHL EXPRESS":
+            if op.proveedor and "DHL" in op.proveedor.upper():
                 det_b = f"{bultos_tot}B | {op.peso or 0}Kg"
             else:
                 if bultos_fr > 0 and bultos_fr < bultos_tot: det_b += f" ({bultos_tot-bultos_fr}C/{bultos_fr}R)"; 
