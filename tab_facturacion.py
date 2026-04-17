@@ -298,6 +298,7 @@ class TabFacturacion(QWidget):
     def __init__(self, main_window):
         super().__init__()
         self.main = main_window
+        self.totales_cierre = (0.0, 0.0, 0.0) # Inicializador
         self.setup_ui()
         
     def setup_ui(self):
@@ -490,33 +491,34 @@ class TabFacturacion(QWidget):
         self.tabla_cierre.blockSignals(False)
         self.recalcular_totales_seleccionados()
 
+    # 🔥 MOTOR DE RENDIMIENTO EXTREMO: LECTURA ÓPTICA DE PANTALLA 🔥
     def recalcular_totales_seleccionados(self, item=None):
         if item and item.column() != 0: return 
         
-        tot_base = 0; tot_extras = 0; tot_final = 0
+        tot_base = 0.0; tot_extras = 0.0; tot_final = 0.0
+        
         for r in range(self.tabla_cierre.rowCount()):
-            it = self.tabla_cierre.item(r, 0)
-            if it and it.checkState() == Qt.CheckState.Checked:
-                op_id = self.mapa_filas_cierre.get(r)
-                op = next((o for o in self.resultados_cierre if o.id == op_id), None)
-                if op:
-                    bultos_tot = int(op.bultos) if op.bultos else 1
-                    bultos_fr = int(op.bultos_frio) if op.bultos_frio else 0
-                    monto_serv = op.monto_servicio or 0.0
+            it_sel = self.tabla_cierre.item(r, 0)
+            if it_sel and it_sel.checkState() == Qt.CheckState.Checked:
+                try:
+                    # Lee directamente los números que ya calculó y dibujó en la tabla, SIN consultar la base de datos
+                    it_base = self.tabla_cierre.item(r, 9)
+                    val_base = float(it_base.text().replace("$", "").replace(",", "").strip()) if it_base else 0.0
                     
-                    if op.guia_remito == "CARGO-FIJO" or (op.tipo_servicio and "Flete" in op.tipo_servicio):
-                        precio_base = monto_serv; extras = 0
-                    else:
-                        precio_base = self.main.obtener_precio(op.localidad, bultos_tot-bultos_fr, bultos_fr, op.sucursal, proveedor=op.proveedor, peso=op.peso, bultos_totales=bultos_tot)
-                        monto_finde_tabla = (getattr(op, 'monto_finde', 0.0) or 0.0) + (getattr(op, 'monto_feriado', 0.0) or 0.0)
-                        monto_otros_tabla = (getattr(op, 'monto_contingencia', 0.0) or 0.0) + (getattr(op, 'monto_espera', 0.0) or 0.0)
-                        if monto_finde_tabla == 0 and monto_otros_tabla == 0 and monto_serv > precio_base:
-                            monto_otros_tabla = monto_serv - precio_base
-                        extras = monto_finde_tabla + monto_otros_tabla
-                        
-                    tot_base += precio_base
-                    tot_extras += extras
-                    tot_final += monto_serv
+                    it_finde = self.tabla_cierre.item(r, 10)
+                    val_finde = float(it_finde.text().replace("$", "").replace(",", "").strip()) if it_finde else 0.0
+                    
+                    it_otros = self.tabla_cierre.item(r, 11)
+                    val_otros = float(it_otros.text().replace("$", "").replace(",", "").strip()) if it_otros else 0.0
+                    
+                    it_tot = self.tabla_cierre.item(r, 12)
+                    val_tot = float(it_tot.text().replace("$", "").replace(",", "").strip()) if it_tot else 0.0
+                    
+                    tot_base += val_base
+                    tot_extras += (val_finde + val_otros)
+                    tot_final += val_tot
+                except:
+                    pass
                     
         self.totales_cierre = (tot_base, tot_extras, tot_final)
         self.lbl_resumen.setText(f"Total Base: ${tot_base:,.2f} | Extras: ${tot_extras:,.2f} | TOTAL SELECCIONADO: ${tot_final:,.2f}")
@@ -631,6 +633,7 @@ class TabFacturacion(QWidget):
     def calcular_cierre(self):
         self.btn_c.setEnabled(False)
         self.tabla_cierre.blockSignals(True) 
+        self.tabla_cierre.setUpdatesEnabled(False) # 🔥 CONGELA LA PANTALLA PARA QUE CARGUE EN 0.1 SEGUNDOS 🔥
         
         mes = self.cierre_mes.currentIndex() + 1; anio = self.cierre_anio.value(); prov = self.cierre_prov.currentText().strip(); sucursal = self.cierre_sucursal.currentText(); self.tabla_cierre.setRowCount(0)
         try:
@@ -656,6 +659,7 @@ class TabFacturacion(QWidget):
             
             if not self.resultados_cierre: 
                 self.tabla_cierre.setRowCount(1); item_empty = QTableWidgetItem("❌ Sin guías entregadas para facturar (o ya validaste todo)."); item_empty.setTextAlignment(Qt.AlignmentFlag.AlignCenter); self.tabla_cierre.setItem(0, 0, item_empty); self.tabla_cierre.setSpan(0, 0, 1, 14); self.lbl_resumen.setText("Total Base: $0 | Total Extras: $0 | TOTAL SELECCIONADO: $0")
+                self.tabla_cierre.setUpdatesEnabled(True)
                 self.btn_c.setEnabled(True)
                 self.tabla_cierre.blockSignals(False)
                 return
@@ -682,7 +686,7 @@ class TabFacturacion(QWidget):
             progreso.setMinimumDuration(0)
             progreso.setValue(0)
             
-            hubo_reparacion = False  # Bandera para saber si curamos cargas viejas
+            hubo_reparacion = False 
             
             for row, op in enumerate(self.resultados_cierre):
                 if row % 2 == 0 or row == total_ops - 1: 
@@ -737,7 +741,6 @@ class TabFacturacion(QWidget):
                 else: 
                     precio_base = self.main.obtener_precio(op.localidad, bultos_tot-bultos_fr, bultos_fr, op.sucursal, proveedor=op.proveedor, peso=op.peso, bultos_totales=bultos_tot)
                     
-                    # 🔥 AUTO-REPARADOR DE PRECIOS VIEJOS 🔥
                     if monto_serv == 0 and precio_base > 0:
                         monto_serv = precio_base
                         op.monto_servicio = precio_base
@@ -791,6 +794,8 @@ class TabFacturacion(QWidget):
             if hubo_reparacion:
                 self.main.session.commit()
             
+            # 🔥 DESCONGELA LA PANTALLA 🔥
+            self.tabla_cierre.setUpdatesEnabled(True)
             self.tabla_cierre.blockSignals(False)
             self.btn_seleccionar_todo.setText("☑️ Deseleccionar Todo")
             self.recalcular_totales_seleccionados()
@@ -800,55 +805,61 @@ class TabFacturacion(QWidget):
             self.lbl_resumen.setText("Total Base: $0 | Total Extras: $0 | TOTAL: $0")
             QMessageBox.critical(self, "Error", str(e))
         finally:
+            self.tabla_cierre.setUpdatesEnabled(True)
             self.tabla_cierre.blockSignals(False)
             self.btn_c.setEnabled(True)
-        
+
+    # 🔥 MOTOR DE PDF EXTREMO: LECTURA DIRECTA DE PANTALLA 🔥
     def generar_pdf_fact(self):
-        if not hasattr(self, 'resultados_cierre') or not self.resultados_cierre: return
-        
-        ops_seleccionadas = []
+        hay_seleccion = False
         for r in range(self.tabla_cierre.rowCount()):
             it = self.tabla_cierre.item(r, 0)
             if it and it.checkState() == Qt.CheckState.Checked:
-                op_id = self.mapa_filas_cierre.get(r)
-                op = next((o for o in self.resultados_cierre if o.id == op_id), None)
-                if op: ops_seleccionadas.append(op)
+                hay_seleccion = True
+                break
 
-        if not ops_seleccionadas:
+        if not hay_seleccion:
             QMessageBox.warning(self, "Aviso", "⚠️ No hay guías seleccionadas para facturar. Tildá al menos una.")
             return
 
-        reply = QMessageBox.question(self, "Cerrar Facturación", f"¿Desea marcar estas {len(ops_seleccionadas)} guías como FACTURADAS?", QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+        reply = QMessageBox.question(self, "Cerrar Facturación", f"¿Desea marcar estas guías como FACTURADAS?", QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
         marcar_facturado = (reply == QMessageBox.StandardButton.Yes)
+        
         mes_nombre = self.cierre_mes.currentText(); anio_num = self.cierre_anio.value(); prov_nombre = self.cierre_prov.currentText()
         descargas_dir = os.path.join(os.path.expanduser('~'), 'Downloads'); os.makedirs(descargas_dir, exist_ok=True)
         ruta_pdf = os.path.join(descargas_dir, f"Facturacion_{prov_nombre}_{mes_nombre}_{anio_num}.pdf")
         
         data_filas = [['FECHA', 'GUÍA', 'ZONA', 'BULTOS', 'BASE ($)', 'FINDE ($)', 'EXTRAS ($)', 'TOTAL ($)']]
-        for op in ops_seleccionadas:
-            monto_serv = op.monto_servicio or 0.0; bultos_tot = int(op.bultos) if op.bultos else 1; bultos_fr = int(op.bultos_frio) if op.bultos_frio else 0; precio_base = self.main.obtener_precio(op.localidad, bultos_tot-bultos_fr, bultos_fr, op.sucursal, proveedor=op.proveedor, peso=op.peso, bultos_totales=bultos_tot); extras = monto_serv - precio_base; det_b = str(bultos_tot)
-            
-            if op.proveedor and "DHL" in op.proveedor.upper():
-                det_b = f"{bultos_tot}B | {op.peso or 0}Kg"
-            else:
-                if bultos_fr > 0 and bultos_fr < bultos_tot: det_b += f" ({bultos_tot-bultos_fr}C/{bultos_fr}R)"; 
-                elif bultos_fr == bultos_tot: det_b += " (R)"
+        
+        for r in range(self.tabla_cierre.rowCount()):
+            it_sel = self.tabla_cierre.item(r, 0)
+            if it_sel and it_sel.checkState() == Qt.CheckState.Checked:
+                fecha = self.tabla_cierre.item(r, 2).text()
+                if fecha == "-": fecha = self.tabla_cierre.item(r, 1).text()
+                guia = self.tabla_cierre.item(r, 4).text()
+                zona = self.tabla_cierre.item(r, 6).text()
+                bultos = self.tabla_cierre.item(r, 7).text()
+                base_txt = self.tabla_cierre.item(r, 9).text()
+                finde_txt = self.tabla_cierre.item(r, 10).text()
+                extras_txt = self.tabla_cierre.item(r, 11).text()
+                total_txt = self.tabla_cierre.item(r, 12).text()
                 
-            fecha_para_billing = op.fecha_entrega if op.fecha_entrega else op.fecha_ingreso
-            es_finde = fecha_para_billing and fecha_para_billing.weekday() >= 5
-            
-            monto_finde_pdf = (getattr(op, 'monto_finde', 0.0) or 0.0) + (getattr(op, 'monto_feriado', 0.0) or 0.0)
-            monto_otros_pdf = (getattr(op, 'monto_contingencia', 0.0) or 0.0) + (getattr(op, 'monto_espera', 0.0) or 0.0)
-            
-            if monto_finde_pdf == 0 and monto_otros_pdf == 0 and monto_serv > precio_base:
-                monto_otros_pdf = monto_serv - precio_base
-            
-            data_filas.append([fecha_para_billing.strftime("%d/%m/%Y"), op.guia_remito or "RET", op.localidad[:15].upper(), det_b, f"$ {precio_base:,.0f}", f"$ {monto_finde_pdf:,.0f}", f"$ {monto_otros_pdf:,.0f}", f"$ {monto_serv:,.0f}"])
-            if marcar_facturado: op.facturado = True
+                data_filas.append([fecha, guia, zona[:15].upper(), bultos, base_txt, finde_txt, extras_txt, total_txt])
+                
+                if marcar_facturado:
+                    op_id = self.mapa_filas_cierre.get(r)
+                    if op_id:
+                        op = self.main.session.query(Operacion).get(op_id)
+                        if op: op.facturado = True
             
         if marcar_facturado: 
-            try: self.main.session.commit(); self.calcular_cierre(); self.cargar_ctas_ctes()
-            except: self.main.session.rollback()
+            try: 
+                self.main.session.commit()
+                self.calcular_cierre()
+                self.cargar_ctas_ctes()
+            except Exception as e: 
+                self.main.session.rollback()
+                print(e)
             
         tb, te, tf = self.totales_cierre
         iva = tf * 0.21
@@ -860,4 +871,5 @@ class TabFacturacion(QWidget):
         data_filas.append(['', '', '', '', '', '', 'TOTAL FACTURA:', f"$ {total_final_iva:,.2f}"])
         
         crear_pdf_facturacion(ruta_pdf, data_filas, prov_nombre, f"{mes_nombre} {anio_num}", self.main.usuario.username, datetime.now().strftime('%d/%m/%Y %H:%M'))
-        os.startfile(ruta_pdf)
+        try: os.startfile(ruta_pdf)
+        except: pass
