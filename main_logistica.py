@@ -1,4 +1,4 @@
-import sys
+construir_query_reportesimport sys
 import os
 import re
 import math
@@ -827,14 +827,19 @@ class PlataformaLogistica(QMainWindow):
         
     def construir_query_reportes(self):
         f_desde = self.rep_fecha_desde.date().toPyDate(); f_hasta = self.rep_fecha_hasta.date().toPyDate()
-        query = self.session.query(Operacion).filter(Operacion.fecha_ingreso >= f_desde, Operacion.fecha_ingreso <= f_hasta)
+        
+        # 🔥 EL ARREGLO MÁGICO: Prioriza la fecha en que se ENTREGÓ la guía 🔥
+        fecha_ref = func.coalesce(Operacion.fecha_entrega, Operacion.fecha_ingreso)
+        query = self.session.query(Operacion).filter(func.date(fecha_ref) >= f_desde, func.date(fecha_ref) <= f_hasta)
         
         if self.rep_sucursal.currentText() != "Todas": query = query.filter(Operacion.sucursal == self.rep_sucursal.currentText())
         if self.rep_chofer.currentText() != "Todos": query = query.filter(Operacion.chofer_asignado == self.rep_chofer.currentText())
-        if self.rep_cliente.currentText() != "Todos": query = query.filter(Operacion.proveedor == self.rep_cliente.currentText())
+        
+        # 🔥 ILIKE ignora si está en mayúscula o minúscula 🔥
+        if self.rep_cliente.currentText() != "Todos": query = query.filter(Operacion.proveedor.ilike(self.rep_cliente.currentText()))
+        
         if self.rep_estado.currentText() != "Todos": query = query.filter(Operacion.estado == self.rep_estado.currentText())
         
-        # 🔥 LÓGICA DEL NUEVO FILTRO TIPO 🔥
         tipo_sel = self.rep_tipo.currentText()
         if tipo_sel != "Todos":
             if tipo_sel == "Entrega": query = query.filter(Operacion.tipo_servicio.ilike('%Entrega%'))
@@ -845,7 +850,7 @@ class PlataformaLogistica(QMainWindow):
         if self.rep_facturado.currentText() == "Facturado": query = query.filter(Operacion.facturado == True)
         elif self.rep_facturado.currentText() == "NO Facturado": query = query.filter(Operacion.facturado == False)
         
-        return query.all()
+        return query.order_by(Operacion.fecha_ingreso.desc()).all()
         
     def generar_reporte_avanzado(self):
         try:

@@ -71,7 +71,6 @@ class PintorCeldasDelegate(QStyledItemDelegate):
 
 ESTILO_TABLAS_BLANCAS = "QTableWidget { background-color: #ffffff !important; } QTableWidget::item { background-color: transparent !important; color: #000000 !important; border-bottom: 1px solid #f0f0f0 !important; } QTableWidget::item:selected { background-color: #bbdefb !important; color: #000000 !important; }"
 
-# 🔥 EL SÚPER-EDITOR CON REGLAS ESTRICTAS 🔥
 class AjusteAvanzadoFacturacionDialog(QDialog):
     def __init__(self, op, main_app, visitas=1, parent=None):
         super().__init__(parent)
@@ -179,7 +178,6 @@ class AjusteAvanzadoFacturacionDialog(QDialog):
         self.in_contingencia = QDoubleSpinBox(); self.in_contingencia.setRange(0, 1000000); self.in_contingencia.setPrefix("$ "); self.in_contingencia.setSingleStep(500.0)
         self.in_doble_visita = QDoubleSpinBox(); self.in_doble_visita.setRange(0, 1000000); self.in_doble_visita.setPrefix("$ "); self.in_doble_visita.setSingleStep(500.0)
         
-        # Cargar de BD solo lo explícito
         self.in_finde.setValue(getattr(op, 'monto_finde', 0.0) or 0.0)
         self.in_feriado.setValue(getattr(op, 'monto_feriado', 0.0) or 0.0)
         self.in_contingencia.setValue(getattr(op, 'monto_contingencia', 0.0) or 0.0)
@@ -209,7 +207,6 @@ class AjusteAvanzadoFacturacionDialog(QDialog):
         btn_guardar.clicked.connect(self.accept)
         layout.addWidget(btn_guardar)
 
-        # --- SEÑALES EN VIVO ---
         self.in_prov.currentTextChanged.connect(self.evaluar_reglas_y_recalcular)
         self.in_peso.valueChanged.connect(self.recalcular)
         self.combo_zona.currentTextChanged.connect(self.recalcular)
@@ -229,17 +226,14 @@ class AjusteAvanzadoFacturacionDialog(QDialog):
         self.base_calculada = 0.0
         self.evaluar_reglas_y_recalcular()
 
-    # 🔥 MOTOR DE REGLAS ESTRICTAS DEL EDITOR 🔥
     def evaluar_reglas_y_recalcular(self):
         prov = self.in_prov.currentText().upper()
-        # EXENCIONES ESTRICTAS
         exento = any(x in prov for x in ["DHL", "JETPAQ", "AMBIENTALES"])
         
         b_tot = self.in_bultos.value()
         b_fr = self.in_frio.value()
         es_comb = self.chk_combinado.isChecked()
         
-        # REGLA CONTINGENCIA: "Un bulto simple no puede tener contingencia NUNCA"
         es_carga_comun = (b_fr == 0 and not es_comb)
         
         if es_carga_comun:
@@ -303,7 +297,6 @@ class AjusteAvanzadoFacturacionDialog(QDialog):
             base_frio = self.main_app.obtener_precio(self.combo_zona.currentText(), 0, b_frio, self.op.sucursal, prov_actual, peso_actual, b_frio) if b_frio > 0 else 0.0
             self.base_calculada = base_comun + base_frio
             
-        # Auto-Set Finde si es fin de semana y no está exento
         d = self.in_fecha.date()
         es_finde_real = datetime(d.year(), d.month(), d.day()).weekday() >= 5
         exento = any(x in prov_actual.upper() for x in ["DHL", "JETPAQ", "AMBIENTALES"])
@@ -489,17 +482,33 @@ class TabFacturacion(QWidget):
             except Exception as e:
                 self.main.session.rollback(); QMessageBox.critical(self, "Error", str(e))
 
-    def alternar_control(self, id_op):
+    def alternar_control(self, id_op, fila_tabla):
         try:
             op = self.main.session.query(Operacion).get(id_op)
             if op:
                 estado_actual = getattr(op, 'controlada', False)
                 op.controlada = not estado_actual
                 self.main.session.commit()
-                self.calcular_cierre() 
+                
+                # 🔥 ACTUALIZACIÓN EN VIVO (Sin recargar toda la tabla) 🔥
+                text_color = "#006400" if op.controlada else "#000000"
+                font_weight = QFont.Weight.Bold if op.controlada else QFont.Weight.Normal
+                
+                for col_idx in range(14): 
+                    it = self.tabla_cierre.item(fila_tabla, col_idx)
+                    if it: 
+                        it.setForeground(QBrush(QColor(text_color)))
+                        font = it.font(); font.setWeight(font_weight); it.setFont(font)
+                        
+                btn_widget = self.tabla_cierre.cellWidget(fila_tabla, 13)
+                if btn_widget:
+                    btn_validar = btn_widget.findChildren(QPushButton)[0] 
+                    btn_validar.setText("❌ Revertir" if op.controlada else "✔️ Validar")
+                    color_btn = "#6c757d" if op.controlada else "#198754"
+                    btn_validar.setStyleSheet(f"background-color: {color_btn} !important; color: white !important; font-size: 11px; font-weight: bold; padding: 4px;")
+                    
         except Exception as e:
             self.main.session.rollback()
-            QMessageBox.critical(self, "Error", f"No se pudo cambiar el estado: {e}")
 
     def toggle_seleccionar_todo(self):
         self.tabla_cierre.blockSignals(True) 
@@ -583,9 +592,10 @@ class TabFacturacion(QWidget):
         
     def doble_clic_ajuste_precio(self, row, col):
         id_op = self.mapa_filas_cierre.get(row)
-        if id_op: self.abrir_dialogo_ajuste_precio(id_op)
+        if id_op: self.abrir_dialogo_ajuste_precio(id_op, row)
         
-    def abrir_dialogo_ajuste_precio(self, id_op):
+    # 🔥 MOTOR QUIRÚRGICO: GUARDA Y RE-DIBUJA SOLO LA LÍNEA EDITADA 🔥
+    def abrir_dialogo_ajuste_precio(self, id_op, fila_tabla=None):
         try:
             op = self.main.session.query(Operacion).get(id_op)
             if not op: return
@@ -625,13 +635,44 @@ class TabFacturacion(QWidget):
                 op.monto_servicio = dlg.precio_final 
                 
                 self.main.session.commit()
-                self.calcular_cierre()
-                self.main.toast.mostrar("✅ Datos operativos y tarifa actualizados")
+                
+                if fila_tabla is not None:
+                    # Actualiza la interfaz en milisegundos sin recargar toda la base de datos
+                    m_finde = op.monto_finde or 0.0
+                    m_feriado = op.monto_feriado or 0.0
+                    m_esp = op.monto_espera or 0.0
+                    m_cont = op.monto_contingencia or 0.0
+                    m_serv = op.monto_servicio or 0.0
+                    
+                    extras = m_finde + m_feriado + m_esp + m_cont
+                    p_base = m_serv - extras
+                    
+                    self.tabla_cierre.item(fila_tabla, 4).setText(op.guia_remito or "RET")
+                    self.tabla_cierre.item(fila_tabla, 5).setText(op.destinatario or "")
+                    self.tabla_cierre.item(fila_tabla, 6).setText(op.localidad or "")
+                    
+                    b_tot = int(op.bultos) if op.bultos else 1
+                    b_fr = int(op.bultos_frio) if op.bultos_frio else 0
+                    det_b = str(b_tot)
+                    if op.proveedor and "DHL" in op.proveedor.upper(): det_b = f"{b_tot} B | {op.peso or 0} Kg"
+                    else:
+                        if b_fr > 0 and b_fr < b_tot: det_b += f" ({b_tot-b_fr}C/{b_fr}R)"
+                        elif b_fr == b_tot: det_b += " (R)"
+                    self.tabla_cierre.item(fila_tabla, 7).setText(det_b)
+                    
+                    self.tabla_cierre.item(fila_tabla, 9).setText(f"$ {p_base:,.2f}")
+                    self.tabla_cierre.item(fila_tabla, 10).setText(f"$ {(m_finde + m_feriado):,.2f}")
+                    self.tabla_cierre.item(fila_tabla, 11).setText(f"$ {(m_esp + m_cont):,.2f}")
+                    self.tabla_cierre.item(fila_tabla, 12).setText(f"$ {m_serv:,.2f}")
+                    
+                    self.recalcular_totales_seleccionados()
+                    self.main.toast.mostrar("✅ Editado y recalculado al instante")
+                else:
+                    self.calcular_cierre()
         except Exception as e: 
             self.main.session.rollback()
             QMessageBox.critical(self, "Error", f"Fallo al actualizar: {e}")
-        
-    # 🔥 MOTOR AUTO-REPARADOR DE BASE DE DATOS 🔥
+
     def calcular_cierre(self):
         self.btn_c.setEnabled(False)
         self.tabla_cierre.blockSignals(True) 
@@ -739,35 +780,26 @@ class TabFacturacion(QWidget):
                     
                 self.tabla_cierre.setItem(row, 8, QTableWidgetItem(estado_txt))
                 
-                # 🔥 APLICADOR DE REGLAS ESTRICTAS DE NEGOCIO 🔥
+                monto_serv = op.monto_servicio or 0.0
+                
                 if op.guia_remito == "CARGO-FIJO" or (op.tipo_servicio and "Flete" in op.tipo_servicio): 
-                    precio_base = op.monto_servicio or 0.0
-                    monto_finde_db = getattr(op, 'monto_finde', 0.0) or 0.0
-                    monto_feriado_db = getattr(op, 'monto_feriado', 0.0) or 0.0
-                    monto_esp_db = getattr(op, 'monto_espera', 0.0) or 0.0
-                    monto_cont_db = getattr(op, 'monto_contingencia', 0.0) or 0.0
-                    monto_serv = precio_base + monto_finde_db + monto_feriado_db + monto_esp_db + monto_cont_db
+                    precio_base = monto_serv; extras = 0
                 else: 
                     precio_base = self.main.obtener_precio(op.localidad, bultos_tot-bultos_fr, bultos_fr, op.sucursal, op.proveedor, op.peso or 0.0, bultos_tot)
                     
-                    # Regla 1: Erradicar Contingencia a la carga simple (1 bulto, 0 frío)
                     if (bultos_tot <= 1 and bultos_fr == 0):
                         op.monto_contingencia = 0.0
                     
                     monto_cont_db = getattr(op, 'monto_contingencia', 0.0) or 0.0
                     
-                    # Regla 2: Exenciones y Auto-Cálculo de Extras
                     if exento_extras:
                         op.monto_finde = 0.0
                         op.monto_feriado = 0.0
                         op.monto_espera = 0.0
                     else:
-                        # Auto Finde
                         if es_finde: op.monto_finde = precio_base
-                        
-                        # Auto Doble Visita
                         if visitas > 1: op.monto_espera = precio_base * (visitas - 1)
-                        else: op.monto_espera = 0.0 # Curar visitas canceladas
+                        else: op.monto_espera = 0.0
                         
                     monto_finde_db = getattr(op, 'monto_finde', 0.0) or 0.0
                     monto_feriado_db = getattr(op, 'monto_feriado', 0.0) or 0.0
@@ -776,7 +808,6 @@ class TabFacturacion(QWidget):
                     extras_calculados = monto_finde_db + monto_feriado_db + monto_esp_db + monto_cont_db
                     monto_serv = precio_base + extras_calculados
                     
-                    # Si el precio final difiere de la Base de Datos, lo curamos
                     if float(op.monto_servicio or 0.0) != float(monto_serv):
                         op.monto_servicio = monto_serv
                         hubo_reparacion = True
@@ -807,11 +838,13 @@ class TabFacturacion(QWidget):
                 btn_validar = QPushButton("✔️ Validar" if not esta_controlada else "❌ Revertir")
                 color_btn = "#198754" if not esta_controlada else "#6c757d"
                 btn_validar.setStyleSheet(f"background-color: {color_btn} !important; color: white !important; font-size: 11px; font-weight: bold; padding: 4px;")
-                btn_validar.clicked.connect(lambda checked, r=row: self.alternar_control(self.mapa_filas_cierre[r]))
+                
+                # 🔥 INYECCIÓN DE LA FILA PARA EL ACTUALIZADOR QUIRÚRGICO 🔥
+                btn_validar.clicked.connect(lambda checked, r=row: self.alternar_control(self.mapa_filas_cierre[r], r))
                 lay_acc.addWidget(btn_validar)
                 
                 btn_ajuste = QPushButton("✏️ Editar"); btn_ajuste.setStyleSheet("background-color: #0d6efd !important; color: white !important; font-size: 11px; font-weight: bold; padding: 4px;")
-                btn_ajuste.clicked.connect(lambda checked, r=row: self.abrir_dialogo_ajuste_precio(self.mapa_filas_cierre[r]))
+                btn_ajuste.clicked.connect(lambda checked, r=row: self.abrir_dialogo_ajuste_precio(self.mapa_filas_cierre[r], r))
                 lay_acc.addWidget(btn_ajuste)
                 
                 self.tabla_cierre.setCellWidget(row, 13, w_acc)
