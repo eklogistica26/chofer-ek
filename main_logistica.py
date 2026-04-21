@@ -1,4 +1,4 @@
-construir_query_reportesimport sys
+import sys
 import os
 import re
 import math
