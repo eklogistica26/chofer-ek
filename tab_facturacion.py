@@ -188,7 +188,7 @@ class AjusteAvanzadoFacturacionDialog(QDialog):
             lbl_visita.setText(f"⏳ Espera / Doble Visita (¡Tuvo {visitas} visitas!):")
             lbl_visita.setStyleSheet("color: #d32f2f; font-weight: bold;") 
         
-        form_extras.addRow("⚠️ Contingencia (Solo Frio/Comb):", self.in_contingencia)
+        form_extras.addRow("⚠️ Contingencia (Solo manual):", self.in_contingencia)
         form_extras.addRow(lbl_visita, self.in_doble_visita)
         layout.addLayout(form_extras)
 
@@ -482,7 +482,7 @@ class TabFacturacion(QWidget):
             except Exception as e:
                 self.main.session.rollback(); QMessageBox.critical(self, "Error", str(e))
 
-    def alternar_control(self, id_op, fila_tabla):
+    def alternar_control(self, id_op):
         try:
             op = self.main.session.query(Operacion).get(id_op)
             if op:
@@ -490,23 +490,26 @@ class TabFacturacion(QWidget):
                 op.controlada = not estado_actual
                 self.main.session.commit()
                 
-                # 🔥 ACTUALIZACIÓN EN VIVO (Sin recargar toda la tabla) 🔥
-                text_color = "#006400" if op.controlada else "#000000"
-                font_weight = QFont.Weight.Bold if op.controlada else QFont.Weight.Normal
-                
-                for col_idx in range(14): 
-                    it = self.tabla_cierre.item(fila_tabla, col_idx)
-                    if it: 
-                        it.setForeground(QBrush(QColor(text_color)))
-                        font = it.font(); font.setWeight(font_weight); it.setFont(font)
+                # 🔥 BÚSQUEDA BLINDADA DEL ITEM EN PANTALLA 🔥
+                for r in range(self.tabla_cierre.rowCount()):
+                    it = self.tabla_cierre.item(r, 0)
+                    if it and it.data(Qt.ItemDataRole.UserRole) == id_op:
+                        text_color = "#006400" if op.controlada else "#000000"
+                        font_weight = QFont.Weight.Bold if op.controlada else QFont.Weight.Normal
+                        for col_idx in range(14): 
+                            cell_it = self.tabla_cierre.item(r, col_idx)
+                            if cell_it: 
+                                cell_it.setForeground(QBrush(QColor(text_color)))
+                                font = cell_it.font(); font.setWeight(font_weight); cell_it.setFont(font)
+                                
+                        btn_widget = self.tabla_cierre.cellWidget(r, 13)
+                        if btn_widget:
+                            btn_validar = btn_widget.findChildren(QPushButton)[0] 
+                            btn_validar.setText("❌ Revertir" if op.controlada else "✔️ Validar")
+                            color_btn = "#6c757d" if op.controlada else "#198754"
+                            btn_validar.setStyleSheet(f"background-color: {color_btn} !important; color: white !important; font-size: 11px; font-weight: bold; padding: 4px;")
+                        break
                         
-                btn_widget = self.tabla_cierre.cellWidget(fila_tabla, 13)
-                if btn_widget:
-                    btn_validar = btn_widget.findChildren(QPushButton)[0] 
-                    btn_validar.setText("❌ Revertir" if op.controlada else "✔️ Validar")
-                    color_btn = "#6c757d" if op.controlada else "#198754"
-                    btn_validar.setStyleSheet(f"background-color: {color_btn} !important; color: white !important; font-size: 11px; font-weight: bold; padding: 4px;")
-                    
         except Exception as e:
             self.main.session.rollback()
 
@@ -591,11 +594,13 @@ class TabFacturacion(QWidget):
         except Exception: self.main.session.rollback()
         
     def doble_clic_ajuste_precio(self, row, col):
-        id_op = self.mapa_filas_cierre.get(row)
-        if id_op: self.abrir_dialogo_ajuste_precio(id_op, row)
+        it = self.tabla_cierre.item(row, 0)
+        if it:
+            id_op = it.data(Qt.ItemDataRole.UserRole)
+            if id_op: self.abrir_dialogo_ajuste_precio(id_op)
         
-    # 🔥 MOTOR QUIRÚRGICO: GUARDA Y RE-DIBUJA SOLO LA LÍNEA EDITADA 🔥
-    def abrir_dialogo_ajuste_precio(self, id_op, fila_tabla=None):
+    # 🔥 ACTUALIZACIÓN QUIRÚRGICA BLINDADA CONTRA ORDENAMIENTO 🔥
+    def abrir_dialogo_ajuste_precio(self, id_op):
         try:
             op = self.main.session.query(Operacion).get(id_op)
             if not op: return
@@ -636,8 +641,15 @@ class TabFacturacion(QWidget):
                 
                 self.main.session.commit()
                 
-                if fila_tabla is not None:
-                    # Actualiza la interfaz en milisegundos sin recargar toda la base de datos
+                # Buscamos la fila visual correcta usando el RASTREADOR INVISIBLE
+                fila_actual = -1
+                for r in range(self.tabla_cierre.rowCount()):
+                    it = self.tabla_cierre.item(r, 0)
+                    if it and it.data(Qt.ItemDataRole.UserRole) == id_op:
+                        fila_actual = r
+                        break
+                
+                if fila_actual != -1:
                     m_finde = op.monto_finde or 0.0
                     m_feriado = op.monto_feriado or 0.0
                     m_esp = op.monto_espera or 0.0
@@ -647,9 +659,9 @@ class TabFacturacion(QWidget):
                     extras = m_finde + m_feriado + m_esp + m_cont
                     p_base = m_serv - extras
                     
-                    self.tabla_cierre.item(fila_tabla, 4).setText(op.guia_remito or "RET")
-                    self.tabla_cierre.item(fila_tabla, 5).setText(op.destinatario or "")
-                    self.tabla_cierre.item(fila_tabla, 6).setText(op.localidad or "")
+                    self.tabla_cierre.item(fila_actual, 4).setText(op.guia_remito or "RET")
+                    self.tabla_cierre.item(fila_actual, 5).setText(op.destinatario or "")
+                    self.tabla_cierre.item(fila_actual, 6).setText(op.localidad or "")
                     
                     b_tot = int(op.bultos) if op.bultos else 1
                     b_fr = int(op.bultos_frio) if op.bultos_frio else 0
@@ -658,12 +670,12 @@ class TabFacturacion(QWidget):
                     else:
                         if b_fr > 0 and b_fr < b_tot: det_b += f" ({b_tot-b_fr}C/{b_fr}R)"
                         elif b_fr == b_tot: det_b += " (R)"
-                    self.tabla_cierre.item(fila_tabla, 7).setText(det_b)
+                    self.tabla_cierre.item(fila_actual, 7).setText(det_b)
                     
-                    self.tabla_cierre.item(fila_tabla, 9).setText(f"$ {p_base:,.2f}")
-                    self.tabla_cierre.item(fila_tabla, 10).setText(f"$ {(m_finde + m_feriado):,.2f}")
-                    self.tabla_cierre.item(fila_tabla, 11).setText(f"$ {(m_esp + m_cont):,.2f}")
-                    self.tabla_cierre.item(fila_tabla, 12).setText(f"$ {m_serv:,.2f}")
+                    self.tabla_cierre.item(fila_actual, 9).setText(f"$ {p_base:,.2f}")
+                    self.tabla_cierre.item(fila_actual, 10).setText(f"$ {(m_finde + m_feriado):,.2f}")
+                    self.tabla_cierre.item(fila_actual, 11).setText(f"$ {(m_esp + m_cont):,.2f}")
+                    self.tabla_cierre.item(fila_actual, 12).setText(f"$ {m_serv:,.2f}")
                     
                     self.recalcular_totales_seleccionados()
                     self.main.toast.mostrar("✅ Editado y recalculado al instante")
@@ -742,6 +754,8 @@ class TabFacturacion(QWidget):
                 chk = QTableWidgetItem()
                 chk.setFlags(Qt.ItemFlag.ItemIsUserCheckable | Qt.ItemFlag.ItemIsEnabled)
                 chk.setCheckState(Qt.CheckState.Checked)
+                # 🔥 EL RASTREADOR INVISIBLE: ESTO EVITA BUGS AL EDITAR 🔥
+                chk.setData(Qt.ItemDataRole.UserRole, op.id)
                 self.tabla_cierre.setItem(row, 0, chk)
                 
                 f_ingreso = op.fecha_ingreso.strftime("%d/%m/%Y") if op.fecha_ingreso else "-"
@@ -838,13 +852,11 @@ class TabFacturacion(QWidget):
                 btn_validar = QPushButton("✔️ Validar" if not esta_controlada else "❌ Revertir")
                 color_btn = "#198754" if not esta_controlada else "#6c757d"
                 btn_validar.setStyleSheet(f"background-color: {color_btn} !important; color: white !important; font-size: 11px; font-weight: bold; padding: 4px;")
-                
-                # 🔥 INYECCIÓN DE LA FILA PARA EL ACTUALIZADOR QUIRÚRGICO 🔥
-                btn_validar.clicked.connect(lambda checked, r=row: self.alternar_control(self.mapa_filas_cierre[r], r))
+                btn_validar.clicked.connect(lambda checked, id_o=op.id: self.alternar_control(id_o))
                 lay_acc.addWidget(btn_validar)
                 
                 btn_ajuste = QPushButton("✏️ Editar"); btn_ajuste.setStyleSheet("background-color: #0d6efd !important; color: white !important; font-size: 11px; font-weight: bold; padding: 4px;")
-                btn_ajuste.clicked.connect(lambda checked, r=row: self.abrir_dialogo_ajuste_precio(self.mapa_filas_cierre[r], r))
+                btn_ajuste.clicked.connect(lambda checked, id_o=op.id: self.abrir_dialogo_ajuste_precio(id_o))
                 lay_acc.addWidget(btn_ajuste)
                 
                 self.tabla_cierre.setCellWidget(row, 13, w_acc)
@@ -905,7 +917,7 @@ class TabFacturacion(QWidget):
                 data_filas.append([fecha, guia, zona[:15].upper(), bultos, base_txt, finde_txt, extras_txt, total_txt])
                 
                 if marcar_facturado:
-                    op_id = self.mapa_filas_cierre.get(r)
+                    op_id = it_sel.data(Qt.ItemDataRole.UserRole)
                     if op_id:
                         op = self.main.session.query(Operacion).get(op_id)
                         if op: op.facturado = True
