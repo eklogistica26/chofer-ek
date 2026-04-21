@@ -19,7 +19,7 @@ from PyQt6.QtCore import Qt, QDate, QTimer, QUrl, QPropertyAnimation, QEasingCur
 from PyQt6.QtGui import QColor, QFont, QDesktopServices, QPainter, QRadialGradient, QLinearGradient, QPen, QPolygon, QBrush, QPixmap
 
 from qt_material import apply_stylesheet
-from sqlalchemy import text, extract, desc
+from sqlalchemy import text, extract, desc, func
 
 from database import get_session, Usuario
 
