@@ -754,7 +754,6 @@ class TabFacturacion(QWidget):
                 chk = QTableWidgetItem()
                 chk.setFlags(Qt.ItemFlag.ItemIsUserCheckable | Qt.ItemFlag.ItemIsEnabled)
                 chk.setCheckState(Qt.CheckState.Checked)
-                # 🔥 EL RASTREADOR INVISIBLE: ESTO EVITA BUGS AL EDITAR 🔥
                 chk.setData(Qt.ItemDataRole.UserRole, op.id)
                 self.tabla_cierre.setItem(row, 0, chk)
                 
@@ -794,37 +793,49 @@ class TabFacturacion(QWidget):
                     
                 self.tabla_cierre.setItem(row, 8, QTableWidgetItem(estado_txt))
                 
-                monto_serv = op.monto_servicio or 0.0
-                
+                # 🔥 LA CURA: RESPETA LA EDICIÓN MANUAL 🔥
                 if op.guia_remito == "CARGO-FIJO" or (op.tipo_servicio and "Flete" in op.tipo_servicio): 
-                    precio_base = monto_serv; extras = 0
-                else: 
-                    precio_base = self.main.obtener_precio(op.localidad, bultos_tot-bultos_fr, bultos_fr, op.sucursal, op.proveedor, op.peso or 0.0, bultos_tot)
-                    
-                    if (bultos_tot <= 1 and bultos_fr == 0):
-                        op.monto_contingencia = 0.0
-                    
-                    monto_cont_db = getattr(op, 'monto_contingencia', 0.0) or 0.0
-                    
-                    if exento_extras:
-                        op.monto_finde = 0.0
-                        op.monto_feriado = 0.0
-                        op.monto_espera = 0.0
-                    else:
-                        if es_finde: op.monto_finde = precio_base
-                        if visitas > 1: op.monto_espera = precio_base * (visitas - 1)
-                        else: op.monto_espera = 0.0
-                        
+                    precio_base = op.monto_servicio or 0.0
                     monto_finde_db = getattr(op, 'monto_finde', 0.0) or 0.0
                     monto_feriado_db = getattr(op, 'monto_feriado', 0.0) or 0.0
                     monto_esp_db = getattr(op, 'monto_espera', 0.0) or 0.0
+                    monto_cont_db = getattr(op, 'monto_contingencia', 0.0) or 0.0
+                    monto_serv = precio_base + monto_finde_db + monto_feriado_db + monto_esp_db + monto_cont_db
+                else: 
+                    precio_base_teorico = self.main.obtener_precio(op.localidad, bultos_tot-bultos_fr, bultos_fr, op.sucursal, op.proveedor, op.peso or 0.0, bultos_tot)
                     
-                    extras_calculados = monto_finde_db + monto_feriado_db + monto_esp_db + monto_cont_db
-                    monto_serv = precio_base + extras_calculados
-                    
-                    if float(op.monto_servicio or 0.0) != float(monto_serv):
-                        op.monto_servicio = monto_serv
+                    if (bultos_tot <= 1 and bultos_fr == 0) and getattr(op, 'monto_contingencia', 0.0) > 0:
+                        op.monto_contingencia = 0.0
                         hubo_reparacion = True
+                    
+                    # Solo auto-calcula recargos si la guía NUNCA fue calculada ($0)
+                    if not op.monto_servicio or op.monto_servicio == 0.0:
+                        if exento_extras:
+                            op.monto_finde = 0.0
+                            op.monto_feriado = 0.0
+                            op.monto_espera = 0.0
+                        else:
+                            if es_finde: op.monto_finde = precio_base_teorico
+                            if visitas > 1: op.monto_espera = precio_base_teorico * (visitas - 1)
+                            else: op.monto_espera = 0.0
+                            
+                        monto_finde_db = getattr(op, 'monto_finde', 0.0) or 0.0
+                        monto_feriado_db = getattr(op, 'monto_feriado', 0.0) or 0.0
+                        monto_esp_db = getattr(op, 'monto_espera', 0.0) or 0.0
+                        monto_cont_db = getattr(op, 'monto_contingencia', 0.0) or 0.0
+                        
+                        op.monto_servicio = precio_base_teorico + monto_finde_db + monto_feriado_db + monto_esp_db + monto_cont_db
+                        hubo_reparacion = True
+
+                    monto_finde_db = getattr(op, 'monto_finde', 0.0) or 0.0
+                    monto_feriado_db = getattr(op, 'monto_feriado', 0.0) or 0.0
+                    monto_esp_db = getattr(op, 'monto_espera', 0.0) or 0.0
+                    monto_cont_db = getattr(op, 'monto_contingencia', 0.0) or 0.0
+                    
+                    monto_serv = op.monto_servicio or 0.0
+                    extras_calculados = monto_finde_db + monto_feriado_db + monto_esp_db + monto_cont_db
+                    
+                    precio_base = monto_serv - extras_calculados
 
                 self.tabla_cierre.setItem(row, 9, QTableWidgetItem(f"$ {precio_base:,.2f}"))
                 self.tabla_cierre.setItem(row, 10, QTableWidgetItem(f"$ {(monto_finde_db + monto_feriado_db):,.2f}"))
