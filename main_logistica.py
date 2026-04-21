@@ -869,20 +869,26 @@ class PlataformaLogistica(QMainWindow):
                 es_jetpaq = bool(op.proveedor and op.proveedor.lower() == 'jetpaq')
                 precio_mostrar = 0.0 if es_jetpaq else (op.monto_servicio or 0.0)
 
-                self.tabla_reportes.insertRow(row); 
-                self.tabla_reportes.setItem(row, 0, QTableWidgetItem(op.fecha_ingreso.strftime("%d/%m/%Y")))
-                self.tabla_reportes.setItem(row, 1, QTableWidgetItem(op.sucursal))
-                self.tabla_reportes.setItem(row, 2, QTableWidgetItem(op.proveedor))
+                self.tabla_reportes.insertRow(row)
+                
+                # 🔥 BLINDAJE ANTI-CRASH PARA VALORES NULOS 🔥
+                f_ing = op.fecha_ingreso.strftime("%d/%m/%Y") if op.fecha_ingreso else "-"
+                
+                self.tabla_reportes.setItem(row, 0, QTableWidgetItem(f_ing))
+                self.tabla_reportes.setItem(row, 1, QTableWidgetItem(op.sucursal or "-"))
+                self.tabla_reportes.setItem(row, 2, QTableWidgetItem(op.proveedor or "-"))
                 self.tabla_reportes.setItem(row, 3, QTableWidgetItem(op.guia_remito or "-"))
                 self.tabla_reportes.setItem(row, 4, QTableWidgetItem(op.chofer_asignado or "-"))
-                self.tabla_reportes.setItem(row, 5, QTableWidgetItem(op.destinatario))
-                self.tabla_reportes.setItem(row, 6, QTableWidgetItem(op.localidad))
-                self.tabla_reportes.setItem(row, 7, QTableWidgetItem(op.estado))
+                self.tabla_reportes.setItem(row, 5, QTableWidgetItem(op.destinatario or "-"))
+                self.tabla_reportes.setItem(row, 6, QTableWidgetItem(op.localidad or "-"))
+                self.tabla_reportes.setItem(row, 7, QTableWidgetItem(op.estado or "-"))
                 
                 item_fac = QTableWidgetItem("SI" if op.facturado else "NO")
-                if op.facturado: item_fac.setForeground(QColor("green")); item_fac.setFont(QFont("Arial", 9, QFont.Weight.Bold))
+                if op.facturado: 
+                    item_fac.setForeground(QColor("green"))
+                    item_fac.setFont(QFont("Arial", 9, QFont.Weight.Bold))
                 self.tabla_reportes.setItem(row, 8, item_fac)
-                self.tabla_reportes.setItem(row, 9, QTableWidgetItem(str(op.bultos)))
+                self.tabla_reportes.setItem(row, 9, QTableWidgetItem(str(op.bultos or 1)))
                 
                 if es_jetpaq:
                     item_precio = QTableWidgetItem("Uso Interno ($0)")
@@ -960,7 +966,7 @@ class PlataformaLogistica(QMainWindow):
                 
             html += "</td><td width='2%'></td>"
             
-            # Columna Derecha: Clientes y Choferes (Mantiene su estilo original)
+            # Columna Derecha: Clientes y Choferes
             html += "<td width='38%' valign='top'>"
             
             # Panel Clientes
@@ -983,7 +989,8 @@ class PlataformaLogistica(QMainWindow):
             
         except Exception as e: 
             self.session.rollback()
-            print(f"Error reporte: {e}")
+            # ESTE CARTEL TE VA A SALVAR LA VIDA SI VUELVE A FALLAR
+            QMessageBox.critical(self, "Error en Reporte", f"Ocurrió un error al generar el reporte:\n\n{str(e)}")
         
     def generar_pdf_rep(self):
         try:
