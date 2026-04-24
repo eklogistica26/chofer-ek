@@ -1229,22 +1229,28 @@ class TrackingDialog(QDialog):
         super().__init__()
         self.session = session
         self.usuario = usuario
-        self.setWindowTitle("🔍 Rastreo de Guía (Tracking)")
-        self.setGeometry(400, 200, 600, 500)
+        self.setWindowTitle("🔍 Rastreo de Guía y Auditoría Total")
+        
+        # 🔥 FIX WINDOWS 11: PERMITIR MAXIMIZAR Y MINIMIZAR 🔥
+        self.setWindowFlags(Qt.WindowType.Window | Qt.WindowType.WindowMinMaxButtonsHint | Qt.WindowType.WindowCloseButtonHint)
+        self.resize(900, 650)
         self.setStyleSheet("background-color: white;")
-        layout = QVBoxLayout()
+        
+        layout = QVBoxLayout(self)
         h = QHBoxLayout()
         self.in_buscar = QLineEdit()
         self.in_buscar.setPlaceholderText("Ingrese N° de Guía o Remito...")
         self.in_buscar.returnPressed.connect(self.buscar_tracking)
+        
         btn_bus = QPushButton("RASTREAR")
-        btn_bus.setStyleSheet("background-color: #0d6efd; color: white; font-weight: bold;")
+        btn_bus.setStyleSheet("background-color: #0d6efd; color: white; font-weight: bold; padding: 6px 15px;")
         btn_bus.clicked.connect(self.buscar_tracking)
         
         btn_reset = QPushButton("⚠️ RESETEAR A DEPÓSITO")
-        btn_reset.setStyleSheet("background-color: #dc3545; color: white; font-weight: bold;")
+        btn_reset.setStyleSheet("background-color: #dc3545; color: white; font-weight: bold; padding: 6px 15px;")
         btn_reset.clicked.connect(self.resetear_guia)
-        if not self.usuario or not self.usuario.es_admin_total:
+        
+        if not self.usuario or not getattr(self.usuario, 'es_admin_total', False):
             btn_reset.hide()
             
         h.addWidget(self.in_buscar)
@@ -1252,23 +1258,42 @@ class TrackingDialog(QDialog):
         h.addWidget(btn_reset)
         
         self.lbl_info = QLabel("Ingrese una guía para ver el estado.")
-        self.lbl_info.setStyleSheet("font-size: 14px; color: #333; padding: 10px; border: 1px solid #ccc; background: #f8f9fa;")
+        self.lbl_info.setStyleSheet("font-size: 14px; color: #333; padding: 12px; border: 1px solid #ccc; background: #f8f9fa; border-radius: 5px;")
         self.lbl_info.setWordWrap(True)
-        self.tabla = QTableWidget()
-        self.tabla.setColumnCount(4)
-        self.tabla.setHorizontalHeaderLabels(["Fecha/Hora", "Usuario", "Acción", "Detalle"])
         
-        self.tabla.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
-        self.tabla.setColumnWidth(0, 130)
-        self.tabla.setColumnWidth(1, 100)
-        self.tabla.setColumnWidth(2, 130)
-        self.tabla.horizontalHeader().setStretchLastSection(True)
+        # 🔥 NUEVO SISTEMA DE PESTAÑAS (TRACKING VS AUDITORÍA) 🔥
+        self.tabs = QTabWidget()
+        self.tabs.setStyleSheet("QTabBar::tab { padding: 8px 15px; font-weight: bold; }")
+        
+        # --- TAB 1: TRACKING CLIENTE ---
+        self.tab_cliente = QWidget()
+        lay_cli = QVBoxLayout(self.tab_cliente)
+        self.tabla_cli = QTableWidget()
+        self.tabla_cli.setColumnCount(4)
+        self.tabla_cli.setHorizontalHeaderLabels(["Fecha/Hora", "Usuario", "Movimiento Físico", "Detalle"])
+        self.tabla_cli.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
+        self.tabla_cli.setColumnWidth(0, 130); self.tabla_cli.setColumnWidth(1, 100); self.tabla_cli.setColumnWidth(2, 160)
+        self.tabla_cli.horizontalHeader().setStretchLastSection(True)
+        lay_cli.addWidget(self.tabla_cli)
+        
+        # --- TAB 2: AUDITORÍA INTERNA ---
+        self.tab_auditoria = QWidget()
+        lay_aud = QVBoxLayout(self.tab_auditoria)
+        self.tabla_aud = QTableWidget()
+        self.tabla_aud.setColumnCount(4)
+        self.tabla_aud.setHorizontalHeaderLabels(["Fecha/Hora", "Operador (Audit)", "Acción de Sistema", "Detalle Técnico"])
+        self.tabla_aud.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
+        self.tabla_aud.setColumnWidth(0, 130); self.tabla_aud.setColumnWidth(1, 120); self.tabla_aud.setColumnWidth(2, 180)
+        self.tabla_aud.horizontalHeader().setStretchLastSection(True)
+        self.tabla_aud.setStyleSheet("background-color: #fdfdfd; gridline-color: #e0e0e0;")
+        lay_aud.addWidget(self.tabla_aud)
+        
+        self.tabs.addTab(self.tab_cliente, "📍 Tracking Operativo")
+        self.tabs.addTab(self.tab_auditoria, "🛡️ Auditoría de Sistema")
         
         layout.addLayout(h)
         layout.addWidget(self.lbl_info)
-        layout.addWidget(QLabel("<b>HISTORIAL DE MOVIMIENTOS:</b>"))
-        layout.addWidget(self.tabla)
-        self.setLayout(layout)
+        layout.addWidget(self.tabs)
         
     def resetear_guia(self):
         guia = self.in_buscar.text().strip()
@@ -1278,45 +1303,48 @@ class TrackingDialog(QDialog):
         if not op: return
         
         reply = QMessageBox.question(self, "⚠️ ALERTA DE SEGURIDAD EXTREMA", 
-            f"¿Está súper seguro de devolver la guía '{op.guia_remito}' a EN DEPOSITO?\n\n"
-            "Esto borrará de forma permanente TODO su historial de movimientos de la calle, perderá a su chofer asignado, se le borrará la marca de entregado y de facturado.",
+            f"¿Está seguro de devolver la guía '{op.guia_remito}' a EN DEPOSITO?\n\n"
+            "Esto borrará de forma permanente TODO su historial de la calle, perderá a su chofer y se le borrará la marca de entregado, facturado y controlado.",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
         
         if reply == QMessageBox.StandardButton.Yes:
             try:
                 self.session.execute(text("DELETE FROM historial_movimientos WHERE operacion_id = :id"), {"id": op.id})
                 op.estado = Estados.EN_DEPOSITO
-                op.chofer_asignado = None
-                op.fecha_salida = None
-                op.fecha_entrega = None
-                op.facturado = False
+                op.chofer_asignado = None; op.fecha_salida = None; op.fecha_entrega = None
+                op.facturado = False; op.controlada = False
                 self.session.commit()
-                QMessageBox.information(self, "Éxito", "Guía reseteada y borrada del historial exitosamente.")
+                QMessageBox.information(self, "Éxito", "Guía reseteada exitosamente.")
                 self.buscar_tracking() 
             except Exception as e:
                 self.session.rollback()
-                QMessageBox.critical(self, "Error", f"Fallo al resetear la guía: {str(e)}")
+                QMessageBox.critical(self, "Error", f"Fallo al resetear: {str(e)}")
     
     def buscar_tracking(self):
-        guia = self.in_buscar.text().strip(); 
+        guia = self.in_buscar.text().strip()
         if not guia: return
         op = self.session.query(Operacion).filter(Operacion.guia_remito == guia).first()
         if not op: op = self.session.query(Operacion).filter(Operacion.guia_remito.ilike(f"%{guia}%")).first()
         if not op: 
             self.lbl_info.setText("❌ GUÍA NO ENCONTRADA")
             self.lbl_info.setStyleSheet("font-size: 16px; color: red; font-weight: bold; padding: 10px; border: 1px solid red;")
-            self.tabla.setRowCount(0)
+            self.tabla_cli.setRowCount(0); self.tabla_aud.setRowCount(0)
             return
             
-        self.lbl_info.setStyleSheet("font-size: 14px; color: #333; padding: 10px; border: 1px solid #ccc; background: #f8f9fa;")
+        self.lbl_info.setStyleSheet("font-size: 14px; color: #333; padding: 12px; border: 1px solid #ccc; background: #f8f9fa; border-radius: 5px;")
             
         color_estado = "blue"; bg_color = "#e7f1ff"
         if op.estado == Estados.ENTREGADO: color_estado = "#198754"; bg_color = "#d1e7dd"
         elif op.estado == Estados.EN_REPARTO: color_estado = "#856404"; bg_color = "#fff3cd"
+        
         if op.proveedor and op.proveedor.lower() == "jetpaq":
-            fac_str = "NO SE FACTURA (USO INTERNO)"; color_fac = "gray"
+            fac_str = "USO INTERNO"; color_fac = "gray"
         else:
-            fac_str = "SÍ" if op.facturado else "NO"; color_fac = "green" if op.facturado else "red"
+            fac_str = "SÍ" if op.facturado else "NO PAGA"; color_fac = "green" if op.facturado else "red"
+            
+        # 🔥 NUEVO: ESTADO DE CONTROL Y PROVEEDOR 🔥
+        ctrl_str = "✔️ SÍ (Auditada)" if getattr(op, 'controlada', False) else "❌ NO"
+        color_ctrl = "green" if getattr(op, 'controlada', False) else "red"
             
         movs = self.session.query(Historial).filter(Historial.operacion_id == op.id).order_by(Historial.fecha_hora.desc()).all()
         
@@ -1334,38 +1362,69 @@ class TrackingDialog(QDialog):
         bultos_com = bultos_tot - bultos_fr
         tipo_c = op.tipo_carga or "COMÚN"
         
-        if "Flete" in (op.tipo_servicio or ""):
-            texto_bultos = f"{bultos_tot} Horas / Viajes (FLETE)"
-        else:
-            if bultos_fr > 0:
-                texto_bultos = f"{bultos_tot} Totales ({bultos_com} Comunes, {bultos_fr} Refrigerados) | TIPO: {tipo_c}"
-            else:
-                texto_bultos = f"{bultos_tot} (Todos Comunes) | TIPO: {tipo_c}"
+        texto_bultos = f"{bultos_tot} Tot ({bultos_com}C, {bultos_fr}R)" if bultos_fr > 0 else f"{bultos_tot} (Comunes)"
+        if "Flete" in (op.tipo_servicio or ""): texto_bultos = f"{bultos_tot} Horas (FLETE)"
         
-        info_txt = f"<div style='background-color: {bg_color}; padding: 10px;'><b>GUÍA:</b> {op.guia_remito} <br><b>ESTADO ACTUAL:</b> <span style='color:{color_estado}; font-size: 18px; font-weight: bold;'>{op.estado.upper()}</span> {entregado_info} <br><b>FACTURACIÓN:</b> <span style='color:{color_fac}; font-weight: bold;'>{fac_str}</span> <br><b>DESTINATARIO:</b> {op.destinatario} ({op.localidad}) <br><b>CHOFER:</b> {op.chofer_asignado or 'Sin Asignar'} <br><b>📦 BULTOS / CARGA:</b> <span style='color:#d32f2f; font-weight:bold; font-size:15px;'>{texto_bultos}</span> <br><b>SERVICIO:</b> {op.tipo_servicio} <br><b>PESO TOTAL:</b> {op.peso} Kg</div>"
+        info_txt = f"""
+        <div style='background-color: {bg_color}; padding: 8px;'>
+            <table width='100%'>
+                <tr>
+                    <td width='50%'>
+                        <b>GUÍA / REMITO:</b> <span style='font-size:16px;'>{op.guia_remito}</span><br>
+                        <b>ESTADO ACTUAL:</b> <span style='color:{color_estado}; font-size: 16px; font-weight: bold;'>{op.estado.upper()}</span> {entregado_info}<br>
+                        <b>PROVEEDOR:</b> <span style='color:#0d6efd; font-weight:bold;'>{op.proveedor}</span><br>
+                        <b>FACTURADO:</b> <span style='color:{color_fac}; font-weight: bold;'>{fac_str}</span> | <b>CONTROLADA:</b> <span style='color:{color_ctrl}; font-weight: bold;'>{ctrl_str}</span>
+                    </td>
+                    <td width='50%'>
+                        <b>DESTINATARIO:</b> {op.destinatario} ({op.localidad})<br>
+                        <b>CHOFER:</b> {op.chofer_asignado or 'Sin Asignar'}<br>
+                        <b>📦 BULTOS:</b> <span style='color:#d32f2f; font-weight:bold;'>{texto_bultos}</span><br>
+                        <b>PESO:</b> {op.peso or 0} Kg
+                    </td>
+                </tr>
+            </table>
+        </div>
+        """
         self.lbl_info.setText(info_txt)
-        self.tabla.setRowCount(0)
         
-        for r, m in enumerate(movs): 
-            self.tabla.insertRow(r)
-            self.tabla.setItem(r, 0, QTableWidgetItem(m.fecha_hora.strftime("%d/%m/%Y %H:%M")))
-            self.tabla.setItem(r, 1, QTableWidgetItem(m.usuario))
-            self.tabla.setItem(r, 2, QTableWidgetItem(m.accion))
+        self.tabla_cli.setRowCount(0)
+        self.tabla_aud.setRowCount(0)
+        
+        # Filtramos qué va a qué tabla
+        row_cli = 0; row_aud = 0
+        for m in movs: 
+            accion = m.accion.upper()
+            es_auditoria_pura = "CONTROL" in accion or "EDICIÓN" in accion or "FACTURACIÓN" in accion
             
-            detalle_texto = m.detalle or ""
-            if "| GPS:" in detalle_texto:
-                try:
-                    partes = detalle_texto.split("| GPS:")
-                    base_texto = partes[0].strip()
-                    link = partes[1].strip()
-                    lbl = QLabel(f'{base_texto} <a href="{link}" style="color:#d32f2f; text-decoration:none; font-weight:bold; font-size:14px;">📍 VER MAPA</a>')
-                    lbl.setAlignment(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft)
-                    lbl.setOpenExternalLinks(True)
-                    self.tabla.setCellWidget(r, 3, lbl)
-                except:
-                    self.tabla.setItem(r, 3, QTableWidgetItem(detalle_texto))
-            else:
-                self.tabla.setItem(r, 3, QTableWidgetItem(detalle_texto))
+            # Llenar Auditoría (Acá va TODO)
+            self.tabla_aud.insertRow(row_aud)
+            self.tabla_aud.setItem(row_aud, 0, QTableWidgetItem(m.fecha_hora.strftime("%d/%m/%y %H:%M:%S")))
+            self.tabla_aud.setItem(row_aud, 1, QTableWidgetItem(m.usuario))
+            it_acc = QTableWidgetItem(m.accion)
+            if es_auditoria_pura: it_acc.setForeground(QColor("purple")); it_acc.setFont(QFont("Arial", 9, QFont.Weight.Bold))
+            self.tabla_aud.setItem(row_aud, 2, it_acc)
+            self.tabla_aud.setItem(row_aud, 3, QTableWidgetItem(m.detalle or ""))
+            row_aud += 1
+            
+            # Llenar Tracking Físico (Omitimos cosas de facturación/edición)
+            if not es_auditoria_pura:
+                self.tabla_cli.insertRow(row_cli)
+                self.tabla_cli.setItem(row_cli, 0, QTableWidgetItem(m.fecha_hora.strftime("%d/%m/%Y %H:%M")))
+                self.tabla_cli.setItem(row_cli, 1, QTableWidgetItem(m.usuario))
+                self.tabla_cli.setItem(row_cli, 2, QTableWidgetItem(m.accion))
+                
+                det_str = m.detalle or ""
+                if "| GPS:" in det_str:
+                    try:
+                        base_txt = det_str.split("| GPS:")[0].strip()
+                        link = det_str.split("| GPS:")[1].strip()
+                        lbl = QLabel(f'{base_txt} <a href="{link}" style="color:#d32f2f; text-decoration:none; font-weight:bold;">📍 VER MAPA</a>')
+                        lbl.setOpenExternalLinks(True)
+                        self.tabla_cli.setCellWidget(row_cli, 3, lbl)
+                    except: self.tabla_cli.setItem(row_cli, 3, QTableWidgetItem(det_str))
+                else:
+                    self.tabla_cli.setItem(row_cli, 3, QTableWidgetItem(det_str))
+                row_cli += 1
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
