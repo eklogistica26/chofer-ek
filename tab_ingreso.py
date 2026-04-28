@@ -73,7 +73,7 @@ class TabIngreso(QWidget):
         
         self.in_fecha = QDateEdit(QDate.currentDate())
         self.in_fecha.setCalendarPopup(True)
-        self.in_fecha.setEnabled(getattr(self.main.usuario, 'es_admin_total', False))
+        self.in_fecha.setEnabled(self.main.usuario.es_admin_total or self.main.usuario.username.lower() == "gaston")
         self.in_fecha.dateChanged.connect(self.cargar_movimientos_dia)
         
         self.lbl_guia = QLabel("Guía / Remito:"); self.in_guia = QLineEdit()
