@@ -708,7 +708,7 @@ class TabFacturacion(QWidget):
                 (Operacion.facturado == False) | (Operacion.facturado == None), 
                 Operacion.estado.in_([Estados.ENTREGADO, Estados.DEVUELTO_ORIGEN])
             )
-
+            
             if self.filtro_control.currentText() == "Pendientes de Control":
                 query = query.filter((Operacion.controlada == False) | (Operacion.controlada == None))
             elif self.filtro_control.currentText() == "Controladas":
@@ -800,7 +800,6 @@ class TabFacturacion(QWidget):
                     
                 self.tabla_cierre.setItem(row, 8, QTableWidgetItem(estado_txt))
                 
-                # 🔥 LA CURA: RESPETA LA EDICIÓN MANUAL 🔥
                 if op.guia_remito == "CARGO-FIJO" or (op.tipo_servicio and "Flete" in op.tipo_servicio): 
                     precio_base = op.monto_servicio or 0.0
                     monto_finde_db = getattr(op, 'monto_finde', 0.0) or 0.0
@@ -815,7 +814,6 @@ class TabFacturacion(QWidget):
                         op.monto_contingencia = 0.0
                         hubo_reparacion = True
                     
-                    # Solo auto-calcula recargos si la guía NUNCA fue calculada ($0)
                     if not op.monto_servicio or op.monto_servicio == 0.0:
                         if exento_extras:
                             op.monto_finde = 0.0
