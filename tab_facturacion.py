@@ -429,9 +429,11 @@ class TabFacturacion(QWidget):
         try:
             self.tabla_papeles.setRowCount(0)
             query = self.main.session.query(Operacion).filter(
-                Operacion.estado.ilike('ENTREGADO'), 
+                Operacion.estado.in_([Estados.ENTREGADO, Estados.DEVUELTO_ORIGEN]), 
                 Operacion.facturado == True, 
-                (Operacion.papel_enviado == False) | (Operacion.papel_enviado == None),
+                (Operacion.papel_enviado == False) | (Operaciquery = self.main.session.query(Operacion).filter(
+                Operacion.estado.in_([Estados.ENTREGADO, Estados.DEVUELTO_ORIGEN]), 
+                Operacion.facturado == True,on.papel_enviado == None),
                 Operacion.proveedor == prov
             )
             query = query.order_by(Operacion.fecha_entrega.desc().nullslast())
@@ -482,34 +484,37 @@ class TabFacturacion(QWidget):
             except Exception as e:
                 self.main.session.rollback(); QMessageBox.critical(self, "Error", str(e))
 
-    def alternar_control(self, id_op):
+    def alternar_control(self, id_op, fila_tabla):
         try:
             op = self.main.session.query(Operacion).get(id_op)
             if op:
                 estado_actual = getattr(op, 'controlada', False)
                 op.controlada = not estado_actual
+                
+                # 🔥 INYECTOR DE AUDITORÍA INVISIBLE 🔥
+                txt_auditoria = "CONTROL / VALIDACIÓN" if op.controlada else "REVERSIÓN DE CONTROL"
+                txt_detalle = "Se marcó la guía como controlada en Facturación" if op.controlada else "Se quitó la marca de control en Facturación"
+                self.main.log_movimiento(op, txt_auditoria, txt_detalle)
+                
                 self.main.session.commit()
                 
-                # 🔥 BÚSQUEDA BLINDADA DEL ITEM EN PANTALLA 🔥
-                for r in range(self.tabla_cierre.rowCount()):
-                    it = self.tabla_cierre.item(r, 0)
-                    if it and it.data(Qt.ItemDataRole.UserRole) == id_op:
-                        text_color = "#006400" if op.controlada else "#000000"
-                        font_weight = QFont.Weight.Bold if op.controlada else QFont.Weight.Normal
-                        for col_idx in range(14): 
-                            cell_it = self.tabla_cierre.item(r, col_idx)
-                            if cell_it: 
-                                cell_it.setForeground(QBrush(QColor(text_color)))
-                                font = cell_it.font(); font.setWeight(font_weight); cell_it.setFont(font)
-                                
-                        btn_widget = self.tabla_cierre.cellWidget(r, 13)
-                        if btn_widget:
-                            btn_validar = btn_widget.findChildren(QPushButton)[0] 
-                            btn_validar.setText("❌ Revertir" if op.controlada else "✔️ Validar")
-                            color_btn = "#6c757d" if op.controlada else "#198754"
-                            btn_validar.setStyleSheet(f"background-color: {color_btn} !important; color: white !important; font-size: 11px; font-weight: bold; padding: 4px;")
-                        break
+                # 🔥 ACTUALIZACIÓN EN VIVO (Sin recargar toda la tabla) 🔥
+                text_color = "#006400" if op.controlada else "#000000"
+                font_weight = QFont.Weight.Bold if op.controlada else QFont.Weight.Normal
+                
+                for col_idx in range(14): 
+                    it = self.tabla_cierre.item(fila_tabla, col_idx)
+                    if it: 
+                        it.setForeground(QBrush(QColor(text_color)))
+                        font = it.font(); font.setWeight(font_weight); it.setFont(font)
                         
+                btn_widget = self.tabla_cierre.cellWidget(fila_tabla, 13)
+                if btn_widget:
+                    btn_validar = btn_widget.findChildren(QPushButton)[0] 
+                    btn_validar.setText("❌ Revertir" if op.controlada else "✔️ Validar")
+                    color_btn = "#6c757d" if op.controlada else "#198754"
+                    btn_validar.setStyleSheet(f"background-color: {color_btn} !important; color: white !important; font-size: 11px; font-weight: bold; padding: 4px;")
+                    
         except Exception as e:
             self.main.session.rollback()
 
@@ -639,6 +644,7 @@ class TabFacturacion(QWidget):
                 op.monto_espera = dlg.in_doble_visita.value()
                 op.monto_servicio = dlg.precio_final 
                 
+                self.main.log_movimiento(op, "EDICIÓN DE FACTURACIÓN", f"Precio ajustado a ${dlg.precio_final}")
                 self.main.session.commit()
                 
                 # Buscamos la fila visual correcta usando el RASTREADOR INVISIBLE
@@ -699,7 +705,7 @@ class TabFacturacion(QWidget):
                 func.date(fecha_ref) >= start_date, 
                 func.date(fecha_ref) <= end_date, 
                 (Operacion.facturado == False) | (Operacion.facturado == None), 
-                Operacion.estado.ilike('ENTREGADO')
+                Operacion.estado.in_([Estados.ENTREGADO, Estados.DEVUELTO_ORIGEN])
             )
             
             if self.filtro_control.currentText() == "Pendientes de Control":

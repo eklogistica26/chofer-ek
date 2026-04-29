@@ -150,10 +150,14 @@ class TabRendicion(QWidget):
         top = QHBoxLayout()
         btn_mark = QPushButton("☑️ Todo"); btn_mark.clicked.connect(lambda: self.main.toggle_seleccion_todo(self.tabla_rendicion)); 
         btn_confirmar = QPushButton("✅ CONFIRMAR ENTREGAS"); btn_confirmar.clicked.connect(self.confirmar_entrega_rendicion)
+        
+        # 🔥 NUEVO BOTÓN DE DEVOLUCIÓN 🔥
+        btn_devolver = QPushButton("🔙 DEVUELTO A ORIGEN"); btn_devolver.setStyleSheet("background-color: #fd7e14; color: white; font-weight: bold; padding: 6px;"); btn_devolver.clicked.connect(self.confirmar_devolucion)
+        
         btn_pendiente = QPushButton("📅 REPROGRAMAR"); btn_pendiente.clicked.connect(self.marcar_pendiente_masivo); 
         btn_ref = QPushButton("🔄 Actualizar"); btn_ref.clicked.connect(self.cargar_rendicion)
         
-        top.addWidget(QLabel("<b>GUIAS EN REPARTO:</b>")); top.addStretch(); top.addWidget(btn_mark); top.addWidget(btn_confirmar); top.addWidget(btn_pendiente); top.addWidget(btn_ref)
+        top.addWidget(QLabel("<b>GUIAS EN REPARTO:</b>")); top.addStretch(); top.addWidget(btn_mark); top.addWidget(btn_confirmar); top.addWidget(btn_devolver); top.addWidget(btn_pendiente); top.addWidget(btn_ref)
         admin_bar = QHBoxLayout(); 
         btn_deshacer = QPushButton("↩️ DESHACER (Admin)"); btn_deshacer.clicked.connect(self.deshacer_estado)
         if not getattr(self.main.usuario, 'es_admin_total', False): btn_deshacer.hide()
@@ -355,6 +359,29 @@ class TabRendicion(QWidget):
         except Exception: self.main.session.rollback()
         finally: self.tabla_rendicion.blockSignals(False)
         
+    def confirmar_devolucion(self):
+        ids = []
+        for r in range(self.tabla_rendicion.rowCount()):
+            if self.tabla_rendicion.item(r, 1).checkState() == Qt.CheckState.Checked: ids.append(int(self.tabla_rendicion.item(r, 0).text()))
+        if not ids: QMessageBox.warning(self, "Atención", "Seleccione guías para marcar como Devueltas a Origen."); return
+        
+        reply = QMessageBox.question(self, "Confirmar Devolución", f"¿Marcar {len(ids)} guías como DEVUELTO A ORIGEN?\n(Se facturarán igual que un entregado).", QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+        if reply != QMessageBox.StandardButton.Yes: return
+        
+        try:
+            ops = self.main.session.query(Operacion).filter(Operacion.id.in_(ids)).all()
+            for op in ops:
+                op.estado = Estados.DEVUELTO_ORIGEN
+                op.fecha_entrega = datetime.now()
+                self.main.log_movimiento(op, "DEVOLUCION ORIGEN", "Logística Inversa - Retorno al Cliente")
+            self.main.session.commit()
+            QMessageBox.information(self, "Éxito", f"{len(ids)} guías marcadas como Devueltas.")
+            self.cargar_rendicion()
+            if hasattr(self.main, 'cargar_monitor_global'): self.main.cargar_monitor_global()
+        except Exception as e: 
+            self.main.session.rollback()
+            QMessageBox.warning(self, "Error", f"Fallo al actualizar: {e}")
+
     def confirmar_entrega_rendicion(self):
         ids = []
         for r in range(self.tabla_rendicion.rowCount()):

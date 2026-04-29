@@ -443,6 +443,7 @@ class PlataformaLogistica(QMainWindow):
                 estado_visual = op.estado; bg_color = QColor("#ffffff"); txt_color_main = QColor("#000000") 
                 if op.estado == Estados.ENTREGADO: bg_color = QColor("#d4edda"); txt_color_estado = QColor("#155724")
                 elif op.estado == Estados.EN_REPARTO: bg_color = QColor("#fff3cd"); txt_color_estado = QColor("#856404")
+                elif op.estado == Estados.DEVUELTO_ORIGEN: bg_color = QColor("#ffe8d6"); txt_color_estado = QColor("#fd7e14")
                 elif (op.estado or "").upper() in estados_deposito:
                     if op.id in reprogramados_set: bg_color = QColor("#e2d9f3"); txt_color_estado = QColor("#4b0082"); estado_visual = "REPROGRAMADO"
                     else: bg_color = QColor("#e3f2fd"); txt_color_estado = QColor("#0c5460"); estado_visual = "EN DEPOSITO"
@@ -1336,6 +1337,7 @@ class TrackingDialog(QDialog):
         color_estado = "blue"; bg_color = "#e7f1ff"
         if op.estado == Estados.ENTREGADO: color_estado = "#198754"; bg_color = "#d1e7dd"
         elif op.estado == Estados.EN_REPARTO: color_estado = "#856404"; bg_color = "#fff3cd"
+        elif op.estado == Estados.DEVUELTO_ORIGEN: color_estado = "#fd7e14"; bg_color = "#ffe8d6"
         
         if op.proveedor and op.proveedor.lower() == "jetpaq":
             fac_str = "USO INTERNO"; color_fac = "gray"
