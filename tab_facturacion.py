@@ -431,9 +431,7 @@ class TabFacturacion(QWidget):
             query = self.main.session.query(Operacion).filter(
                 Operacion.estado.in_([Estados.ENTREGADO, Estados.DEVUELTO_ORIGEN]), 
                 Operacion.facturado == True, 
-                (Operacion.papel_enviado == False) | (Operaciquery = self.main.session.query(Operacion).filter(
-                Operacion.estado.in_([Estados.ENTREGADO, Estados.DEVUELTO_ORIGEN]), 
-                Operacion.facturado == True,on.papel_enviado == None),
+                (Operacion.papel_enviado == False) | (Operacion.papel_enviado == None),
                 Operacion.proveedor == prov
             )
 
