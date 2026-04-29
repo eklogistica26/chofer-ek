@@ -436,6 +436,7 @@ class TabFacturacion(QWidget):
                 Operacion.facturado == True,on.papel_enviado == None),
                 Operacion.proveedor == prov
             )
+
             query = query.order_by(Operacion.fecha_entrega.desc().nullslast())
             self.resultados_papeles = query.all()
             self.mapa_filas_papeles = {}
@@ -707,7 +708,7 @@ class TabFacturacion(QWidget):
                 (Operacion.facturado == False) | (Operacion.facturado == None), 
                 Operacion.estado.in_([Estados.ENTREGADO, Estados.DEVUELTO_ORIGEN])
             )
-            
+
             if self.filtro_control.currentText() == "Pendientes de Control":
                 query = query.filter((Operacion.controlada == False) | (Operacion.controlada == None))
             elif self.filtro_control.currentText() == "Controladas":
