@@ -73,7 +73,9 @@ class TabIngreso(QWidget):
         
         self.in_fecha = QDateEdit(QDate.currentDate())
         self.in_fecha.setCalendarPopup(True)
-        self.in_fecha.setEnabled(self.main.usuario.es_admin_total or self.main.usuario.username.lower() == "gaston")
+        # 🔥 LISTA VIP: Agregá acá los nombres de los que pueden cambiar la fecha 🔥
+        usuarios_permitidos = ["gaston", "angel"]
+        self.in_fecha.setEnabled(self.main.usuario.es_admin_total or self.main.usuario.username.lower() in usuarios_permitidos)
         self.in_fecha.dateChanged.connect(self.cargar_movimientos_dia)
         
         self.lbl_guia = QLabel("Guía / Remito:"); self.in_guia = QLineEdit()
