@@ -422,7 +422,10 @@ class PlataformaLogistica(QMainWindow):
             
             if chofer_sel != "Todos": query = query.filter(Operacion.chofer_asignado == chofer_sel)
             ops = query.order_by(Operacion.id.desc()).all()
-            if not ops: self.tabla_monitor.setUpdatesEnabled(True); self.tabla_monitor.blockSignals(False); return
+            if not ops: 
+                if hasattr(self, 'lbl_mini_dash'): self.lbl_mini_dash.setText("<span style='color: #6c757d;'>No hay guías para la fecha seleccionada.</span>")
+                self.tabla_monitor.setUpdatesEnabled(True); self.tabla_monitor.blockSignals(False); return
+                
             all_op_ids = [op.id for op in ops]; estados_deposito = ["EN DEPOSITO", "EN DEPÓSITO"]
             op_ids_deposito = [op.id for op in ops if (op.estado or "").upper() in estados_deposito]
             reprogramados_set = set()
@@ -434,16 +437,15 @@ class PlataformaLogistica(QMainWindow):
                 gps_records = self.session.query(Historial.operacion_id, Historial.detalle).filter(Historial.operacion_id.in_(all_op_ids), Historial.detalle.like('%| GPS:%')).order_by(Historial.id.asc()).all()
                 for op_id, detalle in gps_records: gps_dict[op_id] = detalle 
                     
-            # Variables para el Mini-Dashboard
-            c_estados = {}
-            c_tipos = {"Entregas": 0, "Retiros": 0, "Fletes": 0}
-            c_choferes = {}
+            c_estados = {}; c_tipos = {"Entregas": 0, "Retiros": 0, "Fletes": 0}; c_choferes = {}
                     
             for r, op in enumerate(ops):
-                estado_visual = op.estado; bg_color = QColor("#ffffff"); txt_color_main = QColor("#000000") 
-                if op.estado == Estados.ENTREGADO: bg_color = QColor("#d4edda"); txt_color_estado = QColor("#155724")
-                elif op.estado == Estados.EN_REPARTO: bg_color = QColor("#fff3cd"); txt_color_estado = QColor("#856404")
-                elif op.estado == Estados.DEVUELTO_ORIGEN: bg_color = QColor("#ffe8d6"); txt_color_estado = QColor("#fd7e14")
+                estado_visual = op.estado; bg_color = QColor("#ffffff"); txt_color_main = QColor("#000000"); txt_color_estado = QColor("#000000") 
+                
+                # 🔥 LÓGICA DE COLORES BLINDADA 🔥
+                if op.estado == getattr(Estados, 'ENTREGADO', 'ENTREGADO'): bg_color = QColor("#d4edda"); txt_color_estado = QColor("#155724")
+                elif op.estado == getattr(Estados, 'EN_REPARTO', 'EN REPARTO'): bg_color = QColor("#fff3cd"); txt_color_estado = QColor("#856404")
+                elif op.estado == getattr(Estados, 'DEVUELTO_ORIGEN', 'DEVUELTO A ORIGEN'): bg_color = QColor("#ffe8d6"); txt_color_estado = QColor("#fd7e14")
                 elif (op.estado or "").upper() in estados_deposito:
                     if op.id in reprogramados_set: bg_color = QColor("#e2d9f3"); txt_color_estado = QColor("#4b0082"); estado_visual = "REPROGRAMADO"
                     else: bg_color = QColor("#e3f2fd"); txt_color_estado = QColor("#0c5460"); estado_visual = "EN DEPOSITO"
@@ -453,9 +455,7 @@ class PlataformaLogistica(QMainWindow):
                     elif self.filtro_monitor == "EN DEPOSITO" and estado_visual != "EN DEPOSITO": continue
                     elif self.filtro_monitor not in ["REPROGRAMADO", "EN DEPOSITO"] and op.estado != self.filtro_monitor: continue
                 
-                # Sumatorias para el Mini-Dashboard
                 c_estados[estado_visual] = c_estados.get(estado_visual, 0) + 1
-                
                 t_serv = op.tipo_servicio or ""
                 if "Retiro" in t_serv: c_tipos["Retiros"] += 1
                 elif "Flete" in t_serv: c_tipos["Fletes"] += 1
@@ -492,41 +492,21 @@ class PlataformaLogistica(QMainWindow):
                         it.setBackground(brush_bg)
                         if col_idx == 0: font = QFont(); font.setBold(True); it.setFont(font); it.setForeground(txt_color_estado)
                         else: it.setForeground(txt_color_main)
-            # 🔥 CONSTRUIR Y ACTUALIZAR EL MINI-DASHBOARD 🔥
-            # Formateamos como listas verticales con viñetas
+                        
             txt_est = "<br>".join([f"&nbsp;&nbsp;• {k}: <b>{v}</b>" for k, v in sorted(c_estados.items(), key=lambda x: x[1], reverse=True)])
-            
             txt_tipos = f"&nbsp;&nbsp;• Entregas: <b>{c_tipos['Entregas']}</b><br>&nbsp;&nbsp;• Retiros: <b>{c_tipos['Retiros']}</b>"
             if c_tipos['Fletes'] > 0: txt_tipos += f"<br>&nbsp;&nbsp;• Fletes: <b>{c_tipos['Fletes']}</b>"
-            
             txt_chof = "<br>".join([f"&nbsp;&nbsp;• {k}: <b>{v}</b>" for k, v in sorted(c_choferes.items(), key=lambda x: x[1], reverse=True)])
             
             if not ops:
                 dash_html = "<span style='color: #6c757d;'>No hay guías para la fecha seleccionada.</span>"
             else:
-                dash_html = f"""
-                <div style='color: #333; font-family: sans-serif; font-size: 13px; line-height: 1.6;'>
-                    <table width='100%' style='margin: 0; padding: 0;'>
-                        <tr>
-                            <td width='33%' valign='top'>
-                                <b>ESTADOS</b><br>{txt_est}
-                            </td>
-                            <td width='33%' valign='top' style='border-left: 1px solid #ccc; padding-left: 15px;'>
-                                <b>TIPOS DE SERVICIO</b><br>{txt_tipos}
-                            </td>
-                            <td width='33%' valign='top' style='border-left: 1px solid #ccc; padding-left: 15px;'>
-                                <b>TOP CHOFERES</b><br>{txt_chof}
-                            </td>
-                        </tr>
-                    </table>
-                </div>
-                """
+                dash_html = f"<div style='color: #333; font-family: sans-serif; font-size: 13px; line-height: 1.6;'><table width='100%' style='margin: 0; padding: 0;'><tr><td width='33%' valign='top'><b>ESTADOS</b><br>{txt_est}</td><td width='33%' valign='top' style='border-left: 1px solid #ccc; padding-left: 15px;'><b>TIPOS DE SERVICIO</b><br>{txt_tipos}</td><td width='33%' valign='top' style='border-left: 1px solid #ccc; padding-left: 15px;'><b>TOP CHOFERES</b><br>{txt_chof}</td></tr></table></div>"
             
-            if hasattr(self, 'lbl_mini_dash'):
-                self.lbl_mini_dash.setText(dash_html)
-
+            if hasattr(self, 'lbl_mini_dash'): self.lbl_mini_dash.setText(dash_html)
             self.tabla_monitor.setUpdatesEnabled(True); self.tabla_monitor.blockSignals(False)
-        except Exception: 
+        except Exception as e: 
+            print(f"Error en monitor: {e}")
             self.session.rollback()
             self.tabla_monitor.setUpdatesEnabled(True); self.tabla_monitor.blockSignals(False)
     def setup_ruta(self):
