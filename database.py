@@ -219,3 +219,43 @@ class Mantenimiento(Base):
     taller_proveedor = Column(String(100))
     detalle = Column(String(255)) 
     vehiculo = relationship("Vehiculo", back_populates="mantenimientos")
+
+# ==========================================
+# MÓDULOS DE FLOTA Y MANTENIMIENTO AVANZADO
+# ==========================================
+
+class FlotaVehiculo(Base):
+    __tablename__ = 'flota_vehiculos'
+    id = Column(Integer, primary_key=True)
+    sucursal = Column(String(50), nullable=False)
+    patente = Column(String(15), unique=True, nullable=False)
+    marca = Column(String(50))
+    modelo = Column(String(50))
+    anio = Column(Integer)
+    numero_chasis = Column(String(100))
+    numero_motor = Column(String(100))
+    tipo_vehiculo = Column(String(50))
+    chofer_habitual = Column(String(100))
+    kilometraje_actual = Column(Numeric(10,1), default=0)
+    activo = Column(Boolean, default=True)
+    notas_generales = Column(Text)
+
+class FlotaVencimiento(Base):
+    __tablename__ = 'flota_vencimientos'
+    id = Column(Integer, primary_key=True)
+    vehiculo_id = Column(Integer, ForeignKey('flota_vehiculos.id', ondelete='CASCADE'))
+    fecha_rto = Column(Date)
+    fecha_seguro = Column(Date)
+    fecha_matafuegos = Column(Date)
+    fecha_ruta = Column(Date)
+    km_proximo_service = Column(Numeric(10,1))
+
+class FlotaHistorial(Base):
+    __tablename__ = 'flota_historial'
+    id = Column(Integer, primary_key=True)
+    vehiculo_id = Column(Integer, ForeignKey('flota_vehiculos.id', ondelete='CASCADE'))
+    fecha_hora = Column(DateTime, default=datetime.now)
+    usuario_o_chofer = Column(String(100), nullable=False)
+    tipo_evento = Column(String(50), nullable=False)
+    kilometraje_momento = Column(Numeric(10,1))
+    detalle_tecnico = Column(Text)
