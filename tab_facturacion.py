@@ -866,7 +866,7 @@ class TabFacturacion(QWidget):
                 btn_validar = QPushButton("✔️ Validar" if not esta_controlada else "❌ Revertir")
                 color_btn = "#198754" if not esta_controlada else "#6c757d"
                 btn_validar.setStyleSheet(f"background-color: {color_btn} !important; color: white !important; font-size: 11px; font-weight: bold; padding: 4px;")
-                btn_validar.clicked.connect(lambda checked, id_o=op.id: self.alternar_control(id_o))
+                btn_validar.clicked.connect(lambda checked, id_o=op.id, r=row: self.alternar_control(id_o, r))
                 lay_acc.addWidget(btn_validar)
                 
                 btn_ajuste = QPushButton("✏️ Editar"); btn_ajuste.setStyleSheet("background-color: #0d6efd !important; color: white !important; font-size: 11px; font-weight: bold; padding: 4px;")
