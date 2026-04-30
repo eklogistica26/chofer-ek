@@ -422,6 +422,17 @@ class PlataformaLogistica(QMainWindow):
             
             if chofer_sel != "Todos": query = query.filter(Operacion.chofer_asignado == chofer_sel)
             ops = query.order_by(Operacion.id.desc()).all()
+            
+            # 🔥 CORTAFUEGOS ANTI-FANTASMAS 🔥
+            # Evita que las guías entregadas ayer aparezcan hoy por culpa de una edición en facturación
+            ops_limpias = []
+            for op in ops:
+                if op.estado in [getattr(Estados, 'ENTREGADO', 'ENTREGADO'), getattr(Estados, 'DEVUELTO_ORIGEN', 'DEVUELTO A ORIGEN')] and op.fecha_entrega:
+                    if op.fecha_entrega.date() < fecha_sel:
+                        continue # Es historia vieja, la saltamos
+                ops_limpias.append(op)
+            ops = ops_limpias
+
             if not ops: 
                 if hasattr(self, 'lbl_mini_dash'): self.lbl_mini_dash.setText("<span style='color: #6c757d;'>No hay guías para la fecha seleccionada.</span>")
                 self.tabla_monitor.setUpdatesEnabled(True); self.tabla_monitor.blockSignals(False); return
