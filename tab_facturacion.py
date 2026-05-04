@@ -677,7 +677,13 @@ class TabFacturacion(QWidget):
             ).all()
             
             guias_db = set()
+            retiros_count = 0
+            
             for op in ops_db:
+                # Contamos cuántos retiros tiene la plataforma
+                if op.tipo_servicio and "Retiro" in op.tipo_servicio:
+                    retiros_count += 1
+                    
                 if op.guia_remito:
                     g_db_limpia = "".join(c for c in str(op.guia_remito) if c.isalnum())
                     guias_db.add(g_db_limpia)
@@ -685,11 +691,74 @@ class TabFacturacion(QWidget):
             faltan_en_plataforma = sorted(list(guias_excel - guias_db))
             sobran_en_plataforma = sorted(list(guias_db - guias_excel))
             
-            self.txt_faltan_db.setText("\n".join(faltan_en_plataforma) if faltan_en_plataforma else "¡Todo cargado!")
-            self.txt_sobran_db.setText("\n".join(sobran_en_plataforma) if sobran_en_plataforma else "Sin guías sobrantes.")
-            
             QApplication.restoreOverrideCursor()
-            self.main.toast.mostrar(f"Auditoría terminada: {len(faltan_en_plataforma)} faltantes.")
+            
+            # 🔥 DIÁLOGO MEJORADO CON IMPRESIÓN Y CONTEO DE RETIROS 🔥
+            dlg = QDialog(self)
+            dlg.setWindowTitle("🕵️ Auditoría de Carga - Control Interno")
+            dlg.resize(950, 650)
+            lay = QVBoxLayout(dlg)
+            
+            lbl_tit = QLabel(f"<h2 style='color:#0d6efd; margin:0;'>Auditoría de Carga en Plataforma</h2>"
+                             f"<b>Rango analizado:</b> {min_date.strftime('%d/%m/%Y')} al {max_date.strftime('%d/%m/%Y')}<br>"
+                             f"<b>Total Guías Excel:</b> {len(guias_excel)} | <b>Total Guías Plataforma:</b> {len(guias_db)}<br>"
+                             f"<span style='color:#d32f2f; font-size:15px;'><b>⚠️ RETIROS EN PLATAFORMA: {retiros_count}</b> (Si la cantidad de faltantes coincide con este número, son tus retiros)</span>")
+            lay.addWidget(lbl_tit)
+            
+            h_lay = QHBoxLayout()
+            
+            v_izq = QVBoxLayout()
+            v_izq.addWidget(QLabel(f"🔴 <b>FALTAN CARGAR EN EL SISTEMA ({len(faltan_en_plataforma)})</b>"))
+            text_izq = QTextBrowser()
+            text_izq.setText("\n".join(faltan_en_plataforma) if faltan_en_plataforma else "¡Todo cargado!")
+            text_izq.setStyleSheet("background-color: #f8d7da; color: #721c24; font-weight: bold; font-family: 'Consolas'; font-size: 15px;")
+            v_izq.addWidget(text_izq)
+            h_lay.addLayout(v_izq)
+            
+            v_der = QVBoxLayout()
+            v_der.addWidget(QLabel(f"🟡 <b>SOBRAN EN EL SISTEMA ({len(sobran_en_plataforma)})</b>"))
+            text_der = QTextBrowser()
+            text_der.setText("\n".join(sobran_en_plataforma) if sobran_en_plataforma else "Sin guías sobrantes.")
+            text_der.setStyleSheet("background-color: #fff3cd; color: #856404; font-weight: bold; font-family: 'Consolas'; font-size: 15px;")
+            v_der.addWidget(text_der)
+            h_lay.addLayout(v_der)
+            
+            lay.addLayout(h_lay)
+            
+            # --- BOTONERA ---
+            lay_btn = QHBoxLayout()
+            
+            btn_imprimir = QPushButton("🖨️ Exportar Faltantes (TXT)")
+            btn_imprimir.setStyleSheet("background-color: #17a2b8; color: white; padding: 10px; font-weight: bold; font-size: 14px; border-radius: 4px;")
+            
+            def exportar_txt():
+                import os
+                descargas_dir = os.path.join(os.path.expanduser('~'), 'Downloads')
+                ruta_txt = os.path.join(descargas_dir, f"Faltantes_DHL_{datetime.now().strftime('%d%m%Y_%H%M')}.txt")
+                with open(ruta_txt, "w") as f:
+                    f.write("=== REPORTE DE GUIAS FALTANTES EN PLATAFORMA ===\n")
+                    f.write(f"Rango: {min_date.strftime('%d/%m/%Y')} al {max_date.strftime('%d/%m/%Y')}\n")
+                    f.write(f"Retiros cargados sin guia en plataforma: {retiros_count}\n")
+                    f.write("-" * 50 + "\n")
+                    f.write("Las siguientes guias figuran en el Excel pero NO en tu sistema:\n\n")
+                    for guia in faltan_en_plataforma:
+                        f.write(f"{guia}\n")
+                os.startfile(ruta_txt)
+                
+            btn_imprimir.clicked.connect(exportar_txt)
+            lay_btn.addWidget(btn_imprimir)
+            
+            lay_btn.addStretch()
+            
+            btn_cerrar = QPushButton("Cerrar Reporte")
+            btn_cerrar.setStyleSheet("background-color: #6c757d; color: white; padding: 10px; font-weight: bold; font-size: 14px; border-radius: 4px;")
+            btn_cerrar.clicked.connect(dlg.accept)
+            lay_btn.addWidget(btn_cerrar)
+            
+            lay.addLayout(lay_btn)
+            
+            dlg.exec()
+            self.main.toast.mostrar(f"Auditoría terminada.")
         except Exception as e: 
             QApplication.restoreOverrideCursor()
             QMessageBox.critical(self, "Error", f"No se pudo procesar el Excel:\n{str(e)}")
