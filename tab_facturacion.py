@@ -297,123 +297,399 @@ class TabFacturacion(QWidget):
         try:
             op = self.main.session.query(Operacion).get(id_op)
             if not op: return
-            hist_records = self.main.session.query(Historial.accion).filter(Historial.operacion_id == id_op, Historial.accion.in_(['SALIDA A REPARTO', 'SALIDA A TERCERIZADO', 'DESHACER (ADMIN)', 'REPROGRAMADO (ADMIN)', 'REPROGRAMADO (OFICINA)'])).all(); visitas = 0
+            hist_records = self.main.session.query(Historial.accion).filter(
+                Historial.operacion_id == id_op, 
+                Historial.accion.in_(['SALIDA A REPARTO', 'SALIDA A TERCERIZADO', 'DESHACER (ADMIN)', 'REPROGRAMADO (ADMIN)', 'REPROGRAMADO (OFICINA)'])
+            ).all()
+            visitas = 0
             for (accion,) in hist_records:
                 if accion in ['SALIDA A REPARTO', 'SALIDA A TERCERIZADO']: visitas += 1
                 elif accion in ['DESHACER (ADMIN)', 'REPROGRAMADO (ADMIN)', 'REPROGRAMADO (OFICINA)']: visitas -= 1
-            visitas = max(1, visitas); dlg = AjusteAvanzadoFacturacionDialog(op, self.main, visitas, self) 
+            visitas = max(1, visitas)
+            
+            dlg = AjusteAvanzadoFacturacionDialog(op, self.main, visitas, self) 
             if dlg.exec() == QDialog.DialogCode.Accepted: 
-                op.guia_remito = dlg.in_guia.text().strip(); op.proveedor = dlg.in_prov.currentText().strip(); op.destinatario = dlg.in_dest.text().strip(); op.peso = dlg.in_peso.value(); qdate = dlg.in_fecha.date(); op.fecha_entrega = datetime(qdate.year(), qdate.month(), qdate.day(), 12, 0, 0); op.localidad = dlg.combo_zona.currentText(); op.bultos = dlg.in_bultos.value(); op.bultos_frio = dlg.in_frio.value(); op.monto_finde = dlg.in_finde.value(); op.monto_feriado = dlg.in_feriado.value(); op.monto_contingencia = dlg.in_contingencia.value(); op.monto_espera = dlg.in_doble_visita.value(); op.monto_servicio = dlg.precio_final; self.main.log_movimiento(op, \"EDICIÓN DE FACTURACIÓN\", f\"Precio ajustado a ${dlg.precio_final}\"); self.main.session.commit(); fila_actual = -1
+                op.guia_remito = dlg.in_guia.text().strip()
+                op.proveedor = dlg.in_prov.currentText().strip()
+                op.destinatario = dlg.in_dest.text().strip()
+                op.peso = dlg.in_peso.value()
+                qdate = dlg.in_fecha.date()
+                op.fecha_entrega = datetime(qdate.year(), qdate.month(), qdate.day(), 12, 0, 0)
+                op.localidad = dlg.combo_zona.currentText()
+                op.bultos = dlg.in_bultos.value()
+                op.bultos_frio = dlg.in_frio.value()
+                op.monto_finde = dlg.in_finde.value()
+                op.monto_feriado = dlg.in_feriado.value()
+                op.monto_contingencia = dlg.in_contingencia.value()
+                op.monto_espera = dlg.in_doble_visita.value()
+                op.monto_servicio = dlg.precio_final
+                
+                self.main.log_movimiento(op, "EDICIÓN DE FACTURACIÓN", f"Precio ajustado a ${dlg.precio_final}")
+                self.main.session.commit()
+                
+                fila_actual = -1
                 for r in range(self.tabla_cierre.rowCount()):
                     it = self.tabla_cierre.item(r, 0)
-                    if it and it.data(Qt.ItemDataRole.UserRole) == id_op: fila_actual = r; break
+                    if it and it.data(Qt.ItemDataRole.UserRole) == id_op: 
+                        fila_actual = r
+                        break
+                
                 if fila_actual != -1:
-                    m_finde = op.monto_finde or 0.0; m_feriado = op.monto_feriado or 0.0; m_esp = op.monto_espera or 0.0; m_cont = op.monto_contingencia or 0.0; m_serv = op.monto_servicio or 0.0; extras = m_finde + m_feriado + m_esp + m_cont; p_base = m_serv - extras; self.tabla_cierre.item(fila_actual, 4).setText(op.guia_remito or \"RET\"); self.tabla_cierre.item(fila_actual, 5).setText(op.destinatario or \"\"); self.tabla_cierre.item(fila_actual, 6).setText(op.localidad or \"\"); b_tot = int(op.bultos) if op.bultos else 1; b_fr = int(op.bultos_frio) if op.bultos_frio else 0; det_b = str(b_tot)
-                    if op.proveedor and \"DHL\" in op.proveedor.upper(): det_b = f\"{b_tot} B | {op.peso or 0} Kg\"
+                    m_finde = op.monto_finde or 0.0
+                    m_feriado = op.monto_feriado or 0.0
+                    m_esp = op.monto_espera or 0.0
+                    m_cont = op.monto_contingencia or 0.0
+                    m_serv = op.monto_servicio or 0.0
+                    extras = m_finde + m_feriado + m_esp + m_cont
+                    p_base = m_serv - extras
+                    
+                    self.tabla_cierre.item(fila_actual, 4).setText(op.guia_remito or "RET")
+                    self.tabla_cierre.item(fila_actual, 5).setText(op.destinatario or "")
+                    self.tabla_cierre.item(fila_actual, 6).setText(op.localidad or "")
+                    
+                    b_tot = int(op.bultos) if op.bultos else 1
+                    b_fr = int(op.bultos_frio) if op.bultos_frio else 0
+                    det_b = str(b_tot)
+                    if op.proveedor and "DHL" in op.proveedor.upper(): 
+                        det_b = f"{b_tot} B | {op.peso or 0} Kg"
                     else:
-                        if b_fr > 0 and b_fr < b_tot: det_b += f\" ({b_tot-b_fr}C/{b_fr}R)\"
-                        elif b_fr == b_tot: det_b += \" (R)\"
-                    self.tabla_cierre.item(fila_actual, 7).setText(det_b); self.tabla_cierre.item(fila_actual, 9).setText(f\"$ {p_base:,.2f}\"); self.tabla_cierre.item(fila_actual, 10).setText(f\"$ {(m_finde + m_feriado):,.2f}\"); self.tabla_cierre.item(fila_actual, 11).setText(f\"$ {(m_esp + m_cont):,.2f}\"); self.tabla_cierre.item(fila_actual, 12).setText(f\"$ {m_serv:,.2f}\"); self.recalcular_totales_seleccionados(); self.main.toast.mostrar(\"✅ Editado y recalculado al instante\")
-                else: self.calcular_cierre()
-        except Exception as e: self.main.session.rollback(); QMessageBox.critical(self, \"Error\", f\"Fallo al actualizar: {e}\")
+                        if b_fr > 0 and b_fr < b_tot: det_b += f" ({b_tot-b_fr}C/{b_fr}R)"
+                        elif b_fr == b_tot: det_b += " (R)"
+                    
+                    self.tabla_cierre.item(fila_actual, 7).setText(det_b)
+                    self.tabla_cierre.item(fila_actual, 9).setText(f"$ {p_base:,.2f}")
+                    self.tabla_cierre.item(fila_actual, 10).setText(f"$ {(m_finde + m_feriado):,.2f}")
+                    self.tabla_cierre.item(fila_actual, 11).setText(f"$ {(m_esp + m_cont):,.2f}")
+                    self.tabla_cierre.item(fila_actual, 12).setText(f"$ {m_serv:,.2f}")
+                    
+                    self.recalcular_totales_seleccionados()
+                    self.main.toast.mostrar("✅ Editado y recalculado al instante")
+                else: 
+                    self.calcular_cierre()
+        except Exception as e: 
+            self.main.session.rollback()
+            QMessageBox.critical(self, "Error", f"Fallo al actualizar: {e}")
 
     def calcular_cierre(self):
-        self.btn_c.setEnabled(False); self.tabla_cierre.blockSignals(True); self.tabla_cierre.setUpdatesEnabled(False); mes = self.cierre_mes.currentIndex() + 1; anio = self.cierre_anio.value(); prov = self.cierre_prov.currentText().strip(); sucursal = self.cierre_sucursal.currentText(); self.tabla_cierre.setRowCount(0)
+        self.btn_c.setEnabled(False)
+        self.tabla_cierre.blockSignals(True)
+        self.tabla_cierre.setUpdatesEnabled(False)
+        mes = self.cierre_mes.currentIndex() + 1
+        anio = self.cierre_anio.value()
+        prov = self.cierre_prov.currentText().strip()
+        sucursal = self.cierre_sucursal.currentText()
+        self.tabla_cierre.setRowCount(0)
         try:
-            _, last_day = calendar.monthrange(anio, mes); start_date = date(anio, mes, 1); end_date = date(anio, mes, last_day); fecha_ref = func.coalesce(Operacion.fecha_entrega, Operacion.fecha_ingreso); query = self.main.session.query(Operacion).filter(func.date(fecha_ref) >= start_date, func.date(fecha_ref) <= end_date, (Operacion.facturado == False) | (Operacion.facturado == None), Operacion.estado.in_([Estados.ENTREGADO, Estados.DEVUELTO_ORIGEN]))
-            if self.filtro_control.currentText() == \"Pendientes de Control\": query = query.filter((Operacion.controlada == False) | (Operacion.controlada == None))
-            elif self.filtro_control.currentText() == \"Controladas\": query = query.filter(Operacion.controlada == True)
-            if prov != \"Todos\" and prov != \"\": query = query.filter(Operacion.proveedor.ilike(prov))
-            else: query = query.filter(~Operacion.proveedor.ilike('JetPaq'))
-            if sucursal != \"Todas\": query = query.filter(Operacion.sucursal == sucursal)
-            query = query.order_by(Operacion.fecha_ingreso.asc()); self.resultados_cierre = query.all()
-            if not self.resultados_cierre: self.tabla_cierre.setRowCount(1); item_empty = QTableWidgetItem(\"❌ Sin guías entregadas para facturar (o ya validaste todo).\"); item_empty.setTextAlignment(Qt.AlignmentFlag.AlignCenter); self.tabla_cierre.setItem(0, 0, item_empty); self.tabla_cierre.setSpan(0, 0, 1, 14); self.lbl_resumen.setText(\"Total Base: $0 | Total Extras: $0 | TOTAL SELECCIONADO: $0\"); self.tabla_cierre.setUpdatesEnabled(True); self.btn_c.setEnabled(True); self.tabla_cierre.blockSignals(False); return
-            op_ids = [op.id for op in self.resultados_cierre]; conteo_repartos = {}
+            _, last_day = calendar.monthrange(anio, mes)
+            start_date = date(anio, mes, 1)
+            end_date = date(anio, mes, last_day)
+            fecha_ref = func.coalesce(Operacion.fecha_entrega, Operacion.fecha_ingreso)
+            
+            query = self.main.session.query(Operacion).filter(
+                func.date(fecha_ref) >= start_date, 
+                func.date(fecha_ref) <= end_date, 
+                (Operacion.facturado == False) | (Operacion.facturado == None), 
+                Operacion.estado.in_([Estados.ENTREGADO, Estados.DEVUELTO_ORIGEN])
+            )
+            
+            if self.filtro_control.currentText() == "Pendientes de Control": 
+                query = query.filter((Operacion.controlada == False) | (Operacion.controlada == None))
+            elif self.filtro_control.currentText() == "Controladas": 
+                query = query.filter(Operacion.controlada == True)
+                
+            if prov != "Todos" and prov != "": 
+                query = query.filter(Operacion.proveedor.ilike(prov))
+            else: 
+                query = query.filter(~Operacion.proveedor.ilike('JetPaq'))
+                
+            if sucursal != "Todas": 
+                query = query.filter(Operacion.sucursal == sucursal)
+                
+            query = query.order_by(Operacion.fecha_ingreso.asc())
+            self.resultados_cierre = query.all()
+            
+            if not self.resultados_cierre: 
+                self.tabla_cierre.setRowCount(1)
+                item_empty = QTableWidgetItem("❌ Sin guías entregadas para facturar (o ya validaste todo).")
+                item_empty.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                self.tabla_cierre.setItem(0, 0, item_empty)
+                self.tabla_cierre.setSpan(0, 0, 1, 14)
+                self.lbl_resumen.setText("Total Base: $0 | Total Extras: $0 | TOTAL SELECCIONADO: $0")
+                self.tabla_cierre.setUpdatesEnabled(True)
+                self.btn_c.setEnabled(True)
+                self.tabla_cierre.blockSignals(False)
+                return
+                
+            op_ids = [op.id for op in self.resultados_cierre]
+            conteo_repartos = {}
             if op_ids:
-                hist_records = self.main.session.query(Historial.operacion_id, Historial.accion).filter(Historial.operacion_id.in_(op_ids), Historial.accion.in_(['SALIDA A REPARTO', 'SALIDA A TERCERIZADO', 'DESHACER (ADMIN)', 'REPROGRAMADO (ADMIN)', 'REPROGRAMADO (OFICINA)'])).all()
+                hist_records = self.main.session.query(Historial.operacion_id, Historial.accion).filter(
+                    Historial.operacion_id.in_(op_ids), 
+                    Historial.accion.in_(['SALIDA A REPARTO', 'SALIDA A TERCERIZADO', 'DESHACER (ADMIN)', 'REPROGRAMADO (ADMIN)', 'REPROGRAMADO (OFICINA)'])
+                ).all()
                 for op_id, accion in hist_records:
                     if op_id not in conteo_repartos: conteo_repartos[op_id] = 0
                     if accion in ['SALIDA A REPARTO', 'SALIDA A TERCERIZADO']: conteo_repartos[op_id] += 1
                     elif accion in ['DESHACER (ADMIN)', 'REPROGRAMADO (ADMIN)', 'REPROGRAMADO (OFICINA)']: conteo_repartos[op_id] -= 1
-            self.mapa_filas_cierre = {}; total_ops = len(self.resultados_cierre); progreso = QProgressDialog(\"Preparando datos de facturación...\", None, 0, total_ops, self); progreso.setWindowTitle(\"⏳ Calculando Facturación\"); progreso.setWindowModality(Qt.WindowModality.WindowModal); progreso.setMinimumDuration(0); progreso.setValue(0); hubo_reparacion = False 
+                    
+            self.mapa_filas_cierre = {}
+            total_ops = len(self.resultados_cierre)
+            progreso = QProgressDialog("Preparando datos de facturación...", None, 0, total_ops, self)
+            progreso.setWindowTitle("⏳ Calculando Facturación")
+            progreso.setWindowModality(Qt.WindowModality.WindowModal)
+            progreso.setMinimumDuration(0)
+            progreso.setValue(0)
+            hubo_reparacion = False 
+            
             for row, op in enumerate(self.resultados_cierre):
-                if row % 2 == 0 or row == total_ops - 1: progreso.setLabelText(f\"Calculando tarifa: guía {row + 1} de {total_ops}...\"); progreso.setValue(row); QApplication.processEvents()
-                self.tabla_cierre.insertRow(row); self.mapa_filas_cierre[row] = op.id; chk = QTableWidgetItem(); chk.setFlags(Qt.ItemFlag.ItemIsUserCheckable | Qt.ItemFlag.ItemIsEnabled); chk.setCheckState(Qt.CheckState.Checked); chk.setData(Qt.ItemDataRole.UserRole, op.id); self.tabla_cierre.setItem(row, 0, chk); f_ingreso = op.fecha_ingreso.strftime(\"%d/%m/%Y\") if op.fecha_ingreso else \"-\"; f_entrega = op.fecha_entrega.strftime(\"%d/%m/%Y\") if op.fecha_entrega else \"-\"; self.tabla_cierre.setItem(row, 1, QTableWidgetItem(f_ingreso)); self.tabla_cierre.setItem(row, 2, QTableWidgetItem(f_entrega)); self.tabla_cierre.setItem(row, 3, QTableWidgetItem((op.sucursal or \"\").upper())); self.tabla_cierre.setItem(row, 4, QTableWidgetItem(op.guia_remito or \"RET\")); self.tabla_cierre.setItem(row, 5, QTableWidgetItem(op.destinatario or \"\")); self.tabla_cierre.setItem(row, 6, QTableWidgetItem(op.localidad or \"\")); bultos_tot = int(op.bultos) if op.bultos else 1; bultos_fr = int(op.bultos_frio) if op.bultos_frio else 0; det_b = str(bultos_tot); prov_upper = (op.proveedor or \"\").upper(); exento_extras = any(x in prov_upper for x in [\"DHL\", \"JETPAQ\", \"AMBIENTALES\"])
-                if \"DHL\" in prov_upper: det_b = f\"{bultos_tot} B | {op.peso or 0} Kg\"
+                if row % 2 == 0 or row == total_ops - 1: 
+                    progreso.setLabelText(f"Calculando tarifa: guía {row + 1} de {total_ops}...")
+                    progreso.setValue(row)
+                    QApplication.processEvents()
+                    
+                self.tabla_cierre.insertRow(row)
+                self.mapa_filas_cierre[row] = op.id
+                chk = QTableWidgetItem()
+                chk.setFlags(Qt.ItemFlag.ItemIsUserCheckable | Qt.ItemFlag.ItemIsEnabled)
+                chk.setCheckState(Qt.CheckState.Checked)
+                chk.setData(Qt.ItemDataRole.UserRole, op.id)
+                self.tabla_cierre.setItem(row, 0, chk)
+                
+                f_ingreso = op.fecha_ingreso.strftime("%d/%m/%Y") if op.fecha_ingreso else "-"
+                f_entrega = op.fecha_entrega.strftime("%d/%m/%Y") if op.fecha_entrega else "-"
+                
+                self.tabla_cierre.setItem(row, 1, QTableWidgetItem(f_ingreso))
+                self.tabla_cierre.setItem(row, 2, QTableWidgetItem(f_entrega))
+                self.tabla_cierre.setItem(row, 3, QTableWidgetItem((op.sucursal or "").upper()))
+                self.tabla_cierre.setItem(row, 4, QTableWidgetItem(op.guia_remito or "RET"))
+                self.tabla_cierre.setItem(row, 5, QTableWidgetItem(op.destinatario or ""))
+                self.tabla_cierre.setItem(row, 6, QTableWidgetItem(op.localidad or ""))
+                
+                bultos_tot = int(op.bultos) if op.bultos else 1
+                bultos_fr = int(op.bultos_frio) if op.bultos_frio else 0
+                det_b = str(bultos_tot)
+                prov_upper = (op.proveedor or "").upper()
+                exento_extras = any(x in prov_upper for x in ["DHL", "JETPAQ", "AMBIENTALES"])
+                
+                if "DHL" in prov_upper: 
+                    det_b = f"{bultos_tot} B | {op.peso or 0} Kg"
                 else:
-                    if bultos_fr > 0 and bultos_fr < bultos_tot: det_b += f\" ({bultos_tot-bultos_fr}C/{bultos_fr}R)\"
-                    elif bultos_fr == bultos_tot: det_b += \" (R)\"
-                self.tabla_cierre.setItem(row, 7, QTableWidgetItem(det_b)); fecha_para_billing = op.fecha_entrega if op.fecha_entrega else op.fecha_ingreso; es_finde = fecha_para_billing and fecha_para_billing.weekday() >= 5; visitas = max(1, conteo_repartos.get(op.id, 1)); estado_txt = f\"{op.estado} ({visitas} Visitas)\" if visitas > 1 else op.estado
-                if es_finde and not exento_extras: estado_txt = f\"🚨 GUARDIA FINDE | {estado_txt}\"
+                    if bultos_fr > 0 and bultos_fr < bultos_tot: det_b += f" ({bultos_tot-bultos_fr}C/{bultos_fr}R)"
+                    elif bultos_fr == bultos_tot: det_b += " (R)"
+                    
+                self.tabla_cierre.setItem(row, 7, QTableWidgetItem(det_b))
+                
+                fecha_para_billing = op.fecha_entrega if op.fecha_entrega else op.fecha_ingreso
+                es_finde = fecha_para_billing and fecha_para_billing.weekday() >= 5
+                visitas = max(1, conteo_repartos.get(op.id, 1))
+                estado_txt = f"{op.estado} ({visitas} Visitas)" if visitas > 1 else op.estado
+                
+                if es_finde and not exento_extras: 
+                    estado_txt = f"🚨 GUARDIA FINDE | {estado_txt}"
                 self.tabla_cierre.setItem(row, 8, QTableWidgetItem(estado_txt))
-                if op.guia_remito == \"CARGO-FIJO\" or (op.tipo_servicio and \"Flete\" in op.tipo_servicio): precio_base = op.monto_servicio or 0.0; monto_finde_db = getattr(op, 'monto_finde', 0.0) or 0.0; monto_feriado_db = getattr(op, 'monto_feriado', 0.0) or 0.0; monto_esp_db = getattr(op, 'monto_espera', 0.0) or 0.0; monto_cont_db = getattr(op, 'monto_contingencia', 0.0) or 0.0; monto_serv = precio_base + monto_finde_db + monto_feriado_db + monto_esp_db + monto_cont_db
+                
+                if op.guia_remito == "CARGO-FIJO" or (op.tipo_servicio and "Flete" in op.tipo_servicio): 
+                    precio_base = op.monto_servicio or 0.0
+                    monto_finde_db = getattr(op, 'monto_finde', 0.0) or 0.0
+                    monto_feriado_db = getattr(op, 'monto_feriado', 0.0) or 0.0
+                    monto_esp_db = getattr(op, 'monto_espera', 0.0) or 0.0
+                    monto_cont_db = getattr(op, 'monto_contingencia', 0.0) or 0.0
+                    monto_serv = precio_base + monto_finde_db + monto_feriado_db + monto_esp_db + monto_cont_db
                 else: 
                     precio_base_teorico = self.main.obtener_precio(op.localidad, bultos_tot-bultos_fr, bultos_fr, op.sucursal, op.proveedor, op.peso or 0.0, bultos_tot)
-                    if (bultos_tot <= 1 and bultos_fr == 0) and getattr(op, 'monto_contingencia', 0.0) > 0: op.monto_contingencia = 0.0; hubo_reparacion = True
+                    if (bultos_tot <= 1 and bultos_fr == 0) and getattr(op, 'monto_contingencia', 0.0) > 0: 
+                        op.monto_contingencia = 0.0
+                        hubo_reparacion = True
                     if not op.monto_servicio or op.monto_servicio == 0.0:
-                        if exento_extras: op.monto_finde = 0.0; op.monto_feriado = 0.0; op.monto_espera = 0.0
+                        if exento_extras: 
+                            op.monto_finde = 0.0
+                            op.monto_feriado = 0.0
+                            op.monto_espera = 0.0
                         else:
                             if es_finde: op.monto_finde = precio_base_teorico
                             if visitas > 1: op.monto_espera = precio_base_teorico * (visitas - 1)
                             else: op.monto_espera = 0.0
-                        monto_finde_db = getattr(op, 'monto_finde', 0.0) or 0.0; monto_feriado_db = getattr(op, 'monto_feriado', 0.0) or 0.0; monto_esp_db = getattr(op, 'monto_espera', 0.0) or 0.0; monto_cont_db = getattr(op, 'monto_contingencia', 0.0) or 0.0; op.monto_servicio = precio_base_teorico + monto_finde_db + monto_feriado_db + monto_esp_db + monto_cont_db; hubo_reparacion = True
-                    monto_finde_db = getattr(op, 'monto_finde', 0.0) or 0.0; monto_feriado_db = getattr(op, 'monto_feriado', 0.0) or 0.0; monto_esp_db = getattr(op, 'monto_espera', 0.0) or 0.0; monto_cont_db = getattr(op, 'monto_contingencia', 0.0) or 0.0; monto_serv = op.monto_servicio or 0.0; extras_calculados = monto_finde_db + monto_feriado_db + monto_esp_db + monto_cont_db; precio_base = monto_serv - extras_calculados
-                self.tabla_cierre.setItem(row, 9, QTableWidgetItem(f\"$ {precio_base:,.2f}\")); self.tabla_cierre.setItem(row, 10, QTableWidgetItem(f\"$ {(monto_finde_db + monto_feriado_db):,.2f}\")); self.tabla_cierre.setItem(row, 11, QTableWidgetItem(f\"$ {(monto_esp_db + monto_cont_db):,.2f}\")); self.tabla_cierre.setItem(row, 12, QTableWidgetItem(f\"$ {monto_serv:,.2f}\")); esta_controlada = getattr(op, 'controlada', False)
+                        monto_finde_db = getattr(op, 'monto_finde', 0.0) or 0.0
+                        monto_feriado_db = getattr(op, 'monto_feriado', 0.0) or 0.0
+                        monto_esp_db = getattr(op, 'monto_espera', 0.0) or 0.0
+                        monto_cont_db = getattr(op, 'monto_contingencia', 0.0) or 0.0
+                        op.monto_servicio = precio_base_teorico + monto_finde_db + monto_feriado_db + monto_esp_db + monto_cont_db
+                        hubo_reparacion = True
+                        
+                    monto_finde_db = getattr(op, 'monto_finde', 0.0) or 0.0
+                    monto_feriado_db = getattr(op, 'monto_feriado', 0.0) or 0.0
+                    monto_esp_db = getattr(op, 'monto_espera', 0.0) or 0.0
+                    monto_cont_db = getattr(op, 'monto_contingencia', 0.0) or 0.0
+                    monto_serv = op.monto_servicio or 0.0
+                    extras_calculados = monto_finde_db + monto_feriado_db + monto_esp_db + monto_cont_db
+                    precio_base = monto_serv - extras_calculados
+                    
+                self.tabla_cierre.setItem(row, 9, QTableWidgetItem(f"$ {precio_base:,.2f}"))
+                self.tabla_cierre.setItem(row, 10, QTableWidgetItem(f"$ {(monto_finde_db + monto_feriado_db):,.2f}"))
+                self.tabla_cierre.setItem(row, 11, QTableWidgetItem(f"$ {(monto_esp_db + monto_cont_db):,.2f}"))
+                self.tabla_cierre.setItem(row, 12, QTableWidgetItem(f"$ {monto_serv:,.2f}"))
+                
+                esta_controlada = getattr(op, 'controlada', False)
                 if esta_controlada:
-                    text_brush = QBrush(QColor(\"#006400\")) 
+                    text_brush = QBrush(QColor("#006400")) 
                     for col_idx in range(14): 
                         it = self.tabla_cierre.item(row, col_idx)
-                        if it: it.setForeground(text_brush); font = it.font(); font.setBold(True); it.setFont(font)
+                        if it: 
+                            it.setForeground(text_brush)
+                            font = it.font()
+                            font.setBold(True)
+                            it.setFont(font)
+                            
                 if es_finde and not exento_extras:
-                    bg_brush = QBrush(QColor(\"#fff3cd\"))
+                    bg_brush = QBrush(QColor("#fff3cd"))
                     for col_idx in range(14): 
                         it = self.tabla_cierre.item(row, col_idx)
                         if it: it.setBackground(bg_brush)
-                w_acc = QWidget(); lay_acc = QHBoxLayout(w_acc); lay_acc.setContentsMargins(0,0,0,0); btn_validar = QPushButton(\"✔️ Validar\" if not esta_controlada else \"❌ Revertir\"); color_btn = \"#198754\" if not esta_controlada else \"#6c757d\"; btn_validar.setStyleSheet(f\"background-color: {color_btn} !important; color: white !important; font-size: 11px; font-weight: bold; padding: 4px;\"); btn_validar.clicked.connect(lambda checked, id_o=op.id, r=row: self.alternar_control(id_o, r)); lay_acc.addWidget(btn_validar); btn_ajuste = QPushButton(\"✏️ Editar\"); btn_ajuste.setStyleSheet(\"background-color: #0d6efd !important; color: white !important; font-size: 11px; font-weight: bold; padding: 4px;\"); btn_ajuste.clicked.connect(lambda checked, id_o=op.id: self.abrir_dialogo_ajuste_precio(id_o)); lay_acc.addWidget(btn_ajuste); self.tabla_cierre.setCellWidget(row, 13, w_acc)
+                        
+                w_acc = QWidget()
+                lay_acc = QHBoxLayout(w_acc)
+                lay_acc.setContentsMargins(0,0,0,0)
+                btn_validar = QPushButton("✔️ Validar" if not esta_controlada else "❌ Revertir")
+                color_btn = "#198754" if not esta_controlada else "#6c757d"
+                btn_validar.setStyleSheet(f"background-color: {color_btn} !important; color: white !important; font-size: 11px; font-weight: bold; padding: 4px;")
+                btn_validar.clicked.connect(lambda checked, id_o=op.id, r=row: self.alternar_control(id_o, r))
+                lay_acc.addWidget(btn_validar)
+                
+                btn_ajuste = QPushButton("✏️ Editar")
+                btn_ajuste.setStyleSheet("background-color: #0d6efd !important; color: white !important; font-size: 11px; font-weight: bold; padding: 4px;")
+                btn_ajuste.clicked.connect(lambda checked, id_o=op.id: self.abrir_dialogo_ajuste_precio(id_o))
+                lay_acc.addWidget(btn_ajuste)
+                
+                self.tabla_cierre.setCellWidget(row, 13, w_acc)
+                
             progreso.setValue(total_ops)
-            if hubo_reparacion: self.main.session.commit()
-            self.tabla_cierre.setUpdatesEnabled(True); self.tabla_cierre.blockSignals(False); self.btn_seleccionar_todo.setText(\"☑️ Deseleccionar Todo\"); self.recalcular_totales_seleccionados()
-        except Exception as e: self.main.session.rollback(); self.lbl_resumen.setText(\"Total Base: $0 | Total Extras: $0 | TOTAL: $0\"); QMessageBox.critical(self, \"Error\", str(e))
-        finally: self.tabla_cierre.setUpdatesEnabled(True); self.tabla_cierre.blockSignals(False); self.btn_c.setEnabled(True)
+            if hubo_reparacion: 
+                self.main.session.commit()
+                
+            self.tabla_cierre.setUpdatesEnabled(True)
+            self.tabla_cierre.blockSignals(False)
+            self.btn_seleccionar_todo.setText("☑️ Deseleccionar Todo")
+            self.recalcular_totales_seleccionados()
+            
+        except Exception as e: 
+            self.main.session.rollback()
+            self.lbl_resumen.setText("Total Base: $0 | Total Extras: $0 | TOTAL: $0")
+            QMessageBox.critical(self, "Error", str(e))
+        finally: 
+            self.tabla_cierre.setUpdatesEnabled(True)
+            self.tabla_cierre.blockSignals(False)
+            self.btn_c.setEnabled(True)
 
     def generar_pdf_fact(self):
         hay_seleccion = False
         for r in range(self.tabla_cierre.rowCount()):
             it = self.tabla_cierre.item(r, 0)
-            if it and it.checkState() == Qt.CheckState.Checked: hay_seleccion = True; break
-        if not hay_seleccion: QMessageBox.warning(self, \"Aviso\", \"⚠️ No hay guías seleccionadas para facturar. Tildá al menos una.\"); return
-        reply = QMessageBox.question(self, \"Cerrar Facturación\", f\"¿Desea marcar estas guías como FACTURADAS?\", QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No); marcar_facturado = (reply == QMessageBox.StandardButton.Yes); mes_nombre = self.cierre_mes.currentText(); anio_num = self.cierre_anio.value(); prov_nombre = self.cierre_prov.currentText(); descargas_dir = os.path.join(os.path.expanduser('~'), 'Downloads'); os.makedirs(descargas_dir, exist_ok=True); ruta_pdf = os.path.join(descargas_dir, f\"Facturacion_{prov_nombre}_{mes_nombre}_{anio_num}.pdf\"); data_filas = [['FECHA', 'GUÍA', 'ZONA', 'BULTOS', 'BASE ($)', 'FINDE ($)', 'EXTRAS ($)', 'TOTAL ($)']]
+            if it and it.checkState() == Qt.CheckState.Checked: 
+                hay_seleccion = True
+                break
+                
+        if not hay_seleccion: 
+            QMessageBox.warning(self, "Aviso", "⚠️ No hay guías seleccionadas para facturar. Tildá al menos una.")
+            return
+            
+        reply = QMessageBox.question(self, "Cerrar Facturación", "¿Desea marcar estas guías como FACTURADAS?", QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+        marcar_facturado = (reply == QMessageBox.StandardButton.Yes)
+        
+        mes_nombre = self.cierre_mes.currentText()
+        anio_num = self.cierre_anio.value()
+        prov_nombre = self.cierre_prov.currentText()
+        descargas_dir = os.path.join(os.path.expanduser('~'), 'Downloads')
+        os.makedirs(descargas_dir, exist_ok=True)
+        ruta_pdf = os.path.join(descargas_dir, f"Facturacion_{prov_nombre}_{mes_nombre}_{anio_num}.pdf")
+        
+        data_filas = [['FECHA', 'GUÍA', 'ZONA', 'BULTOS', 'BASE ($)', 'FINDE ($)', 'EXTRAS ($)', 'TOTAL ($)']]
+        
         for r in range(self.tabla_cierre.rowCount()):
             it_sel = self.tabla_cierre.item(r, 0)
             if it_sel and it_sel.checkState() == Qt.CheckState.Checked:
                 fecha = self.tabla_cierre.item(r, 2).text()
-                if fecha == \"-\": fecha = self.tabla_cierre.item(r, 1).text()
-                guia = self.tabla_cierre.item(r, 4).text(); zona = self.tabla_cierre.item(r, 6).text(); bultos = self.tabla_cierre.item(r, 7).text(); base_txt = self.tabla_cierre.item(r, 9).text(); finde_txt = self.tabla_cierre.item(r, 10).text(); extras_txt = self.tabla_cierre.item(r, 11).text(); total_txt = self.tabla_cierre.item(r, 12).text(); data_filas.append([fecha, guia, zona[:15].upper(), bultos, base_txt, finde_txt, extras_txt, total_txt])
+                if fecha == "-": fecha = self.tabla_cierre.item(r, 1).text()
+                guia = self.tabla_cierre.item(r, 4).text()
+                zona = self.tabla_cierre.item(r, 6).text()
+                bultos = self.tabla_cierre.item(r, 7).text()
+                base_txt = self.tabla_cierre.item(r, 9).text()
+                finde_txt = self.tabla_cierre.item(r, 10).text()
+                extras_txt = self.tabla_cierre.item(r, 11).text()
+                total_txt = self.tabla_cierre.item(r, 12).text()
+                data_filas.append([fecha, guia, zona[:15].upper(), bultos, base_txt, finde_txt, extras_txt, total_txt])
+                
                 if marcar_facturado:
                     op_id = it_sel.data(Qt.ItemDataRole.UserRole)
-                    if op_id: op = self.main.session.query(Operacion).get(op_id); 
-                    if op: op.facturado = True
+                    if op_id: 
+                        op = self.main.session.query(Operacion).get(op_id)
+                        if op: op.facturado = True
+                        
         if marcar_facturado: 
-            try: self.main.session.commit(); self.calcular_cierre(); self.cargar_ctas_ctes()
-            except Exception as e: self.main.session.rollback(); print(e)
-        tb, te, tf = self.totales_cierre; iva = tf * 0.21; total_final_iva = tf + iva; data_filas.append(['', '', '', '', '', '', '', '']); data_filas.append(['SUBTOTALES:', '', '', '', f\"$ {tb:,.2f}\", f\"$ {te:,.2f}\", '-', f\"$ {tf:,.2f}\"]); data_filas.append(['', '', '', '', '', '', 'IVA (21%):', f\"$ {iva:,.2f}\"]); data_filas.append(['', '', '', '', '', '', 'TOTAL FACTURA:', f\"$ {total_final_iva:,.2f}\"]); crear_pdf_facturacion(ruta_pdf, data_filas, prov_nombre, f\"{mes_nombre} {anio_num}\", self.main.usuario.username, datetime.now().strftime('%d/%m/%Y %H:%M'))
-        try: os.startfile(ruta_pdf)
-        except: pass
+            try: 
+                self.main.session.commit()
+                self.calcular_cierre()
+                self.cargar_ctas_ctes()
+            except Exception as e: 
+                self.main.session.rollback()
+                print(e)
+                
+        tb, te, tf = self.totales_cierre
+        iva = tf * 0.21
+        total_final_iva = tf + iva
+        
+        data_filas.append(['', '', '', '', '', '', '', ''])
+        data_filas.append(['SUBTOTALES:', '', '', '', f"$ {tb:,.2f}", f"$ {te:,.2f}", '-', f"$ {tf:,.2f}"])
+        data_filas.append(['', '', '', '', '', '', 'IVA (21%):', f"$ {iva:,.2f}"])
+        data_filas.append(['', '', '', '', '', '', 'TOTAL FACTURA:', f"$ {total_final_iva:,.2f}"])
+        
+        crear_pdf_facturacion(ruta_pdf, data_filas, prov_nombre, f"{mes_nombre} {anio_num}", self.main.usuario.username, datetime.now().strftime('%d/%m/%Y %H:%M'))
+        try: 
+            os.startfile(ruta_pdf)
+        except: 
+            pass
 
     # 🔥 MOTOR DE AUDITORÍA INTEGRADO (PARA XLSX) 🔥
     def ejecutar_auditoria_dhl_xlsx(self):
-        filepath, _ = QFileDialog.getOpenFileName(self, \"Seleccionar Planilla Excel de San Juan\", \"\", \"Excel Files (*.xlsx *.xls)\")
+        filepath, _ = QFileDialog.getOpenFileName(self, "Seleccionar Planilla Excel de San Juan", "", "Excel Files (*.xlsx *.xls)")
         if not filepath: return
         try:
-            QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor); df = pd.read_excel(filepath); col_guia = df.columns[1]; col_fecha = df.columns[0]; guias_excel = set()
+            QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+            df = pd.read_excel(filepath)
+            col_guia = df.columns[1]
+            col_fecha = df.columns[0]
+            guias_excel = set()
+            
             for g in df[col_guia].dropna():
-                g_limpia = \"\".join(c for c in str(g).split('.')[0] if c.isalnum())
+                g_limpia = "".join(c for c in str(g).split('.')[0] if c.isalnum())
                 if g_limpia: guias_excel.add(g_limpia)
-            fechas_list = pd.to_datetime(df[col_fecha]).dropna(); min_date = fechas_list.min().date(); max_date = fechas_list.max().date(); self.lbl_info_audit.setText(f\"✅ Rango detectado: {min_date.strftime('%d/%m')} al {max_date.strftime('%d/%m')} | Guías en Excel: {len(guias_excel)}\")
-            ops_db = self.main.session.query(Operacion).filter(Operacion.proveedor.ilike('%DHL%'), func.date(func.coalesce(Operacion.fecha_entrega, Operacion.fecha_ingreso)) >= min_date, func.date(func.coalesce(Operacion.fecha_entrega, Operacion.fecha_ingreso)) <= max_date, Operacion.sucursal == \"San Juan\").all(); guias_db = set()
+                
+            fechas_list = pd.to_datetime(df[col_fecha]).dropna()
+            min_date = fechas_list.min().date()
+            max_date = fechas_list.max().date()
+            
+            self.lbl_info_audit.setText(f"✅ Rango detectado: {min_date.strftime('%d/%m')} al {max_date.strftime('%d/%m')} | Guías en Excel: {len(guias_excel)}")
+            
+            ops_db = self.main.session.query(Operacion).filter(
+                Operacion.proveedor.ilike('%DHL%'), 
+                func.date(func.coalesce(Operacion.fecha_entrega, Operacion.fecha_ingreso)) >= min_date, 
+                func.date(func.coalesce(Operacion.fecha_entrega, Operacion.fecha_ingreso)) <= max_date, 
+                Operacion.sucursal == "San Juan"
+            ).all()
+            
+            guias_db = set()
             for op in ops_db:
                 if op.guia_remito:
-                    g_db_limpia = \"\".join(c for c in str(op.guia_remito) if c.isalnum())
+                    g_db_limpia = "".join(c for c in str(op.guia_remito) if c.isalnum())
                     guias_db.add(g_db_limpia)
-            faltan_en_plataforma = sorted(list(guias_excel - guias_db)); sobran_en_plataforma = sorted(list(guias_db - guias_excel)); self.txt_faltan_db.setText(\"\\n\".join(faltan_en_plataforma) if faltan_en_plataforma else \"¡Todo cargado!\"); self.txt_sobran_db.setText(\"\\n\".join(sobran_en_plataforma) if sobran_en_plataforma else \"Sin guías sobrantes.\"); QApplication.restoreOverrideCursor(); self.main.toast.mostrar(f\"Auditoría terminada: {len(faltan_en_plataforma)} faltantes.\")
-        except Exception as e: QApplication.restoreOverrideCursor(); QMessageBox.critical(self, \"Error\", f\"No se pudo procesar el Excel:\\n{str(e)}\")
+                    
+            faltan_en_plataforma = sorted(list(guias_excel - guias_db))
+            sobran_en_plataforma = sorted(list(guias_db - guias_excel))
+            
+            self.txt_faltan_db.setText("\n".join(faltan_en_plataforma) if faltan_en_plataforma else "¡Todo cargado!")
+            self.txt_sobran_db.setText("\n".join(sobran_en_plataforma) if sobran_en_plataforma else "Sin guías sobrantes.")
+            
+            QApplication.restoreOverrideCursor()
+            self.main.toast.mostrar(f"Auditoría terminada: {len(faltan_en_plataforma)} faltantes.")
+        except Exception as e: 
+            QApplication.restoreOverrideCursor()
+            QMessageBox.critical(self, "Error", f"No se pudo procesar el Excel:\n{str(e)}")
