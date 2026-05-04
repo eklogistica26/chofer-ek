@@ -344,9 +344,11 @@ class TabFacturacion(QWidget):
         
         btn_pdf = QPushButton("Rendición PDF"); btn_pdf.setStyleSheet("background-color: #dc3545 !important; color: white !important; font-weight: bold; padding: 6px;"); btn_pdf.clicked.connect(self.generar_pdf_fact)
         
+        btn_auditoria = QPushButton("🕵️ Auditoría DHL (CSV)"); btn_auditoria.setStyleSheet("background-color: #6f42c1 !important; color: white !important; font-weight: bold; padding: 6px;"); btn_auditoria.clicked.connect(self.auditar_dhl_csv)
+
         hl.addWidget(QLabel("Sucursal:")); hl.addWidget(self.cierre_sucursal); hl.addWidget(QLabel("Mes:")); hl.addWidget(self.cierre_mes); hl.addWidget(QLabel("Año:")); hl.addWidget(self.cierre_anio); hl.addWidget(QLabel("Proveedor:")); hl.addWidget(self.cierre_prov); 
         hl.addWidget(QLabel("🔎 Filtro:")); hl.addWidget(self.filtro_control); 
-        hl.addWidget(self.btn_c); hl.addWidget(btn_pdf); btn_cargo_fijo = QPushButton("➕ Agregar Cargo Fijo"); btn_cargo_fijo.clicked.connect(self.agregar_cargo_fijo); hl.addWidget(btn_cargo_fijo)
+        hl.addWidget(self.btn_c); hl.addWidget(btn_pdf); hl.addWidget(btn_auditoria); btn_cargo_fijo = QPushButton("➕ Agregar Cargo Fijo"); btn_cargo_fijo.clicked.connect(self.agregar_cargo_fijo); hl.addWidget(btn_cargo_fijo)
         
         self.tabla_cierre = QTableWidget(); self.tabla_cierre.setColumnCount(14); 
         self.tabla_cierre.setHorizontalHeaderLabels(["Sel.", "F. Ingreso", "F. Entrega", "Sucursal", "Guía", "Destino", "Zona", "Bultos", "Estado", "Base ($)", "Finde/Fer ($)", "Otros Extras ($)", "Total ($)", "Ajustes"]); 
@@ -957,3 +959,107 @@ class TabFacturacion(QWidget):
         crear_pdf_facturacion(ruta_pdf, data_filas, prov_nombre, f"{mes_nombre} {anio_num}", self.main.usuario.username, datetime.now().strftime('%d/%m/%Y %H:%M'))
         try: os.startfile(ruta_pdf)
         except: pass
+
+    def auditar_dhl_csv(self):
+        filepath, _ = QFileDialog.getOpenFileName(self, "Seleccionar CSV de DHL", "", "CSV Files (*.csv);;All Files (*)")
+        if not filepath: return
+        
+        try:
+            import csv
+            from PyQt6.QtWidgets import QTextBrowser, QDialog
+            
+            guias_csv = set()
+            fechas = []
+            
+            # 1. Leemos el CSV que te mandan
+            with open(filepath, 'r', encoding='utf-8', errors='ignore') as f:
+                reader = csv.reader(f, delimiter=',')
+                for row in reader:
+                    if len(row) >= 2:
+                        guia = row[1].strip()
+                        # Limpiamos espacios y caracteres invisibles del Excel
+                        guia = "".join(c for c in guia if c.isalnum()) 
+                        if guia: 
+                            guias_csv.add(guia)
+                            try:
+                                d = datetime.strptime(row[0].strip(), "%Y-%m-%d").date()
+                                fechas.append(d)
+                            except: pass
+            
+            if not guias_csv:
+                QMessageBox.warning(self, "Error", "No se detectaron guías válidas en el archivo. Verificá que sea el CSV correcto.")
+                return
+                
+            # 2. Rango automático de fechas según lo que dice el Excel
+            if fechas:
+                min_date = min(fechas)
+                max_date = max(fechas)
+            else:
+                mes = self.cierre_mes.currentIndex() + 1
+                anio = self.cierre_anio.value()
+                _, last_day = calendar.monthrange(anio, mes)
+                min_date = date(anio, mes, 1)
+                max_date = date(anio, mes, last_day)
+
+            # 3. Traemos TODO lo que cargó San Juan en la Plataforma
+            sucursal_actual = self.cierre_sucursal.currentText()
+            ops_db = self.main.session.query(Operacion).filter(
+                Operacion.proveedor.ilike('%DHL%'),
+                func.date(func.coalesce(Operacion.fecha_entrega, Operacion.fecha_ingreso)) >= min_date,
+                func.date(func.coalesce(Operacion.fecha_entrega, Operacion.fecha_ingreso)) <= max_date
+            )
+            
+            if sucursal_actual != "Todas":
+                ops_db = ops_db.filter(Operacion.sucursal == sucursal_actual)
+                
+            ops_db = ops_db.all()
+            
+            # Limpiamos las guías de la base de datos para compararlas exactas
+            guias_db = set(["".join(c for c in op.guia_remito if c.isalnum()) for op in ops_db if op.guia_remito])
+
+            # 4. EL CRUCE QUIRÚRGICO DE AUDITORÍA
+            faltan_en_db = guias_csv - guias_db
+            sobran_en_db = guias_db - guias_csv
+
+            # 5. Interfaz Gráfica del Reporte de Control
+            dlg = QDialog(self)
+            dlg.setWindowTitle("🕵️ Auditoría de Carga - Control Interno")
+            dlg.resize(900, 600)
+            lay = QVBoxLayout(dlg)
+            
+            lbl_tit = QLabel(f"<h2 style='color:#0d6efd; margin:0;'>Auditoría de Carga en Plataforma</h2>"
+                             f"<b>Rango analizado:</b> {min_date.strftime('%d/%m/%Y')} al {max_date.strftime('%d/%m/%Y')}<br>"
+                             f"<b>Total Guías en Planilla DHL:</b> {len(guias_csv)} | <b>Total Guías cargadas en Plataforma:</b> {len(guias_db)}")
+            lay.addWidget(lbl_tit)
+            
+            h_lay = QHBoxLayout()
+            
+            # Panel Izquierdo: Faltan en Plataforma
+            v_izq = QVBoxLayout()
+            v_izq.addWidget(QLabel(f"🔴 <b>FALTAN CARGAR EN EL SISTEMA ({len(faltan_en_db)})</b><br><small>Están en el Excel de DHL, pero San Juan NO las ingresó a la plataforma.</small>"))
+            text_izq = QTextBrowser()
+            text_izq.setText("\n".join(sorted(list(faltan_en_db))))
+            text_izq.setStyleSheet("color: #dc3545; font-weight: bold; font-size: 15px; background-color: #f8d7da;")
+            v_izq.addWidget(text_izq)
+            h_lay.addLayout(v_izq)
+            
+            # Panel Derecho: Sobran en Plataforma
+            v_der = QVBoxLayout()
+            v_der.addWidget(QLabel(f"🟡 <b>SOBRAN EN EL SISTEMA ({len(sobran_en_db)})</b><br><small>San Juan las cargó en la plataforma, pero NO figuran en la planilla de DHL.</small>"))
+            text_der = QTextBrowser()
+            text_der.setText("\n".join(sorted(list(sobran_en_db))))
+            text_der.setStyleSheet("color: #856404; font-weight: bold; font-size: 15px; background-color: #fff3cd;")
+            v_der.addWidget(text_der)
+            h_lay.addLayout(v_der)
+            
+            lay.addLayout(h_lay)
+            
+            btn_cerrar = QPushButton("Cerrar Reporte")
+            btn_cerrar.setStyleSheet("background-color: #6c757d; color: white; padding: 10px; font-weight: bold; font-size: 14px;")
+            btn_cerrar.clicked.connect(dlg.accept)
+            lay.addWidget(btn_cerrar)
+            
+            dlg.exec()
+            
+        except Exception as e:
+            QMessageBox.critical(self, "Error de Lectura", f"Fallo al procesar el archivo CSV: {str(e)}")
