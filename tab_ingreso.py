@@ -327,9 +327,15 @@ class TabIngreso(QWidget):
 
     def actualizar_interfaz_retiro(self, texto):
         is_flete = texto.startswith("Flete"); is_retiro = texto.startswith("Retiro")
-        if is_retiro: self.lbl_guia.hide(); self.in_guia.hide(); self.lbl_cli_ret.show(); self.in_cliente_retiro.show(); self.in_guia.clear()
-        elif is_flete: self.lbl_guia.hide(); self.in_guia.hide(); self.lbl_cli_ret.hide(); self.in_cliente_retiro.hide(); self.in_guia.clear()
-        else: self.lbl_guia.show(); self.in_guia.show(); self.lbl_cli_ret.hide(); self.in_cliente_retiro.hide()
+        
+        if is_retiro: 
+            # 🔥 AHORA MOSTRAMOS LA GUÍA PERO LE AVISAMOS QUE ES OPCIONAL 🔥
+            self.lbl_guia.show(); self.in_guia.show(); self.in_guia.setPlaceholderText("Opcional (Dejar vacío para Auto-generar)"); self.lbl_cli_ret.show(); self.in_cliente_retiro.show(); self.in_guia.clear()
+        elif is_flete: 
+            self.lbl_guia.hide(); self.in_guia.hide(); self.lbl_cli_ret.hide(); self.in_cliente_retiro.hide(); self.in_guia.clear()
+        else: 
+            self.lbl_guia.show(); self.in_guia.show(); self.in_guia.setPlaceholderText(""); self.lbl_cli_ret.hide(); self.in_cliente_retiro.hide()
+            
         if is_flete: self.widget_carga_normal.hide(); self.widget_carga_flete.show(); self.group_cr.hide(); self.chk_cr.setChecked(False) 
         else: self.widget_carga_normal.show(); self.widget_carga_flete.hide(); self.group_cr.show()
 
