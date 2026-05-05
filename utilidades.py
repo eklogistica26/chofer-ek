@@ -552,4 +552,43 @@ def crear_pdf_despacho_papeles(nombre_archivo, numero_lote, ops, proveedor_nombr
     elements.append(t_firma)
 
     doc.build(elements)
+
+def crear_pdf_general_tarifas(ruta_output, titulo_doc, data, usuario_nombre):
+    from reportlab.lib import colors
+    from reportlab.lib.pagesizes import A4, landscape
+    from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+    from reportlab.lib.styles import getSampleStyleSheet
+    from datetime import datetime
+
+    # Usamos formato apaisado (landscape) para que entren más columnas
+    doc = SimpleDocTemplate(ruta_output, pagesize=landscape(A4))
+    elements = []
+    styles = getSampleStyleSheet()
+
+    # Título
+    elements.append(Paragraph(f"<b>{titulo_doc}</b>", styles['Title']))
+    elements.append(Spacer(1, 12))
+    
+    # Info de impresión
+    fecha_hoy = datetime.now().strftime("%d/%m/%Y %H:%M")
+    elements.append(Paragraph(f"Impreso por: {usuario_nombre} | Fecha: {fecha_hoy}", styles['Normal']))
+    elements.append(Spacer(1, 20))
+
+    # Crear Tabla
+    t = Table(data, hAlign='LEFT')
+    t.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor("#0d47a1")),
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, 0), 10),
+        ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+        ('BACKGROUND', (0, 1), (-1, -1), colors.white),
+        ('GRID', (0, 0), (-1, -1), 1, colors.grey),
+        ('FONTSIZE', (0, 1), (-1, -1), 9),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+    ]))
+    
+    elements.append(t)
+    doc.build(elements)
     

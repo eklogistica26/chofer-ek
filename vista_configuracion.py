@@ -510,7 +510,13 @@ class TabConfiguracion(QWidget):
         self.tabla_tarifas.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows); self.tabla_tarifas.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         l_gen.addWidget(self.tabla_tarifas)
         h_btn_d = QHBoxLayout(); btn_edit = QPushButton("✏️ Editar Seleccionada"); btn_edit.clicked.connect(self.editar_tarifa); btn_d = QPushButton("🗑️ Eliminar Tarifa"); btn_d.clicked.connect(lambda: self.main.eliminar_fila(self.tabla_tarifas, Tarifa))
-        h_btn_d.addWidget(btn_edit); h_btn_d.addWidget(btn_d); l_gen.addLayout(h_btn_d); self.tabs_tarifas.addTab(tab_gen, "Generales (Zonas)")
+        
+        # 🔥 BOTÓN DE IMPRIMIR ESTÁNDAR 🔥
+        btn_imp_gen = QPushButton("🖨️ Imprimir PDF")
+        btn_imp_gen.setStyleSheet("background-color: #0d6efd; color: white; font-weight: bold; padding: 6px;")
+        btn_imp_gen.clicked.connect(self.exportar_tarifario_pdf)
+        
+        h_btn_d.addWidget(btn_edit); h_btn_d.addWidget(btn_d); h_btn_d.addWidget(btn_imp_gen); l_gen.addLayout(h_btn_d); self.tabs_tarifas.addTab(tab_gen, "Generales (Zonas)")
         
         tab_dhl = QWidget(); l_dhl = QVBoxLayout(tab_dhl); gb_dhl = QGroupBox("Gestión de Tarifas DHL (Por Kilos y Bultos)"); f_dhl = QFormLayout()
         self.cfg_dhl_suc = QComboBox(); self.cfg_dhl_suc.addItems(["Mendoza", "San Juan"]); self.cfg_dhl_suc.currentTextChanged.connect(self.cargar_tarifas_dhl)
@@ -521,7 +527,17 @@ class TabConfiguracion(QWidget):
         self.cfg_dhl_t30 = QDoubleSpinBox(); self.cfg_dhl_t30.setRange(0, 9e6); self.cfg_dhl_t30.setPrefix("$ ")
         self.cfg_dhl_exc = QDoubleSpinBox(); self.cfg_dhl_exc.setRange(0, 9e6); self.cfg_dhl_exc.setPrefix("$ ")
         f_dhl.addRow("Sucursal:", self.cfg_dhl_suc); f_dhl.addRow("0 a 2 Kg:", self.cfg_dhl_t2); f_dhl.addRow("2 a 5 Kg:", self.cfg_dhl_t5); f_dhl.addRow("5 a 10 Kg:", self.cfg_dhl_t10); f_dhl.addRow("10 a 20 Kg:", self.cfg_dhl_t20); f_dhl.addRow("20 a 30 Kg:", self.cfg_dhl_t30); f_dhl.addRow("Excedente (x Kg):", self.cfg_dhl_exc)
-        btn_dhl = QPushButton("💾 GUARDAR TARIFA DHL"); btn_dhl.clicked.connect(self.guardar_tarifa_dhl); gb_dhl.setLayout(f_dhl); l_dhl.addWidget(gb_dhl); l_dhl.addWidget(btn_dhl); l_dhl.addStretch(); self.tabs_tarifas.addTab(tab_dhl, "DHL (Por Peso)")
+        btn_dhl = QPushButton("💾 GUARDAR TARIFA DHL"); btn_dhl.clicked.connect(self.guardar_tarifa_dhl); gb_dhl.setLayout(f_dhl); l_dhl.addWidget(gb_dhl)
+        
+        # 🔥 BOTÓN DE IMPRIMIR DHL 🔥
+        h_btn_dhl = QHBoxLayout()
+        btn_imp_dhl = QPushButton("🖨️ Imprimir PDF")
+        btn_imp_dhl.setStyleSheet("background-color: #6f42c1; color: white; font-weight: bold; padding: 6px;")
+        btn_imp_dhl.clicked.connect(self.exportar_tarifario_pdf)
+        h_btn_dhl.addWidget(btn_dhl)
+        h_btn_dhl.addWidget(btn_imp_dhl)
+        
+        l_dhl.addLayout(h_btn_dhl); l_dhl.addStretch(); self.tabs_tarifas.addTab(tab_dhl, "DHL (Por Peso)")
         
         self.cargar_tarifas()
         self.cargar_tarifas_dhl()
@@ -887,3 +903,45 @@ class TabConfiguracion(QWidget):
             self.tabla_clientes.setRowCount(0)
             for r,l in enumerate(self.main.session.query(ClienteRetiro).order_by(ClienteRetiro.sucursal).all()): self.tabla_clientes.insertRow(r); self.tabla_clientes.setItem(r,0,QTableWidgetItem(str(l.id))); self.tabla_clientes.setItem(r,1,QTableWidgetItem(l.nombre)); self.tabla_clientes.setItem(r,2,QTableWidgetItem(l.domicilio))
         except Exception: self.main.session.rollback()
+
+    # 🔥 NUEVA FUNCIÓN PARA IMPRIMIR PDF 🔥
+    def exportar_tarifario_pdf(self):
+        try:
+            import os
+            from utilidades import crear_pdf_general_tarifas
+            
+            es_dhl = self.tabs_tarifas.currentIndex() == 1
+            datos_filas = []
+            
+            if es_dhl:
+                titulo = f"TARIFARIO DHL EXPRESS - {self.cfg_dhl_suc.currentText().upper()}"
+                datos_filas.append(["RANGO DE KILOS / EXCEDENTE", "VALOR ($)"])
+                datos_filas.append(["0 a 2 Kg", f"$ {self.cfg_dhl_t2.value():,.2f}"])
+                datos_filas.append(["2 a 5 Kg", f"$ {self.cfg_dhl_t5.value():,.2f}"])
+                datos_filas.append(["5 a 10 Kg", f"$ {self.cfg_dhl_t10.value():,.2f}"])
+                datos_filas.append(["10 a 20 Kg", f"$ {self.cfg_dhl_t20.value():,.2f}"])
+                datos_filas.append(["20 a 30 Kg", f"$ {self.cfg_dhl_t30.value():,.2f}"])
+                datos_filas.append(["Excedente (por Kg)", f"$ {self.cfg_dhl_exc.value():,.2f}"])
+            else:
+                titulo = f"TARIFARIO LOGÍSTICA ESTÁNDAR - {self.cfg_tarifa_sucursal.currentText().upper()}"
+                if self.tabla_tarifas.rowCount() == 0:
+                    QMessageBox.warning(self, "Aviso", "No hay datos cargados para imprimir.")
+                    return
+                # Extraemos los encabezados (saltando el ID)
+                columnas = [self.tabla_tarifas.horizontalHeaderItem(c).text().upper() for c in range(1, self.tabla_tarifas.columnCount())]
+                datos_filas.append(columnas)
+                # Extraemos las filas
+                for r in range(self.tabla_tarifas.rowCount()):
+                    fila = [self.tabla_tarifas.item(r, c).text() if self.tabla_tarifas.item(r, c) else "" for c in range(1, self.tabla_tarifas.columnCount())]
+                    datos_filas.append(fila)
+
+            descargas_dir = os.path.join(os.path.expanduser('~'), 'Downloads')
+            nombre = f"Tarifario_{'DHL' if es_dhl else 'Estandar'}_{datetime.now().strftime('%d%m%Y')}.pdf"
+            ruta_pdf = os.path.join(descargas_dir, nombre)
+            
+            crear_pdf_general_tarifas(ruta_pdf, titulo, datos_filas, self.main.usuario.username)
+            os.startfile(ruta_pdf)
+            self.main.toast.mostrar("✅ Tarifario generado en Descargas")
+            
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"No se pudo generar el PDF: {str(e)}")
