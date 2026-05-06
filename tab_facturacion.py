@@ -560,7 +560,16 @@ class TabFacturacion(QWidget):
         lay_lote = QHBoxLayout(frame_lote)
         lay_lote.addWidget(QLabel("<b>📦 Armar Lote para Proveedor:</b>"))
         self.combo_prov_papel = QComboBox()
-        self.combo_prov_papel.addItems(self.main.lista_proveedores)
+        
+        # 🔥 CONEXIÓN DIRECTA A LA BASE DE DATOS 🔥
+        from database import ClientePrincipal
+        try:
+            provs_db = self.main.session.query(ClientePrincipal).order_by(ClientePrincipal.nombre.asc()).all()
+            self.combo_prov_papel.addItems([p.nombre for p in provs_db])
+        except Exception:
+            if hasattr(self.main, 'lista_proveedores'):
+                self.combo_prov_papel.addItems(self.main.lista_proveedores)
+                
         self.combo_prov_papel.setStyleSheet("font-weight: bold; padding: 4px;")
         btn_cargar_papeles = QPushButton("🔄 Traer Pendientes de Envío")
         btn_cargar_papeles.clicked.connect(self.cargar_papeles_pendientes)
