@@ -560,7 +560,7 @@ class TabFacturacion(QWidget):
         lay_lote = QHBoxLayout(frame_lote)
         lay_lote.addWidget(QLabel("<b>📦 Armar Lote para Proveedor:</b>"))
         self.combo_prov_papel = QComboBox()
-        self.combo_prov_papel.addItems(["C Y E (AEROTRANSPORTADORA)", "JORGE SANJURJO", "EMAKI"])
+        self.combo_prov_papel.addItems(self.main.lista_proveedores)
         self.combo_prov_papel.setStyleSheet("font-weight: bold; padding: 4px;")
         btn_cargar_papeles = QPushButton("🔄 Traer Pendientes de Envío")
         btn_cargar_papeles.clicked.connect(self.cargar_papeles_pendientes)
@@ -658,15 +658,18 @@ class TabFacturacion(QWidget):
         prov = self.combo_prov_papel.currentText()
         try:
             self.tabla_papeles.setRowCount(0)
+            
+            # 🔥 REGLA CAMBIADA: Ya no pide "facturado == True" y busca el proveedor de forma inteligente (ilike) 🔥
             query = self.main.session.query(Operacion).filter(
                 Operacion.estado.in_([Estados.ENTREGADO, Estados.DEVUELTO_ORIGEN]), 
-                Operacion.facturado == True, 
                 (Operacion.papel_enviado == False) | (Operacion.papel_enviado == None), 
-                Operacion.proveedor == prov
+                Operacion.proveedor.ilike(prov)
             )
+            
             query = query.order_by(Operacion.fecha_entrega.desc().nullslast())
             self.resultados_papeles = query.all()
             self.mapa_filas_papeles = {}
+            
             for row, op in enumerate(self.resultados_papeles):
                 self.tabla_papeles.insertRow(row)
                 self.mapa_filas_papeles[row] = op.id
@@ -679,8 +682,9 @@ class TabFacturacion(QWidget):
                 self.tabla_papeles.setItem(row, 2, QTableWidgetItem(op.guia_remito or ""))
                 self.tabla_papeles.setItem(row, 3, QTableWidgetItem(op.proveedor or ""))
                 self.tabla_papeles.setItem(row, 4, QTableWidgetItem(op.destinatario or ""))
+                
             if not self.resultados_papeles: 
-                QMessageBox.information(self, "Aviso", f"No hay papeles pendientes de envío para {prov} (O aún no fueron facturados).")
+                QMessageBox.information(self, "Aviso", f"No hay papeles pendientes de envío para {prov}.")
         except Exception as e: 
             self.main.session.rollback()
 
