@@ -4,7 +4,7 @@ import base64
 import io
 from datetime import datetime
 from PyQt6.QtWidgets import (QApplication, QDialog, QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, 
-                             QComboBox, QPushButton, QTableWidget, QTableWidgetItem, QFrame,
+                             QComboBox, QPushButton, QTableWidget, QTableWidgetItem, 
                              QHeaderView, QMessageBox, QDateEdit, QTabWidget, QAbstractItemView, QStyledItemDelegate, QFileDialog)
 from PyQt6.QtCore import Qt, QDate
 from PyQt6.QtGui import QColor, QFont
@@ -14,214 +14,422 @@ from database import Operacion, Historial, Estados
 from utilidades import crear_pdf_resumen_diario
 from dialogos import ConfirmarEntregaDialog, ReprogramarAdminDialog
 
-# --- FUNCIÓN DE CORREOS PARA LA RENDICIÓN (Soporta múltiples mails) ---
+# --- FUNCIÓN DE CORREOS PARA LA RENDICIÓN ---
 def enviar_email_desktop(session, destinatario, guia, rutas_fotos, proveedor):
     try:
         from dotenv import load_dotenv
         BASE_DIR = os.path.dirname(os.path.abspath(__file__))
         load_dotenv(os.path.join(BASE_DIR, '.env'))
-    except: pass
+    except:
+        pass
 
     BREVO_API_KEY = os.environ.get("BREVO_API_KEY", "")
-    if not BREVO_API_KEY: return "⚠️ Correo NO enviado: Falta configurar BREVO_API_KEY."
+    if not BREVO_API_KEY: 
+        return "⚠️ Correo NO enviado: Falta configurar BREVO_API_KEY en el archivo .env de tu PC."
         
     EMAIL_REMITENTE = "eklogistica19@gmail.com"
     email_prov = None
-    
     try:
-        from database import ClientePrincipal
-        prov_db = session.query(ClientePrincipal).filter(ClientePrincipal.nombre.ilike(f"%{proveedor}%")).first()
-        if prov_db and prov_db.email_reportes: email_prov = prov_db.email_reportes
-            
-        if not email_prov: return f"⚠️ Correo NO enviado: No hay email configurado para {proveedor}."
-
-        # 🔥 CORTAMOS LOS MAILS POR COMA PARA EL ENVÍO MÚLTIPLE 🔥
-        lista_destinatarios = [{"email": correo.strip()} for correo in email_prov.split(',') if correo.strip()]
-
-        html_content = f"""
-        <div style="font-family: Arial, sans-serif; color: #333;">
-            <h2 style="color: #0d6efd;">Notificación de Rendición Logística</h2>
-            <p>Estimado equipo de <b>{proveedor}</b>,</p>
-            <p>Se adjuntan los comprobantes físicos (fotos) correspondientes a la siguiente operación:</p>
-            <ul>
-                <li><b>Guía / Remito:</b> {guia}</li>
-                <li><b>Destinatario:</b> {destinatario}</li>
-                <li><b>Fecha de Proceso:</b> {datetime.now().strftime('%d/%m/%Y %H:%M')}</li>
-            </ul>
-            <br><p>Atentamente,<br><b>Sistema de Gestión E.K. Logística</b></p>
-        </div>
-        """
-        adjuntos = []
-        for ruta in rutas_fotos:
+        res = session.execute(text("SELECT email_reportes FROM clientes_principales WHERE UPPER(TRIM(nombre)) = UPPER(TRIM(:n))"), {"n": proveedor}).fetchone()
+        if res: email_prov = res[0]
+    except: pass
+    
+    destinatarios_lista = []
+    if email_prov:
+        correos_limpios = str(email_prov).replace(',', ' ').replace(';', ' ')
+        for c in correos_limpios.split():
+            if "@" in c: destinatarios_lista.append({"email": c.strip()})
+    
+    if not destinatarios_lista:
+        destinatarios_lista = [{"email": EMAIL_REMITENTE}]
+        
+    adjuntos = []
+    if rutas_fotos:
+        for i, ruta in enumerate(rutas_fotos):
             if os.path.exists(ruta):
-                with open(ruta, "rb") as f:
-                    contenido_b64 = base64.b64encode(f.read()).decode('utf-8')
-                    adjuntos.append({"name": os.path.basename(ruta), "content": contenido_b64})
+                try:
+                    try:
+                        from PIL import Image
+                        img = Image.open(ruta)
+                        if img.mode in ("RGBA", "P"): img = img.convert("RGB")
+                        
+                        img.thumbnail((1600, 1600)) 
+                        buffer = io.BytesIO()
+                        img.save(buffer, format="JPEG", quality=85, optimize=True)
+                        b64_content = base64.b64encode(buffer.getvalue()).decode('utf-8')
+                    except Exception as e:
+                        print("Fallo compresión PIL, enviando original:", e)
+                        with open(ruta, "rb") as f:
+                            b64_content = base64.b64encode(f.read()).decode('utf-8')
+                            
+                    nombre_adjunto = f"remito_{guia}.jpg" if len(rutas_fotos) == 1 else f"remito_{guia}_parte{i+1}.jpg"
+                    adjuntos.append({"content": b64_content, "name": nombre_adjunto})
+                except Exception as e: 
+                    pass
+    
+    url = "https://api.brevo.com/v3/smtp/email"
+    fecha_hora = datetime.now().strftime('%d/%m/%Y %H:%M')
+    
+    html_content = f"""
+    <html><body>
+    <h3>Hola,</h3>
+    <p>Se informa la entrega exitosa. <b>Adjuntamos la foto del remito/guía conformado.</b></p>
+    <ul>
+        <li><b>Fecha:</b> {fecha_hora}</li>
+        <li><b>Guía:</b> {guia}</li>
+        <li><b>Proveedor:</b> {proveedor}</li>
+        <li><b>Recibió:</b> {destinatario}</li>
+    </ul>
+    <p>Atte.<br><b>Equipo JetPaq / EK Logística</b></p>
+    </body></html>
+    """
+    
+    payload = {
+        "sender": {"name": "Logistica JetPaq", "email": EMAIL_REMITENTE},
+        "subject": f"ENTREGA REALIZADA - Guía: {guia}",
+        "htmlContent": html_content,
+        "to": destinatarios_lista,
+        "bcc": [{"email": EMAIL_REMITENTE, "name": "Archivo EK Logistica"}]
+    }
+    if len(destinatarios_lista) == 1 and destinatarios_lista[0]["email"] == EMAIL_REMITENTE:
+        if "bcc" in payload: del payload["bcc"]
+    if adjuntos: payload["attachment"] = adjuntos
+    
+    headers = {"accept": "application/json", "api-key": BREVO_API_KEY, "content-type": "application/json"}
+    
+    try: 
+        r = requests.post(url, json=payload, headers=headers)
+        if r.status_code in [200, 201, 202]:
+            return "📧 Correo enviado exitosamente con la foto adjunta."
+        else:
+            if "attachment" in payload:
+                del payload["attachment"]
+                payload["htmlContent"] = html_content.replace(
+                    "<b>Adjuntamos la foto del remito/guía conformado.</b>",
+                    "<b style='color:#D32F2F;'>⚠️ La foto se guardó en nuestro sistema, pero era demasiado pesada para adjuntarse en este correo.</b>"
+                )
+                r2 = requests.post(url, json=payload, headers=headers)
+                if r2.status_code in [200, 201, 202]:
+                    return "📧 Correo enviado (Sin foto porque excedía el peso de la PC)."
+                else:
+                    payload["to"] = [{"email": EMAIL_REMITENTE}]
+                    if "bcc" in payload: del payload["bcc"]
+                    requests.post(url, json=payload, headers=headers)
+                    return f"⚠️ Fallo al enviar al cliente. Error de servidor: {r2.status_code}"
+            return f"⚠️ Fallo en servidor de correo. Error: {r.status_code}"
+    except Exception as e: 
+        return f"⚠️ Error de conexión a internet al enviar correo: {str(e)}"
 
-        url = "https://api.brevo.com/v3/smtp/email"
-        headers = {"accept": "application/json", "api-key": BREVO_API_KEY, "content-type": "application/json"}
-        payload = {"sender": {"name": "E.K. Logística", "email": EMAIL_REMITENTE}, "to": lista_destinatarios, "subject": f"Rendición Comprobantes - Guía: {guia}", "htmlContent": html_content}
-        if adjuntos: payload["attachment"] = adjuntos
-
-        response = requests.post(url, headers=headers, json=payload)
-        if response.status_code in [200, 201, 202]: return f"✅ Correo enviado a {len(lista_destinatarios)} destinatario(s)."
-        else: return f"⚠️ Error Brevo: {response.text}"
-    except Exception as e: return f"⚠️ Excepción al enviar correo: {str(e)}"
-
+# --- DELEGADO DE PINTURA ---
 class PintorCeldasDelegate(QStyledItemDelegate):
     def paint(self, painter, option, index):
         bg_color = index.data(Qt.ItemDataRole.BackgroundRole)
-        if bg_color: painter.fillRect(option.rect, bg_color)
+        if bg_color:
+            painter.fillRect(option.rect, bg_color)
         super().paint(painter, option, index)
 
+ESTILO_TABLAS_BLANCAS = """
+QTableWidget { background-color: #ffffff !important; }
+QTableWidget::item { background-color: transparent !important; color: #000000 !important; border-bottom: 1px solid #f0f0f0 !important; }
+QTableWidget::item:selected { background-color: #bbdefb !important; color: #000000 !important; }
+"""
+
+# --- PESTAÑA PRINCIPAL DE RENDICIÓN ---
 class TabRendicion(QWidget):
     def __init__(self, main_window):
         super().__init__()
         self.main = main_window
         self.setup_ui()
-        
+
     def setup_ui(self):
-        l = QVBoxLayout(self); self.tabs_rend = QTabWidget(); l.addWidget(self.tabs_rend)
+        l = QVBoxLayout(self)
+        self.tabs_rendicion = QTabWidget()
+        l.addWidget(self.tabs_rendicion)
         
-        # --- TAB 1: RENDICIÓN DE GUÍAS ---
-        tab_pendientes = QWidget(); layout_pend = QVBoxLayout(tab_pendientes)
-        filtros = QFrame(); hl = QHBoxLayout(filtros)
+        tab_reparto = QWidget(); lay_reparto = QVBoxLayout(tab_reparto)
+        top = QHBoxLayout()
+        btn_mark = QPushButton("☑️ Todo"); btn_mark.clicked.connect(lambda: self.main.toggle_seleccion_todo(self.tabla_rendicion)); 
+        btn_confirmar = QPushButton("✅ CONFIRMAR ENTREGAS"); btn_confirmar.clicked.connect(self.confirmar_entrega_rendicion)
+        btn_pendiente = QPushButton("📅 REPROGRAMAR"); btn_pendiente.clicked.connect(self.marcar_pendiente_masivo); 
+        btn_ref = QPushButton("🔄 Actualizar"); btn_ref.clicked.connect(self.cargar_rendicion)
         
-        self.resumen_fecha = QDateEdit(QDate.currentDate()); self.resumen_fecha.setCalendarPopup(True)
-        self.resumen_chofer = QComboBox(); self.resumen_chofer.addItem("Todos")
-        btn_b = QPushButton("🔄 Cargar Pendientes"); btn_b.clicked.connect(lambda: self.cargar_rendicion(manual=True))
-        btn_pdf = QPushButton("📑 Planilla PDF"); btn_pdf.clicked.connect(self.generar_pdf_rendicion)
+        top.addWidget(QLabel("<b>GUIAS EN REPARTO:</b>")); top.addStretch(); top.addWidget(btn_mark); top.addWidget(btn_confirmar); top.addWidget(btn_pendiente); top.addWidget(btn_ref)
+        admin_bar = QHBoxLayout(); 
+        btn_deshacer = QPushButton("↩️ DESHACER (Admin)"); btn_deshacer.clicked.connect(self.deshacer_estado)
+        if not getattr(self.main.usuario, 'es_admin_total', False): btn_deshacer.hide()
+        admin_bar.addWidget(btn_deshacer); admin_bar.addStretch()
+        self.txt_filtro_rendir = QLineEdit(); self.txt_filtro_rendir.setPlaceholderText("🔎 Filtrar por Chofer, Guía..."); self.txt_filtro_rendir.textChanged.connect(self.filtrar_tabla_rendicion)
+        top.insertWidget(2, self.txt_filtro_rendir)
         
-        # 🔥 BOTONES ACCIÓN MASIVA (AHORA ARRIBA PARA NO QUITAR ESPACIO) 🔥
-        btn_sel = QPushButton("☑️ Todos"); btn_sel.setFixedWidth(70); btn_sel.clicked.connect(self.seleccionar_todos_rend)
-        btn_des = QPushButton("⏪ Deshacer"); btn_des.setStyleSheet("background-color: #6c757d; color: white;"); btn_des.clicked.connect(self.deshacer_estado)
-        btn_rep = QPushButton("📅 Reprogramar"); btn_rep.setStyleSheet("background-color: #ffc107; color: black;"); btn_rep.clicked.connect(self.reprogramar_masivo)
-        btn_dev = QPushButton("🟠 Devolver"); btn_dev.setStyleSheet("background-color: #fd7e14; color: black; font-weight: bold;"); btn_dev.clicked.connect(self.confirmar_devolucion)
+        self.tabla_rendicion = QTableWidget(); self.tabla_rendicion.setColumnCount(10); 
+        self.tabla_rendicion.setHorizontalHeaderLabels(["ID", "Sel.", "Chofer", "Guía / Remito", "Destinatario", "Domicilio", "Localidad", "Bultos/Hs", "Estado", "Fecha Ingreso"]); self.tabla_rendicion.hideColumn(0); 
+        self.tabla_rendicion.setStyleSheet(ESTILO_TABLAS_BLANCAS)
+        self.pintor_rend = PintorCeldasDelegate(self.tabla_rendicion)
+        self.tabla_rendicion.setItemDelegate(self.pintor_rend)
+
+        header_rend = self.tabla_rendicion.horizontalHeader()
+        header_rend.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
+        self.tabla_rendicion.setColumnWidth(1, 60)
+        self.tabla_rendicion.setColumnWidth(2, 160)
+        self.tabla_rendicion.setColumnWidth(3, 140)
+        self.tabla_rendicion.setColumnWidth(4, 250)
+        self.tabla_rendicion.setColumnWidth(5, 350)
+        self.tabla_rendicion.setColumnWidth(6, 160)
+        self.tabla_rendicion.setColumnWidth(7, 100)
+        self.tabla_rendicion.setColumnWidth(8, 180)
+        self.tabla_rendicion.setColumnWidth(9, 100)
+        header_rend.setStretchLastSection(True)
         
-        hl.addWidget(QLabel("Fecha:")); hl.addWidget(self.resumen_fecha); hl.addWidget(QLabel("Chofer:")); hl.addWidget(self.resumen_chofer)
-        hl.addWidget(btn_b); hl.addWidget(btn_pdf); hl.addSpacing(15); hl.addWidget(btn_sel); hl.addWidget(btn_des); hl.addWidget(btn_rep); hl.addWidget(btn_dev); hl.addStretch()
-        layout_pend.addWidget(filtros)
-        
-        self.tabla_rendicion = QTableWidget(); self.tabla_rendicion.setColumnCount(12); self.tabla_rendicion.setHorizontalHeaderLabels(["ID", "Sel.", "F. Salida", "Chofer", "Cliente", "Guía", "Destinatario", "Estado Actual", "Monto ($)", "Pago CR", "Notas Chofer", "Acciones Rendición"]); self.tabla_rendicion.hideColumn(0)
-        header = self.tabla_rendicion.horizontalHeader(); header.setSectionResizeMode(QHeaderView.ResizeMode.Interactive); self.tabla_rendicion.setColumnWidth(1, 40); self.tabla_rendicion.setColumnWidth(11, 230); header.setStretchLastSection(True)
         self.tabla_rendicion.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows); self.tabla_rendicion.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
-        self.tabla_rendicion.setItemDelegate(PintorCeldasDelegate(self.tabla_rendicion))
-        layout_pend.addWidget(self.tabla_rendicion)
-        self.tabs_rend.addTab(tab_pendientes, "Rendición de Guías")
+        lay_reparto.addLayout(top); lay_reparto.addWidget(self.tabla_rendicion); lay_reparto.addLayout(admin_bar)
+        self.tabs_rendicion.addTab(tab_reparto, "1. Gestión de Rendición")
+        
+        tab_res = QWidget(); lay_res = QVBoxLayout(tab_res)
+        top_res = QHBoxLayout()
+        self.resumen_chofer = QComboBox()
+        self.resumen_fecha = QDateEdit(QDate.currentDate()); self.resumen_fecha.setCalendarPopup(True)
+        btn_buscar_res = QPushButton("🔍 Buscar Resumen"); btn_buscar_res.clicked.connect(self.cargar_resumen_chofer_vista)
+        
+        btn_pdf_res = QPushButton("Imprimir PDF")
+        btn_pdf_res.setStyleSheet("background-color: #dc3545 !important; color: white !important;")
+        btn_pdf_res.clicked.connect(self.imprimir_resumen_chofer)
+        
+        top_res.addWidget(QLabel("Seleccionar Chofer:")); top_res.addWidget(self.resumen_chofer); top_res.addWidget(QLabel("Fecha:")); top_res.addWidget(self.resumen_fecha); top_res.addWidget(btn_buscar_res); top_res.addStretch(); top_res.addWidget(btn_pdf_res)
+        self.lbl_res_exitos = QLabel("✅ ENTREGAS / RETIROS EXITOSOS (0)"); self.lbl_res_exitos.setStyleSheet("font-size: 14px; font-weight: bold; color: #2e7d32; margin-top: 10px;")
+        
+        # 🔥 ACÁ SE AGREGAN LAS NUEVAS COLUMNAS VISUALES EN LA COMPU 🔥
+        self.tabla_res_exitos = QTableWidget()
+        self.tabla_res_exitos.setColumnCount(6)
+        self.tabla_res_exitos.setHorizontalHeaderLabels(["Guía", "Cliente", "Destinatario", "Domicilio", "Bultos", "Fecha Ent."])
+        
+        self.tabla_res_exitos.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
+        self.tabla_res_exitos.setColumnWidth(0, 120)
+        self.tabla_res_exitos.setColumnWidth(1, 120)
+        self.tabla_res_exitos.setColumnWidth(2, 180)
+        self.tabla_res_exitos.setColumnWidth(3, 200)
+        self.tabla_res_exitos.setColumnWidth(4, 60)
+        self.tabla_res_exitos.setColumnWidth(5, 120)
+        self.tabla_res_exitos.horizontalHeader().setStretchLastSection(True)
+        self.tabla_res_exitos.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        
+        self.lbl_res_fallos = QLabel("⚠️ NO ENTREGADOS / PENDIENTES (0)"); self.lbl_res_fallos.setStyleSheet("font-size: 14px; font-weight: bold; color: #c62828; margin-top: 10px;")
+        
+        self.tabla_res_fallos = QTableWidget()
+        self.tabla_res_fallos.setColumnCount(4)
+        self.tabla_res_fallos.setHorizontalHeaderLabels(["Guía", "Cliente", "Destinatario", "Motivo del Chofer"])
+        
+        self.tabla_res_fallos.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
+        self.tabla_res_fallos.setColumnWidth(0, 120)
+        self.tabla_res_fallos.setColumnWidth(1, 120)
+        self.tabla_res_fallos.setColumnWidth(2, 180)
+        self.tabla_res_fallos.setColumnWidth(3, 300)
+        self.tabla_res_fallos.horizontalHeader().setStretchLastSection(True)
+        self.tabla_res_fallos.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        
+        self.tabla_res_exitos.setStyleSheet(ESTILO_TABLAS_BLANCAS)
+        self.tabla_res_fallos.setStyleSheet(ESTILO_TABLAS_BLANCAS)
 
-        # --- TAB 2: RENDICIÓN DIARIA ---
-        tab_diaria = QWidget(); layout_diaria = QVBoxLayout(tab_diaria); f_diaria = QFrame(); hl_d = QHBoxLayout(f_diaria)
-        self.d_fecha = QDateEdit(QDate.currentDate()); self.d_fecha.setCalendarPopup(True)
-        btn_cargar_d = QPushButton("Ver Rendiciones del Día"); btn_cargar_d.clicked.connect(self.cargar_resumen_diario)
-        hl_d.addWidget(QLabel("Seleccionar Fecha:")); hl_d.addWidget(self.d_fecha); hl_d.addWidget(btn_cargar_d); hl_d.addStretch()
-        layout_diaria.addWidget(f_diaria)
-        self.tabla_diaria = QTableWidget(); self.tabla_diaria.setColumnCount(8); self.tabla_diaria.setHorizontalHeaderLabels(["ID", "Chofer", "Guía", "Proveedor", "Destinatario", "Estado", "Monto ($)", "Pago CR"]); self.tabla_diaria.hideColumn(0)
-        self.tabla_diaria.horizontalHeader().setStretchLastSection(True); self.tabla_diaria.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows); self.tabla_diaria.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
-        layout_diaria.addWidget(self.tabla_diaria)
-        self.tabs_rend.addTab(tab_diaria, "Rendición Diaria")
+        lay_res.addLayout(top_res); lay_res.addWidget(self.lbl_res_exitos); lay_res.addWidget(self.tabla_res_exitos); lay_res.addWidget(self.lbl_res_fallos); lay_res.addWidget(self.tabla_res_fallos)
+        self.tabs_rendicion.addTab(tab_res, "2. Resumen Diario por Chofer")
 
-    def cargar_rendicion(self, manual=False):
-        f = self.resumen_fecha.date().toPyDate(); c = self.resumen_chofer.currentText()
+    # 🔥 SE ACTUALIZA EL MOTOR PARA QUE VAYA A BUSCAR EL CLIENTE, LA FECHA Y LOS BULTOS 🔥
+    def cargar_resumen_chofer_vista(self):
+        chofer = self.resumen_chofer.currentText(); fecha = self.resumen_fecha.date().toPyDate()
+        if not chofer or chofer == "Todos": return
         try:
-            self.tabla_rendicion.setRowCount(0)
-            query = self.main.session.query(Operacion).filter(Operacion.sucursal == self.main.sucursal_actual, Operacion.estado.in_([Estados.EN_REPARTO, "EN REPARTO (TERCERIZADO)"]))
-            if c != "Todos": query = query.filter(Operacion.chofer_asignado == c)
-            query = query.join(Historial, Operacion.id == Historial.operacion_id).filter(Historial.accion.in_(["SALIDA A REPARTO", "SALIDA A TERCERIZADO"]), text("DATE(historial.fecha_hora) = :f").bindparams(f=f)).order_by(Operacion.fecha_ingreso.asc())
-            res = query.all()
-            if not res:
-                # 🔥 SOLO MUESTRA EL CARTEL SI FUE CLIC MANUAL 🔥
-                if manual: QMessageBox.information(self, "Aviso", f"No hay guías pendientes para la fecha seleccionada.")
-                return
-            for row, op in enumerate(res):
+            sql_entregados = text("""
+                SELECT DISTINCT o.id, o.guia_remito, o.destinatario, o.domicilio, o.tipo_servicio, o.proveedor, o.bultos, o.fecha_entrega 
+                FROM operaciones o 
+                JOIN historial_movimientos h ON o.id = h.operacion_id 
+                WHERE o.chofer_asignado = :c AND o.estado = 'ENTREGADO' 
+                AND DATE(h.fecha_hora) = :f AND (h.accion LIKE '%ENTREGA%' OR h.accion = 'APP')
+            """)
+            entregados = self.main.session.execute(sql_entregados, {"c": chofer, "f": fecha}).fetchall()
+            
+            sql_no_ent = text("""
+                SELECT o.guia_remito, o.destinatario, h.detalle, o.tipo_servicio, o.proveedor 
+                FROM historial_movimientos h 
+                JOIN operaciones o ON h.operacion_id = o.id 
+                WHERE DATE(h.fecha_hora) = :f 
+                  AND ((h.usuario = :c AND h.detalle LIKE 'Motivo:%') 
+                       OR (h.usuario = :c AND h.detalle LIKE 'Pendiente%') 
+                       OR (o.chofer_asignado = :c AND h.accion LIKE '%REPROGRAMADO%'))
+                UNION
+                SELECT guia_remito, destinatario, 'EN CALLE (Aún no gestionado)', tipo_servicio, proveedor 
+                FROM operaciones 
+                WHERE chofer_asignado = :c AND estado = 'EN REPARTO'
+            """)
+            no_entregados = self.main.session.execute(sql_no_ent, {"c": chofer, "f": fecha}).fetchall()
+            
+            self.datos_resumen_exitos = entregados; self.datos_resumen_fallos = no_entregados
+            self.tabla_res_exitos.setRowCount(0)
+            
+            for r, row_data in enumerate(entregados):
+                self.tabla_res_exitos.insertRow(r)
+                guia_str = row_data[1] or "-"
+                if row_data[4] and "Retiro" in row_data[4]:
+                    guia_str = f"🔄 [RETIRO] {guia_str}"
+                elif row_data[4] and "Flete" in row_data[4]:
+                    guia_str = f"⏱️ {guia_str}"
+                
+                f_ent = row_data[7].strftime("%d/%m %H:%M") if row_data[7] else "-"
+                
+                self.tabla_res_exitos.setItem(r, 0, QTableWidgetItem(guia_str))
+                self.tabla_res_exitos.setItem(r, 1, QTableWidgetItem(row_data[5] or "-"))
+                self.tabla_res_exitos.setItem(r, 2, QTableWidgetItem(row_data[2] or "-"))
+                self.tabla_res_exitos.setItem(r, 3, QTableWidgetItem(row_data[3] or "-"))
+                self.tabla_res_exitos.setItem(r, 4, QTableWidgetItem(str(row_data[6]) if row_data[6] else "1"))
+                self.tabla_res_exitos.setItem(r, 5, QTableWidgetItem(f_ent))
+                
+            self.lbl_res_exitos.setText(f"✅ ENTREGAS / RETIROS EXITOSOS ({len(entregados)})")
+            
+            self.tabla_res_fallos.setRowCount(0)
+            for r, row_data in enumerate(no_entregados):
+                self.tabla_res_fallos.insertRow(r)
+                guia_str = row_data[0] or "-"
+                if row_data[3] and "Retiro" in row_data[3]:
+                    guia_str = f"🔄 [RETIRO] {guia_str}"
+                elif row_data[3] and "Flete" in row_data[3]:
+                    guia_str = f"⏱️ {guia_str}"
+                    
+                self.tabla_res_fallos.setItem(r, 0, QTableWidgetItem(guia_str))
+                self.tabla_res_fallos.setItem(r, 1, QTableWidgetItem(row_data[4] or "-"))
+                self.tabla_res_fallos.setItem(r, 2, QTableWidgetItem(row_data[1] or "-"))
+                self.tabla_res_fallos.setItem(r, 3, QTableWidgetItem(row_data[2] or "-"))
+                
+            self.lbl_res_fallos.setText(f"⚠️ NO ENTREGADOS / PENDIENTES ({len(no_entregados)})")
+        except Exception as e: 
+            self.main.session.rollback(); QMessageBox.critical(self, "Error", str(e))
+
+    def imprimir_resumen_chofer(self):
+        if not hasattr(self, 'datos_resumen_exitos'): QMessageBox.warning(self, "Atención", "Busque primero."); return
+        chofer = self.resumen_chofer.currentText(); fecha_str = self.resumen_fecha.date().toPyDate().strftime("%d/%m/%Y"); fecha_file = self.resumen_fecha.date().toPyDate().strftime("%Y-%m-%d")
+        if not self.datos_resumen_exitos and not self.datos_resumen_fallos: QMessageBox.warning(self, "Sin datos", "No hay actividad."); return
+        
+        descargas_dir = os.path.join(os.path.expanduser('~'), 'Downloads')
+        if not os.path.exists(descargas_dir): os.makedirs(descargas_dir, exist_ok=True)
+        ruta_pdf = os.path.join(descargas_dir, f"Resumen_{chofer}_{fecha_file}.pdf")
+        
+        crear_pdf_resumen_diario(ruta_pdf, chofer, fecha_str, self.datos_resumen_exitos, self.datos_resumen_fallos, self.main.sucursal_actual, self.main.usuario.username)
+        try: os.startfile(ruta_pdf)
+        except: pass
+
+    def filtrar_tabla_rendicion(self, texto):
+        texto = texto.lower()
+        for r in range(self.tabla_rendicion.rowCount()):
+            mostrar = False
+            for c in [2, 3, 4, 5, 6]:
+                if self.tabla_rendicion.item(r, c) and texto in self.tabla_rendicion.item(r, c).text().lower(): mostrar = True; break
+            self.tabla_rendicion.setRowHidden(r, not mostrar)
+
+    def cargar_rendicion(self):
+        try:
+            self.tabla_rendicion.blockSignals(True); self.tabla_rendicion.setRowCount(0); estados = [Estados.EN_REPARTO]
+            ops = self.main.session.query(Operacion).filter(Operacion.estado.in_(estados), Operacion.sucursal == self.main.sucursal_actual).order_by(Operacion.chofer_asignado.asc()).all()
+            for row, op in enumerate(ops):
+                if row % 10 == 0: QApplication.processEvents() 
                 self.tabla_rendicion.insertRow(row); self.tabla_rendicion.setItem(row, 0, QTableWidgetItem(str(op.id)))
                 chk = QTableWidgetItem(); chk.setFlags(Qt.ItemFlag.ItemIsUserCheckable | Qt.ItemFlag.ItemIsEnabled); chk.setCheckState(Qt.CheckState.Unchecked); self.tabla_rendicion.setItem(row, 1, chk)
-                self.tabla_rendicion.setItem(row, 2, QTableWidgetItem(op.fecha_ingreso.strftime("%d/%m/%Y") if op.fecha_ingreso else "")); self.tabla_rendicion.setItem(row, 3, QTableWidgetItem(op.chofer_asignado or "N/A")); self.tabla_rendicion.setItem(row, 4, QTableWidgetItem(op.proveedor or "N/A")); self.tabla_rendicion.setItem(row, 5, QTableWidgetItem(op.guia_remito or "N/A")); self.tabla_rendicion.setItem(row, 6, QTableWidgetItem(op.destinatario or "N/A")); self.tabla_rendicion.setItem(row, 7, QTableWidgetItem(op.estado)); self.tabla_rendicion.setItem(row, 8, QTableWidgetItem(f"$ {op.monto_servicio:,.2f}")); self.tabla_rendicion.setItem(row, 9, QTableWidgetItem("N/A")); self.tabla_rendicion.setItem(row, 10, QTableWidgetItem(op.notes or ""))
-                w_acc = QWidget(); l_acc = QHBoxLayout(w_acc); l_acc.setContentsMargins(0, 0, 0, 0)
-                btn_ok = QPushButton("✔️"); btn_ok.setStyleSheet("background-color: #198754; color: white; font-weight: bold;"); btn_ok.clicked.connect(lambda checked, id_o=op.id: self.abrir_dialogo_entrega(id_o))
-                btn_fallo = QPushButton("❌"); btn_fallo.setStyleSheet("background-color: #dc3545; color: white;"); btn_fallo.clicked.connect(lambda checked, id_o=op.id: self.reprogramar_falla(id_o))
-                l_acc.addWidget(btn_ok); l_acc.addWidget(btn_fallo); self.tabla_rendicion.setCellWidget(row, 11, w_acc)
-        except Exception as e: self.main.session.rollback(); QMessageBox.critical(self, "Error", str(e))
-
-    def abrir_dialogo_entrega(self, id_op):
-        try:
-            op = self.main.session.query(Operacion).get(id_op)
-            if not op: return
-            dlg = ConfirmarEntregaDialog(op, self)
-            if dlg.exec() == QDialog.DialogCode.Accepted:
-                rutas = dlg.obtener_rutas_fotos()
-                if op.proveedor and rutas:
-                    res_m = enviar_email_desktop(self.main.session, op.destinatario or "S/D", op.guia_remito or "S/D", rutas, op.proveedor)
-                    self.main.toast.mostrar(res_m)
-                op.estado = Estados.ENTREGADO; op.fecha_entrega = datetime.now()
-                self.main.log_movimiento(op, "ENTREGA CONFIRMADA", f"Rendido desde Oficina.")
-                self.main.session.commit(); self.cargar_rendicion()
-                if hasattr(self.main, 'cargar_monitor_global'): self.main.cargar_monitor_global()
+                guia_texto = op.guia_remito or "-"
+                if op.tipo_servicio and "Retiro" in op.tipo_servicio: guia_texto = f"🔄 [RETIRO] {guia_texto}"
+                elif op.tipo_servicio and "Flete" in op.tipo_servicio: guia_texto = f"⏱️ {op.guia_remito}"
+                
+                self.tabla_rendicion.setItem(row, 2, QTableWidgetItem(op.chofer_asignado or "SIN ASIGNAR")); self.tabla_rendicion.setItem(row, 3, QTableWidgetItem(guia_texto)); self.tabla_rendicion.setItem(row, 4, QTableWidgetItem(op.destinatario)); self.tabla_rendicion.setItem(row, 5, QTableWidgetItem(op.domicilio)); self.tabla_rendicion.setItem(row, 6, QTableWidgetItem(op.localidad)); self.tabla_rendicion.setItem(row, 7, QTableWidgetItem(str(op.bultos)))
+                estado_calle = op.estado
+                h_pend = self.main.session.query(Historial).filter(Historial.operacion_id == op.id, Historial.accion == 'APP').order_by(Historial.id.desc()).first()
+                if h_pend and "Pendiente" in h_pend.detalle: estado_calle = "EN CALLE (Pendiente)"
+                it_est = QTableWidgetItem(estado_calle)
+                if "Pendiente" in estado_calle: it_est.setForeground(QColor("#f57f17"))
+                self.tabla_rendicion.setItem(row, 8, it_est); 
+                
+                fecha_creacion_str = op.fecha_ingreso.strftime("%d/%m/%Y") if op.fecha_ingreso else "-"
+                self.tabla_rendicion.setItem(row, 9, QTableWidgetItem(fecha_creacion_str)) 
+                
         except Exception: self.main.session.rollback()
-
-    def reprogramar_falla(self, id_op):
-        try:
-            op = self.main.session.query(Operacion).get(id_op)
-            if not op: return
-            dlg = ReprogramarAdminDialog(op, self)
-            if dlg.exec() == QDialog.DialogCode.Accepted:
-                op.estado = Estados.EN_DEPOSITO; op.chofer_asignado = None
-                self.main.log_movimiento(op, "REPROGRAMADO (ADMIN)", "Regresa a En Depósito.")
-                self.main.session.commit(); self.cargar_rendicion()
-                if hasattr(self.main, 'cargar_monitor_global'): self.main.cargar_monitor_global()
-        except Exception: self.main.session.rollback()
-
-    def seleccionar_todos_rend(self):
-        btn = self.sender()
-        marcar = Qt.CheckState.Checked if btn.text() == "☑️ Todos" else Qt.CheckState.Unchecked
-        btn.setText("⬜ Ninguno" if btn.text() == "☑️ Todos" else "☑️ Todos")
+        finally: self.tabla_rendicion.blockSignals(False)
+        
+    def confirmar_entrega_rendicion(self):
+        ids = []
         for r in range(self.tabla_rendicion.rowCount()):
-            it = self.tabla_rendicion.item(r, 1)
-            if it: it.setCheckState(marcar)
-
-    def cargar_resumen_diario(self):
-        f = self.d_fecha.date().toPyDate()
+            if self.tabla_rendicion.item(r, 1).checkState() == Qt.CheckState.Checked: ids.append(int(self.tabla_rendicion.item(r, 0).text()))
+        if not ids: QMessageBox.warning(self, "Atención", "Seleccione guías para confirmar su entrega."); return
+        
+        dlg = ConfirmarEntregaDialog(self)
+        if dlg.exec() != QDialog.DialogCode.Accepted: return
+        
         try:
-            self.tabla_diaria.setRowCount(0)
-            ops = self.main.session.query(Operacion).filter(Operacion.sucursal == self.main.sucursal_actual, text("DATE(operaciones.fecha_entrega) = :f").bindparams(f=f)).all()
-            for r, op in enumerate(ops):
-                self.tabla_diaria.insertRow(r); self.tabla_diaria.setItem(r,0,QTableWidgetItem(str(op.id))); self.tabla_diaria.setItem(r,1,QTableWidgetItem(op.chofer_asignado or "-")); self.tabla_diaria.setItem(r,2,QTableWidgetItem(op.guia_remito or "-")); self.tabla_diaria.setItem(r,3,QTableWidgetItem(op.proveedor or "-")); self.tabla_diaria.setItem(r,4,QTableWidgetItem(op.destinatario or "-")); self.tabla_diaria.setItem(r,5,QTableWidgetItem(op.estado)); self.tabla_diaria.setItem(r,6,QTableWidgetItem(f"$ {op.monto_servicio:,.2f}")); self.tabla_diaria.setItem(r,7,QTableWidgetItem("-"))
-        except Exception: self.main.session.rollback()
+            ops = self.main.session.query(Operacion).filter(Operacion.id.in_(ids)).all()
+            count = 0
+            mensajes_mail = []
+            
+            for op in ops:
+                if op.estado == Estados.ENTREGADO: continue 
+                op.estado = Estados.ENTREGADO
+                op.fecha_entrega = datetime.combine(dlg.fecha_final, datetime.now().time())
+                detalle = f"Recibió: {dlg.recibe_final}"
+                
+                if hasattr(dlg, 'rutas_fotos') and dlg.rutas_fotos:
+                    detalle += f" [CON {len(dlg.rutas_fotos)} FOTO/S CARGADAS POR PC]"
+                    
+                    res_mail = enviar_email_desktop(self.main.session, dlg.recibe_final, op.guia_remito, dlg.rutas_fotos, op.proveedor)
+                    if res_mail:
+                        mensajes_mail.append(f"Guía {op.guia_remito}: {res_mail}")
+                
+                self.main.log_movimiento(op, "ENTREGA CONFIRMADA (ADMIN)", detalle)
+                count += 1
+                
+            self.main.session.commit()
+            
+            msg_final = f"{count} guía(s) entregada(s) correctamente en el sistema."
+            if mensajes_mail:
+                msg_final += "\n\n📋 Estado de Correos:\n" + "\n".join(list(set(mensajes_mail)))
+                
+            QMessageBox.information(self, "Resultado de la Gestión", msg_final)
+            
+            self.cargar_rendicion()
+            if hasattr(self.main, 'cargar_monitor_global'): self.main.cargar_monitor_global()
+        except Exception as e: 
+            self.main.session.rollback()
+            QMessageBox.warning(self, "Error de Sistema", f"Ocurrió un error al procesar: {e}")
 
-    def generar_pdf_rendicion(self):
-        f = self.resumen_fecha.date().toPyDate(); c = self.resumen_chofer.currentText(); ops = []
+    def marcar_pendiente_masivo(self):
+        ids = []
         for r in range(self.tabla_rendicion.rowCount()):
-            op = self.main.session.query(Operacion).get(int(self.tabla_rendicion.item(r,0).text()))
-            if op: ops.append(op)
-        if not ops: return
-        ruta = os.path.join(os.path.expanduser('~'), 'Downloads', f"Rendicion_{c}_{f.strftime('%d%m%Y')}.pdf")
-        crear_pdf_resumen_diario(ruta, ops, c, f.strftime('%d/%m/%Y'), self.main.usuario.username)
-        os.startfile(ruta)
-
-    def reprogramar_masivo(self):
-        ids = [int(self.tabla_rendicion.item(r,0).text()) for r in range(self.tabla_rendicion.rowCount()) if self.tabla_rendicion.item(r,1).checkState() == Qt.CheckState.Checked]
+            if self.tabla_rendicion.item(r, 1).checkState() == Qt.CheckState.Checked: ids.append(int(self.tabla_rendicion.item(r, 0).text()))
         if not ids: return
-        if QMessageBox.question(self, "Conf", f"¿Reprogramar {len(ids)} guías?") == QMessageBox.StandardButton.Yes:
-            try:
-                for op in self.main.session.query(Operacion).filter(Operacion.id.in_(ids)).all():
-                    op.estado = Estados.EN_DEPOSITO; op.chofer_asignado = None
+        try:
+            op_ref = self.main.session.query(Operacion).get(ids[0]); precio_actual = op_ref.monto_servicio if op_ref else 0.0
+            last_mov = self.main.session.query(Historial).filter(Historial.operacion_id == ids[0]).order_by(Historial.id.desc()).first()
+            dlg = ReprogramarAdminDialog(precio_actual, last_mov.detalle if last_mov else "Sin motivo", self)
+            if dlg.exec() == QDialog.DialogCode.Accepted:
+                nuevo_precio = dlg.precio_final; ops = self.main.session.query(Operacion).filter(Operacion.id.in_(ids)).all()
+                for op in ops: op.estado = Estados.EN_DEPOSITO; op.monto_servicio = nuevo_precio; op.chofer_asignado = None; self.main.log_movimiento(op, "REPROGRAMADO (ADMIN)", f"Nuevo Precio: {nuevo_precio}")
                 self.main.session.commit(); self.cargar_rendicion()
-            except Exception: self.main.session.rollback()
-
+                if hasattr(self.main, 'cargar_monitor_global'): self.main.cargar_monitor_global()
+        except Exception: self.main.session.rollback()
+        
     def deshacer_estado(self):
-        ids = [int(self.tabla_rendicion.item(r,0).text()) for r in range(self.tabla_rendicion.rowCount()) if self.tabla_rendicion.item(r,1).checkState() == Qt.CheckState.Checked]
+        ids = []
+        for r in range(self.tabla_rendicion.rowCount()):
+            if self.tabla_rendicion.item(r, 1).checkState() == Qt.CheckState.Checked: ids.append(int(self.tabla_rendicion.item(r, 0).text()))
         if not ids: return
         try:
-            for op in self.main.session.query(Operacion).filter(Operacion.id.in_(ids)).all():
-                op.estado = Estados.EN_DEPOSITO; op.chofer_asignado = None
-            self.main.session.commit(); self.cargar_rendicion()
-        except Exception: self.main.session.rollback()
-
-    def confirmar_devolucion(self):
-        ids = [int(self.tabla_rendicion.item(r,0).text()) for r in range(self.tabla_rendicion.rowCount()) if self.tabla_rendicion.item(r,1).checkState() == Qt.CheckState.Checked]
-        if not ids: return
-        if QMessageBox.question(self, "Conf", "¿Marcar como DEVOLUCION?") == QMessageBox.StandardButton.Yes:
-            try:
-                for op in self.main.session.query(Operacion).filter(Operacion.id.in_(ids)).all():
-                    op.estado = Estados.DEVUELTO_ORIGEN; op.fecha_entrega = datetime.now()
-                self.main.session.commit(); self.cargar_rendicion()
-            except Exception: self.main.session.rollback()
+            ops = self.main.session.query(Operacion).filter(Operacion.id.in_(ids)).all()
+            for op in ops:
+                op.estado = Estados.EN_DEPOSITO
+                op.chofer_asignado = None
+                self.main.log_movimiento(op, "DESHACER (ADMIN)", f"Restaurado a En Deposito")
+            
+            self.main.session.commit()
+            self.cargar_rendicion()
+            
+            if hasattr(self.main, 'cargar_monitor_global'): 
+                self.main.cargar_monitor_global()
+                
+            if hasattr(self.main, 'tab_ingreso'):
+                self.main.tab_ingreso.cargar_movimientos_dia()
+            if hasattr(self.main, 'cargar_ruta'):
+                self.main.cargar_ruta()
+                
+        except Exception: 
+            self.main.session.rollback()
