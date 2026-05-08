@@ -34,6 +34,7 @@ def enviar_email_desktop(session, destinatario, guia, rutas_fotos, proveedor):
         if res: email_prov = res[0]
     except: pass
     
+    # 🔥 SOPORTE MULTIPLE EMAIL: Separa por comas o punto y coma automáticamente 🔥
     destinatarios_lista = []
     if email_prov:
         correos_limpios = str(email_prov).replace(',', ' ').replace(';', ' ')
@@ -197,7 +198,6 @@ class TabRendicion(QWidget):
         top_res.addWidget(QLabel("Seleccionar Chofer:")); top_res.addWidget(self.resumen_chofer); top_res.addWidget(QLabel("Fecha:")); top_res.addWidget(self.resumen_fecha); top_res.addWidget(btn_buscar_res); top_res.addStretch(); top_res.addWidget(btn_pdf_res)
         self.lbl_res_exitos = QLabel("✅ ENTREGAS / RETIROS EXITOSOS (0)"); self.lbl_res_exitos.setStyleSheet("font-size: 14px; font-weight: bold; color: #2e7d32; margin-top: 10px;")
         
-        # 🔥 ACÁ SE AGREGAN LAS NUEVAS COLUMNAS VISUALES EN LA COMPU 🔥
         self.tabla_res_exitos = QTableWidget()
         self.tabla_res_exitos.setColumnCount(6)
         self.tabla_res_exitos.setHorizontalHeaderLabels(["Guía", "Cliente", "Destinatario", "Domicilio", "Bultos", "Fecha Ent."])
@@ -232,7 +232,6 @@ class TabRendicion(QWidget):
         lay_res.addLayout(top_res); lay_res.addWidget(self.lbl_res_exitos); lay_res.addWidget(self.tabla_res_exitos); lay_res.addWidget(self.lbl_res_fallos); lay_res.addWidget(self.tabla_res_fallos)
         self.tabs_rendicion.addTab(tab_res, "2. Resumen Diario por Chofer")
 
-    # 🔥 SE ACTUALIZA EL MOTOR PARA QUE VAYA A BUSCAR EL CLIENTE, LA FECHA Y LOS BULTOS 🔥
     def cargar_resumen_chofer_vista(self):
         chofer = self.resumen_chofer.currentText(); fecha = self.resumen_fecha.date().toPyDate()
         if not chofer or chofer == "Todos": return
