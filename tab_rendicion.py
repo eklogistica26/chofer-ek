@@ -4,7 +4,7 @@ import base64
 import io
 from datetime import datetime
 from PyQt6.QtWidgets import (QApplication, QDialog, QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, 
-                             QComboBox, QPushButton, QTableWidget, QTableWidgetItem, 
+                             QComboBox, QPushButton, QTableWidget, QTableWidgetItem, QFrame,
                              QHeaderView, QMessageBox, QDateEdit, QTabWidget, QAbstractItemView, QStyledItemDelegate, QFileDialog)
 from PyQt6.QtCore import Qt, QDate
 from PyQt6.QtGui import QColor, QFont
