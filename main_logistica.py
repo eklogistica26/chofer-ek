@@ -233,9 +233,14 @@ class PlataformaLogistica(QMainWindow):
             if hasattr(self, 'combo_masivo_chofer'): self.combo_masivo_chofer.clear(); self.combo_masivo_chofer.addItems(nombres_choferes)
             if hasattr(self, 'mon_chofer_combo'): self.mon_chofer_combo.clear(); self.mon_chofer_combo.addItem("Todos"); self.mon_chofer_combo.addItems(nombres_choferes)
             if hasattr(self, 'tab_rendicion'): self.tab_rendicion.resumen_chofer.clear(); self.tab_rendicion.resumen_chofer.addItems(nombres_choferes)
+            
             if hasattr(self, 'rep_chofer'): 
                 self.rep_chofer.clear(); self.rep_chofer.addItem("Todos"); self.rep_chofer.addItems(sorted(list(set([c[0] for c in chs_todos]))))
                 self.rep_cliente.clear(); self.rep_cliente.addItem("Todos"); self.rep_cliente.addItems(self.lista_proveedores)
+                # 🔥 SE AGREGAN LAS ZONAS AL COMBO DE REPORTES 🔥
+                if hasattr(self, 'rep_zona'):
+                    self.rep_zona.clear(); self.rep_zona.addItem("Todas"); self.rep_zona.addItems(sorted([z[0] for z in zs]))
+                    
             if hasattr(self, 'tab_cierre'):
                 self.tab_cierre.cierre_prov.clear(); self.tab_cierre.cierre_prov.addItem("Todos"); self.tab_cierre.cierre_prov.addItems([p for p in self.lista_proveedores if p.lower() != "jetpaq"])
         except Exception: self.session.rollback()
@@ -770,27 +775,24 @@ class PlataformaLogistica(QMainWindow):
         self.rep_sucursal = QComboBox(); self.rep_sucursal.addItems(["Todas", "Mendoza", "San Juan"])
         self.rep_sucursal.setMinimumWidth(100) 
         
-        self.rep_chofer = QComboBox()
-        self.rep_chofer.setMinimumWidth(200) 
-        self.rep_chofer.addItem("Todos")
-        
+        self.rep_chofer = QComboBox(); self.rep_chofer.setMinimumWidth(150); self.rep_chofer.addItem("Todos")
         self.rep_cliente = QComboBox(); self.rep_cliente.addItem("Todos"); self.rep_cliente.addItems(self.lista_proveedores)
-        
         self.rep_estado = QComboBox(); self.rep_estado.addItem("Todos"); self.rep_estado.addItems(Estados.LISTA_TODOS)
-        
-        # 🔥 NUEVO FILTRO DE TIPO 🔥
-        self.rep_tipo = QComboBox()
-        self.rep_tipo.addItems(["Todos", "Entrega", "Retiro", "Flete", "Cargo Extra"])
-        
+        self.rep_tipo = QComboBox(); self.rep_tipo.addItems(["Todos", "Entrega", "Retiro", "Flete", "Cargo Extra"])
         self.rep_facturado = QComboBox(); self.rep_facturado.addItems(["Todos", "Facturado", "NO Facturado"]) 
+        
+        # 🔥 NUEVO FILTRO DE ZONA 🔥
+        self.rep_zona = QComboBox(); self.rep_zona.setMinimumWidth(150); self.rep_zona.addItem("Todas")
         
         btn_buscar = QPushButton("🔍 Generar"); btn_buscar.clicked.connect(self.generar_reporte_avanzado)
         btn_excel = QPushButton("Excel"); btn_excel.setStyleSheet("background-color: #28a745 !important; color: white !important;"); btn_excel.clicked.connect(self.exportar_reporte_excel)
         btn_pdf_rep = QPushButton("PDF"); btn_pdf_rep.setStyleSheet("background-color: #dc3545 !important; color: white !important;"); btn_pdf_rep.clicked.connect(self.generar_pdf_rep)
         
+        # Agregamos todo a la vista
         flayout.addWidget(QLabel("Desde:")); flayout.addWidget(self.rep_fecha_desde); flayout.addWidget(QLabel("Hasta:")); flayout.addWidget(self.rep_fecha_hasta); flayout.addWidget(QLabel("Suc:")); flayout.addWidget(self.rep_sucursal)
         flayout.addWidget(QLabel("Cliente:")); flayout.addWidget(self.rep_cliente); flayout.addWidget(QLabel("Chof:")); flayout.addWidget(self.rep_chofer); flayout.addWidget(QLabel("Est:")); flayout.addWidget(self.rep_estado)
-        flayout.addWidget(QLabel("Tipo:")); flayout.addWidget(self.rep_tipo) # Agregado a la vista
+        flayout.addWidget(QLabel("Zona:")); flayout.addWidget(self.rep_zona) # <-- Zona agregada
+        flayout.addWidget(QLabel("Tipo:")); flayout.addWidget(self.rep_tipo) 
         flayout.addWidget(QLabel("Fac:")); flayout.addWidget(self.rep_facturado)
         flayout.addWidget(btn_buscar); flayout.addWidget(btn_excel); flayout.addWidget(btn_pdf_rep); filtros.setLayout(flayout)
         
@@ -819,18 +821,17 @@ class PlataformaLogistica(QMainWindow):
         
     def construir_query_reportes(self):
         f_desde = self.rep_fecha_desde.date().toPyDate(); f_hasta = self.rep_fecha_hasta.date().toPyDate()
-        
-        # 🔥 EL ARREGLO MÁGICO: Prioriza la fecha en que se ENTREGÓ la guía 🔥
         fecha_ref = func.coalesce(Operacion.fecha_entrega, Operacion.fecha_ingreso)
         query = self.session.query(Operacion).filter(func.date(fecha_ref) >= f_desde, func.date(fecha_ref) <= f_hasta)
         
         if self.rep_sucursal.currentText() != "Todas": query = query.filter(Operacion.sucursal == self.rep_sucursal.currentText())
         if self.rep_chofer.currentText() != "Todos": query = query.filter(Operacion.chofer_asignado == self.rep_chofer.currentText())
-        
-        # 🔥 ILIKE ignora si está en mayúscula o minúscula 🔥
         if self.rep_cliente.currentText() != "Todos": query = query.filter(Operacion.proveedor.ilike(self.rep_cliente.currentText()))
-        
         if self.rep_estado.currentText() != "Todos": query = query.filter(Operacion.estado == self.rep_estado.currentText())
+        
+        # 🔥 APLICAR FILTRO DE ZONA 🔥
+        if hasattr(self, 'rep_zona') and self.rep_zona.currentText() != "Todas":
+            query = query.filter(Operacion.localidad.ilike(self.rep_zona.currentText()))
         
         tipo_sel = self.rep_tipo.currentText()
         if tipo_sel != "Todos":
@@ -851,19 +852,14 @@ class PlataformaLogistica(QMainWindow):
             total_dinero = 0
             total_guias = len(resultados)
             
-            # 🔥 DICCIONARIOS PARA EL DESGLOSE GERENCIAL 🔥
-            desglose_est = {}
-            c_cli = {}
-            c_chof_general = {}
+            desglose_est = {}; c_cli = {}; c_chof_general = {}
+            c_zonas = {} # 🔥 CONTADOR PARA TOP ZONAS 🔥
             
             for row, op in enumerate(resultados):
-                # REGLA DE NEGOCIO: JETPAQ NO SUMA DINERO
                 es_jetpaq = bool(op.proveedor and op.proveedor.lower() == 'jetpaq')
                 precio_mostrar = 0.0 if es_jetpaq else (op.monto_servicio or 0.0)
 
                 self.tabla_reportes.insertRow(row)
-                
-                # 🔥 BLINDAJE ANTI-CRASH PARA VALORES NULOS 🔥
                 f_ing = op.fecha_ingreso.strftime("%d/%m/%Y") if op.fecha_ingreso else "-"
                 
                 self.tabla_reportes.setItem(row, 0, QTableWidgetItem(f_ing))
@@ -877,8 +873,7 @@ class PlataformaLogistica(QMainWindow):
                 
                 item_fac = QTableWidgetItem("SI" if op.facturado else "NO")
                 if op.facturado: 
-                    item_fac.setForeground(QColor("green"))
-                    item_fac.setFont(QFont("Arial", 9, QFont.Weight.Bold))
+                    item_fac.setForeground(QColor("green")); item_fac.setFont(QFont("Arial", 9, QFont.Weight.Bold))
                 self.tabla_reportes.setItem(row, 8, item_fac)
                 self.tabla_reportes.setItem(row, 9, QTableWidgetItem(str(op.bultos or 1)))
                 
@@ -889,16 +884,14 @@ class PlataformaLogistica(QMainWindow):
                     item_precio = QTableWidgetItem(f"$ {precio_mostrar:,.2f}")
                 self.tabla_reportes.setItem(row, 10, item_precio)
                 
-                # Sumatoria financiera (JetPaq suma 0)
                 total_dinero += precio_mostrar
                 
-                # Extracción de datos para el desglose
                 est = op.estado or "S/D"
                 suc = op.sucursal or "S/D"
                 chof = op.chofer_asignado or "Sin Chofer"
                 cli = op.proveedor or "S/D"
+                zona = op.localidad or "S/D"
                 
-                # Armado del árbol de Estados -> Sucursal -> Chofer
                 if est not in desglose_est:
                     desglose_est[est] = {'tot': 0, 'MZA': 0, 'SJ': 0, 'choferes': {}}
                 
@@ -910,14 +903,11 @@ class PlataformaLogistica(QMainWindow):
                     desglose_est[est]['choferes'][chof] = 0
                 desglose_est[est]['choferes'][chof] += 1
 
-                # Totales generales de Clientes y Choferes
                 c_cli[cli] = c_cli.get(cli, 0) + 1
                 c_chof_general[chof] = c_chof_general.get(chof, 0) + 1
+                c_zonas[zona] = c_zonas.get(zona, 0) + 1 # Suma zona
 
-            # 🔥 CONSTRUCCIÓN DEL DASHBOARD HTML CORPORATIVO 🔥
             html = "<div style='font-family: Arial, sans-serif; color: #333; padding: 5px;'>"
-            
-            # Fila Superior: Métricas Principales
             html += f"""
             <table width='100%' style='border-bottom: 2px solid #0d6efd; padding-bottom: 10px; margin-bottom: 15px;'>
                 <tr>
@@ -926,80 +916,46 @@ class PlataformaLogistica(QMainWindow):
                 </tr>
             </table>
             """
-            
             html += "<table width='100%' cellpadding='8'><tr>"
             
-            # Columna Izquierda: Desglose Profundo por Estados (Formato Vertical Limpio)
-            html += "<td width='60%' valign='top' style='background-color: #ffffff; border: 1px solid #dee2e6; border-radius: 6px; padding: 15px;'>"
-            html += "<h3 style='color: #495057; margin-top: 0; border-bottom: 1px solid #eee; padding-bottom: 5px;'>📈 Desglose Operativo por Estado</h3>"
-            
-            if not desglose_est:
-                html += "<span style='color: #6c757d;'>No hay datos operativos en este rango.</span>"
-            
+            html += "<td width='45%' valign='top' style='background-color: #ffffff; border: 1px solid #dee2e6; border-radius: 6px; padding: 15px;'>"
+            html += "<h3 style='color: #495057; margin-top: 0; border-bottom: 1px solid #eee; padding-bottom: 5px;'>📈 Desglose por Estado</h3>"
+            if not desglose_est: html += "<span style='color: #6c757d;'>Sin datos.</span>"
             for estado, data in sorted(desglose_est.items(), key=lambda x: x[1]['tot'], reverse=True):
-                html += f"<div style='margin-bottom: 15px; padding-bottom: 15px; border-bottom: 1px dashed #e9ecef;'>"
-                
-                # Título del Estado
-                html += f"<div style='font-size: 15px; font-weight: bold; color: #212529; margin-bottom: 8px;'>{estado} ({data['tot']})</div>"
-                
-                # Lista de Sucursales
-                html += f"<div style='font-size: 13px; color: #495057; font-weight: bold; margin-bottom: 4px;'>SUCURSALES:</div>"
-                if data['MZA'] > 0: 
-                    html += f"<div style='font-size: 13px; color: #495057; margin-left: 15px; margin-bottom: 2px;'>• Mendoza: {data['MZA']}</div>"
-                if data['SJ'] > 0: 
-                    html += f"<div style='font-size: 13px; color: #495057; margin-left: 15px; margin-bottom: 8px;'>• San Juan: {data['SJ']}</div>"
-                
-                # Lista de Choferes
-                html += f"<div style='font-size: 13px; color: #495057; font-weight: bold; margin-bottom: 4px;'>CHOFERES:</div>"
-                for c, cant in sorted(data['choferes'].items(), key=lambda x: x[1], reverse=True):
-                    html += f"<div style='font-size: 13px; color: #495057; margin-left: 15px; margin-bottom: 2px;'>• {c}: {cant}</div>"
-                
-                html += "</div>"
-                
+                html += f"<div style='margin-bottom: 10px; border-bottom: 1px dashed #e9ecef;'><div style='font-size: 15px; font-weight: bold; color: #212529;'>{estado} ({data['tot']})</div></div>"
             html += "</td><td width='2%'></td>"
             
-            # Columna Derecha: Clientes y Choferes
-            html += "<td width='38%' valign='top'>"
-            
-            # Panel Clientes
+            html += "<td width='53%' valign='top'>"
+            # 🔥 NUEVO PANEL: TOP ZONAS 🔥
             html += "<div style='background-color: #ffffff; border: 1px solid #dee2e6; border-radius: 6px; padding: 15px; margin-bottom: 15px;'>"
-            html += "<h4 style='color: #495057; margin-top: 0; border-bottom: 1px solid #eee; padding-bottom: 5px;'>🏢 Volumen por Cliente</h4>"
-            for cli, cant in sorted(c_cli.items(), key=lambda x: x[1], reverse=True)[:8]:
+            html += "<h4 style='color: #495057; margin-top: 0; border-bottom: 1px solid #eee; padding-bottom: 5px;'>📍 Top Zonas (Demanda)</h4>"
+            for z, cant in sorted(c_zonas.items(), key=lambda x: x[1], reverse=True)[:5]:
+                html += f"<div style='font-size: 14px; margin-bottom: 6px;'>• <b>{z}</b>: {cant} guías</div>"
+            html += "</div>"
+            
+            html += "<div style='background-color: #ffffff; border: 1px solid #dee2e6; border-radius: 6px; padding: 15px; margin-bottom: 15px;'>"
+            html += "<h4 style='color: #495057; margin-top: 0; border-bottom: 1px solid #eee; padding-bottom: 5px;'>🏢 Top Clientes</h4>"
+            for cli, cant in sorted(c_cli.items(), key=lambda x: x[1], reverse=True)[:5]:
                 html += f"<div style='font-size: 14px; margin-bottom: 6px;'>• <b>{cli}</b>: {cant} guías</div>"
             html += "</div>"
             
-            # Panel Choferes
-            html += "<div style='background-color: #ffffff; border: 1px solid #dee2e6; border-radius: 6px; padding: 15px;'>"
-            html += "<h4 style='color: #495057; margin-top: 0; border-bottom: 1px solid #eee; padding-bottom: 5px;'>🚛 Distribución por Chofer</h4>"
-            for chof, cant in sorted(c_chof_general.items(), key=lambda x: x[1], reverse=True)[:8]:
-                html += f"<div style='font-size: 14px; margin-bottom: 6px;'>• <b>{chof}</b>: {cant} guías</div>"
-            html += "</div>"
-            
             html += "</td></tr></table></div>"
-            
             self.panel_resumen.setHtml(html)
             
         except Exception as e: 
             self.session.rollback()
-            # ESTE CARTEL TE VA A SALVAR LA VIDA SI VUELVE A FALLAR
             QMessageBox.critical(self, "Error en Reporte", f"Ocurrió un error al generar el reporte:\n\n{str(e)}")
         
     def generar_pdf_rep(self):
         try:
             resultados = self.construir_query_reportes()
-            
             descargas_dir = os.path.join(os.path.expanduser('~'), 'Downloads')
             if not os.path.exists(descargas_dir): os.makedirs(descargas_dir, exist_ok=True)
             ruta_pdf = os.path.join(descargas_dir, f"Reporte_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{self.sucursal_actual}.pdf")
-            
-            total_dinero = sum([op.monto_servicio for op in resultados])
+            total_dinero = sum([op.monto_servicio for op in resultados if op.monto_servicio])
             
             filtro_info = f"Desde: {self.rep_fecha_desde.text()} Hasta: {self.rep_fecha_hasta.text()}"
-            if self.rep_sucursal.currentText() != "Todas": filtro_info += f" | SUC: {self.rep_sucursal.currentText()}"
-            if self.rep_cliente.currentText() != "Todos": filtro_info += f" | CLI: {self.rep_cliente.currentText()}"
-            if self.rep_chofer.currentText() != "Todos": filtro_info += f" | CHOF: {self.rep_chofer.currentText()}"
-            if self.rep_estado.currentText() != "Todos": filtro_info += f" | ESTADO: {self.rep_estado.currentText()}"
-            if self.rep_facturado.currentText() != "Todos": filtro_info += f" | FAC: {self.rep_facturado.currentText()}"
+            if self.rep_zona.currentText() != "Todas": filtro_info += f" | ZONA: {self.rep_zona.currentText()}"
             
             crear_pdf_reporte(ruta_pdf, resultados, self.sucursal_actual, self.usuario.username, datetime.now().strftime('%d/%m/%Y %H:%M'), filtro_info, total_dinero)
             try: os.startfile(ruta_pdf)
@@ -1009,25 +965,45 @@ class PlataformaLogistica(QMainWindow):
     def exportar_reporte_excel(self):
         try:
             import pandas as pd
-            resultados = self.construir_query_reportes(); data = []
+            resultados = self.construir_query_reportes()
+            data = []
             for op in resultados: 
-                guia_val = op.guia_remito
-                
-                # 🔥 FIX PARA EXCEL: CONVERTIR A NÚMERO SI SON SOLO DÍGITOS 🔥
-                if guia_val and str(guia_val).strip().isdigit():
-                    guia_val = int(str(guia_val).strip())
-                    
-                data.append({"Fecha": op.fecha_ingreso, "Sucursal": op.sucursal, "Cliente": op.proveedor, "Guia": guia_val, "Destinatario": op.destinatario, "Estado": op.estado, "Facturado": "SI" if op.facturado else "NO", "Monto": op.monto_servicio})
+                # 🔥 FIX EXCEL: El número de guía ahora se manda puro y Excel lo tomará como Texto 🔥
+                data.append({
+                    "Fecha": op.fecha_ingreso.strftime("%d/%m/%Y") if op.fecha_ingreso else "-", 
+                    "Sucursal": op.sucursal, 
+                    "Cliente": op.proveedor, 
+                    "Guía / Remito": op.guia_remito or "-", 
+                    "Destinatario": op.destinatario, 
+                    "Zona / Localidad": op.localidad, # <-- Agregado el campo de Zona
+                    "Bultos": op.bultos or 1,         # <-- Agregado el campo Bultos
+                    "Estado": op.estado, 
+                    "Facturado": "SI" if op.facturado else "NO", 
+                    "Monto ($)": op.monto_servicio or 0.0
+                })
             df = pd.DataFrame(data)
             
             descargas_dir = os.path.join(os.path.expanduser('~'), 'Downloads')
             if not os.path.exists(descargas_dir): os.makedirs(descargas_dir, exist_ok=True)
             ruta_excel = os.path.join(descargas_dir, f"Reporte_Gestion_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx")
             
-            df.to_excel(ruta_excel, index=False)
+            # 🔥 MOTOR AVANZADO PARA BLOQUEAR LOS NÚMEROS LARGOS A LA IZQUIERDA 🔥
+            with pd.ExcelWriter(ruta_excel, engine='xlsxwriter') as writer:
+                df.to_excel(writer, index=False, sheet_name='Reporte')
+                workbook  = writer.book
+                worksheet = writer.sheets['Reporte']
+                # Le decimos a Excel: "La columna D es Texto (@) y va alineada a la izquierda"
+                formato_texto = workbook.add_format({'num_format': '@', 'align': 'left'})
+                worksheet.set_column('D:D', 20, formato_texto) 
+                # Ajustamos anchos visuales para que se vea lindo
+                worksheet.set_column('A:A', 12)
+                worksheet.set_column('E:F', 25)
+                
             try: os.startfile(ruta_excel)
             except: pass
-        except Exception: self.session.rollback()
+        except Exception as e: 
+            self.session.rollback()
+            QMessageBox.critical(self, "Error de Excel", str(e))
 
     def setup_crm(self):
         layout = QVBoxLayout(self.tab_crm); lbl_info = QLabel("📲 <b>Contacto con Clientes Recientes</b>"); layout.addWidget(lbl_info)
