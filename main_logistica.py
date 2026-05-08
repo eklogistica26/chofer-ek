@@ -951,13 +951,18 @@ class PlataformaLogistica(QMainWindow):
             resultados = self.construir_query_reportes()
             descargas_dir = os.path.join(os.path.expanduser('~'), 'Downloads')
             if not os.path.exists(descargas_dir): os.makedirs(descargas_dir, exist_ok=True)
-            ruta_pdf = os.path.join(descargas_dir, f"Reporte_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{self.sucursal_actual}.pdf")
+            
+            # 🔥 AHORA LEEMOS LA SUCURSAL DEL FILTRO, NO LA SUCURSAL DE TU USUARIO 🔥
+            sucursal_filtro = self.rep_sucursal.currentText()
+            
+            ruta_pdf = os.path.join(descargas_dir, f"Reporte_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{sucursal_filtro}.pdf")
             total_dinero = sum([op.monto_servicio for op in resultados if op.monto_servicio])
             
             filtro_info = f"Desde: {self.rep_fecha_desde.text()} Hasta: {self.rep_fecha_hasta.text()}"
             if self.rep_zona.currentText() != "Todas": filtro_info += f" | ZONA: {self.rep_zona.currentText()}"
+            if self.rep_chofer.currentText() != "Todos": filtro_info += f" | CHOFER: {self.rep_chofer.currentText()}"
             
-            crear_pdf_reporte(ruta_pdf, resultados, self.sucursal_actual, self.usuario.username, datetime.now().strftime('%d/%m/%Y %H:%M'), filtro_info, total_dinero)
+            crear_pdf_reporte(ruta_pdf, resultados, sucursal_filtro, self.usuario.username, datetime.now().strftime('%d/%m/%Y %H:%M'), filtro_info, total_dinero)
             try: os.startfile(ruta_pdf)
             except: pass
         except Exception: self.session.rollback()

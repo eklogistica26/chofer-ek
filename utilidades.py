@@ -242,8 +242,8 @@ def crear_pdf_tercerizados(nombre_archivo, ops, sucursal, transporte, usuario, f
         
     doc.build(elements, onFirstPage=add_footer, onLaterPages=add_footer)
 
-def crear_pdf_reporte(nombre_archivo, resultados, sucursal, usuario, fecha_generacion, filtro_info, total_dinero):
-    doc = SimpleDocTemplate(nombre_archivo, pagesize=landscape(A4), rightMargin=20, leftMargin=20, topMargin=25, bottomMargin=25)
+def crear_pdf_reporte(nombre_archivo, resultados, sucursal_filtro, usuario, fecha_generacion, filtro_info, total_dinero):
+    doc = SimpleDocTemplate(nombre_archivo, pagesize=landscape(A4), rightMargin=15, leftMargin=15, topMargin=20, bottomMargin=20)
     elements = []; styles = getSampleStyleSheet()
     
     logo_path = "eklogo.png" if os.path.exists("eklogo.png") else ("logo.png" if os.path.exists("logo.png") else None)
@@ -251,63 +251,79 @@ def crear_pdf_reporte(nombre_archivo, resultados, sucursal, usuario, fecha_gener
         elements.append(Image(logo_path, width=65, height=40, hAlign='CENTER'))
         elements.append(Spacer(1, 10))
 
-    titulo_style = ParagraphStyle(name='TituloCentro', parent=styles['Heading1'], alignment=TA_CENTER, fontSize=16)
+    # 🔥 TÍTULO EN AZUL COMO PEDISTE 🔥
+    titulo_style = ParagraphStyle(name='TituloCentro', parent=styles['Heading1'], alignment=TA_CENTER, fontSize=16, textColor=colors.HexColor("#0d6efd"))
     sub_style = ParagraphStyle(name='SubCentro', parent=styles['Normal'], alignment=TA_CENTER, fontSize=10)
     estilo_filtro = ParagraphStyle(name='Filtro', parent=styles['Normal'], fontSize=9, leading=11, alignment=TA_CENTER, textColor=colors.darkblue)
     
-    elements.append(Paragraph(f"REPORTE - {sucursal.upper()}", titulo_style))
+    # 🔥 SUCURSAL DINÁMICA SEGÚN EL FILTRO 🔥
+    elements.append(Paragraph(f"REPORTE GENERAL - SUCURSAL: {sucursal_filtro.upper()}", titulo_style))
     elements.append(Paragraph(f"Generado el: {fecha_generacion} por {usuario}", sub_style))
     elements.append(Spacer(1, 5))
     elements.append(Paragraph(filtro_info, estilo_filtro))
     elements.append(Spacer(1, 15))
     
-    estilo_celda = ParagraphStyle(name='CeldaTabla', parent=styles['Normal'], fontSize=8, leading=10, alignment=TA_CENTER)
-    estilo_guia = ParagraphStyle(name='CeldaGuia', parent=styles['Normal'], fontSize=8, leading=10, alignment=TA_CENTER, wordWrap='CJK')
-    estilo_monto = ParagraphStyle(name='CeldaMonto', parent=styles['Normal'], fontSize=9, alignment=TA_RIGHT)
-    estilo_subtotal = ParagraphStyle(name='CeldaSub', parent=styles['Normal'], fontSize=10, alignment=TA_RIGHT, fontName='Helvetica-Bold')
-    estilo_head = ParagraphStyle(name='Encabezado', parent=styles['Normal'], fontSize=9, alignment=TA_CENTER, fontName='Helvetica-Bold')
+    estilo_celda = ParagraphStyle(name='CeldaTabla', parent=styles['Normal'], fontSize=7, leading=8, alignment=TA_CENTER)
+    estilo_guia = ParagraphStyle(name='CeldaGuia', parent=styles['Normal'], fontSize=7, leading=8, alignment=TA_CENTER, wordWrap='CJK')
+    estilo_dest = ParagraphStyle(name='CeldaDest', parent=styles['Normal'], fontSize=7, leading=8, alignment=TA_LEFT, wordWrap='CJK')
+    estilo_monto = ParagraphStyle(name='CeldaMonto', parent=styles['Normal'], fontSize=8, alignment=TA_RIGHT)
+    estilo_subtotal = ParagraphStyle(name='CeldaSub', parent=styles['Normal'], fontSize=9, alignment=TA_RIGHT, fontName='Helvetica-Bold')
+    estilo_head = ParagraphStyle(name='Encabezado', parent=styles['Normal'], fontSize=7, alignment=TA_CENTER, fontName='Helvetica-Bold', textColor=colors.whitesmoke)
 
+    # 🔥 LAS 11 COLUMNAS EXACTAS DE LA VISTA PREVIA 🔥
     data = [[
         Paragraph('FECHA', estilo_head),
-        Paragraph('GUÍA', estilo_head),
+        Paragraph('SUC', estilo_head),
         Paragraph('CLIENTE', estilo_head),
-        Paragraph('DESTINO', estilo_head),
+        Paragraph('GUÍA', estilo_head),
+        Paragraph('CHOFER', estilo_head),
+        Paragraph('DESTINATARIO', estilo_head),
+        Paragraph('ZONA', estilo_head),
         Paragraph('ESTADO', estilo_head),
+        Paragraph('FAC', estilo_head),
+        Paragraph('BULTOS', estilo_head),
         Paragraph('MONTO', estilo_head)
     ]]
     
     for op in resultados: 
         data.append([
-            Paragraph(op.fecha_ingreso.strftime("%d/%m/%Y"), estilo_celda), 
+            Paragraph(op.fecha_ingreso.strftime("%d/%m/%Y") if op.fecha_ingreso else "-", estilo_celda), 
+            Paragraph(op.sucursal[:3].upper() if op.sucursal else "-", estilo_celda),
+            Paragraph(op.proveedor[:15] if op.proveedor else "-", estilo_celda), 
             Paragraph(op.guia_remito or "-", estilo_guia), 
-            Paragraph(op.proveedor[:25], estilo_celda), 
-            Paragraph(op.destinatario[:35], estilo_guia), 
-            Paragraph(op.estado, estilo_celda), 
-            Paragraph(f"$ {op.monto_servicio:,.2f}", estilo_monto)
+            Paragraph(op.chofer_asignado[:15] if op.chofer_asignado else "-", estilo_celda),
+            Paragraph(op.destinatario[:35] if op.destinatario else "-", estilo_dest), 
+            Paragraph(op.localidad[:15] if op.localidad else "-", estilo_celda),
+            Paragraph(op.estado if op.estado else "-", estilo_celda), 
+            Paragraph("SI" if op.facturado else "NO", estilo_celda),
+            Paragraph(str(op.bultos or 1), estilo_celda),
+            Paragraph(f"$ {op.monto_servicio:,.2f}" if op.monto_servicio else "$ 0.00", estilo_monto)
         ])
         
     data.append([
-        '', '', '', 
+        '', '', '', '', '', '', '', '', 
         Paragraph('TOTALES:', estilo_subtotal), 
         Paragraph(f"{len(resultados)} Guías", estilo_subtotal), 
         Paragraph(f"$ {total_dinero:,.2f}", estilo_subtotal)
     ])
     
-    t = Table(data, colWidths=[65, 140, 140, 250, 100, 90], repeatRows=1)
+    # Cálculos matemáticos precisos para que las 11 columnas entren perfecto en una hoja A4 Horizontal
+    t = Table(data, colWidths=[55, 35, 75, 95, 75, 140, 85, 70, 30, 45, 65], repeatRows=1)
     t.setStyle(TableStyle([
         ('GRID', (0,0), (-1,-1), 0.5, colors.grey), 
-        ('BACKGROUND', (0,0), (-1,0), colors.lightgrey), 
+        ('BACKGROUND', (0,0), (-1,0), colors.HexColor("#0d6efd")), # Encabezado azul
         ('ALIGN', (0,0), (-1,-1), 'CENTER'), 
         ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
         ('BACKGROUND', (0,-1), (-1,-1), colors.whitesmoke),
-        ('TOPPADDING', (0,0), (-1,-1), 4),
-        ('BOTTOMPADDING', (0,0), (-1,-1), 4),
+        ('TOPPADDING', (0,0), (-1,-1), 3),
+        ('BOTTOMPADDING', (0,0), (-1,-1), 3),
+        ('SPAN', (0, -1), (7, -1)), # Combina las celdas vacías de la última fila
     ]))
     elements.append(t)
     
     def add_footer(canvas, doc): 
         canvas.saveState(); canvas.setFont('Helvetica', 8); page_width, _ = landscape(A4)
-        canvas.drawCentredString(page_width / 2.0, 20, f"Generado por: {usuario} | Pág. {doc.page}"); canvas.restoreState()
+        canvas.drawCentredString(page_width / 2.0, 15, f"Generado por: {usuario} | Pág. {doc.page}"); canvas.restoreState()
     doc.build(elements, onFirstPage=add_footer, onLaterPages=add_footer)
 
 # 🔥 NUEVO GENERADOR DE FACTURACIÓN: HOJA APAISADA + CALCULO DE IVA 🔥
