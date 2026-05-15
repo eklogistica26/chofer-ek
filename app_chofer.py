@@ -82,7 +82,7 @@ def get_bottom_nav(active_tab="ruta", num_base=""):
     """
 
 # --- MAIL BLINDADO Y ACTUALIZADO CON ANTI-REBOTE POR PESO ---
-def enviar_email(destinatario, guia, rutas_fotos, proveedor, link_mapa=""):
+def enviar_email(destinatario, guia, rutas_fotos, proveedor, link_mapa="", fecha_entrega=None):
     if not BREVO_API_KEY: return
     conn = get_db()
     email_prov = None
@@ -117,7 +117,13 @@ def enviar_email(destinatario, guia, rutas_fotos, proveedor, link_mapa=""):
                 except: pass
 
     url = "https://api.brevo.com/v3/smtp/email"
-    fecha_hora = hora_arg().strftime('%d/%m/%Y %H:%M')
+    
+    # 🔥 MODIFICACIÓN: USA LA FECHA CUSTOM SI EXISTE, SINO LA ACTUAL 🔥
+    if fecha_entrega:
+        fecha_hora = fecha_entrega.strftime('%d/%m/%Y %H:%M')
+    else:
+        fecha_hora = hora_arg().strftime('%d/%m/%Y %H:%M')
+        
     texto_gps = f"<li><b>Ubicación (GPS):</b> <a href='{link_mapa}'>Ver en Google Maps</a></li>" if link_mapa else ""
 
     html_content = f"""
@@ -184,7 +190,7 @@ HTML_HEAD = """
         .btn-purple { background: #7B1FA2; color: white; }
         .btn-grey { background: #757575; color: white; }
         .btn-outline { background: transparent; border: 1px solid #999; color: #555; }
-        input[type="text"], input[type="number"], input[type="date"], select, textarea { width: 100%; padding: 12px; margin-top: 8px; border: 1px solid #ddd; border-radius: 8px; font-size: 16px; background: #fff; box-sizing: border-box; }
+        input[type="text"], input[type="number"], input[type="date"], input[type="datetime-local"], select, textarea { width: 100%; padding: 12px; margin-top: 8px; border: 1px solid #ddd; border-radius: 8px; font-size: 16px; background: #fff; box-sizing: border-box; }
         label { font-weight: 600; color: #444; margin-top: 15px; display: block; font-size: 0.9rem; }
         .tag { padding: 4px 8px; border-radius: 4px; font-size: 0.75rem; color: white; float: right; font-weight: bold; text-transform: uppercase; letter-spacing: 0.5px; }
         .tag-blue { background: #1976D2; } .tag-purple { background: #7B1FA2; } .tag-orange { background: #F57C00; } .tag-red { background: #D32F2F; }
@@ -351,7 +357,7 @@ def lista_viajes():
                 </div>
                 <div style="background: #f0f7ff; padding: 10px; border-radius: 6px; font-size: 0.85rem; color: #444; margin-bottom: 15px; border-left: 4px solid #1976D2;">
                     🏢 Cliente: <b>{v[7]}</b><br>
-                    📦 Guía: <b>{v[1]}</b>  |  Bultos: {v[5]}
+                    📦 Guía: <b>{v[1]}</b> &nbsp;|&nbsp; Bultos: {v[5]}
                 </div>
                 <div style="display:flex; gap:10px;">
                     <a href="{mapa_url}" target="_blank" class="btn btn-outline" style="flex:1; margin-top:0;">🗺️ Mapa</a>
@@ -412,7 +418,6 @@ def guardia():
         domicilio = request.form.get('domicilio')
         localidad = request.form.get('localidad')
         
-        # Validación de tipo de dato para evitar error en Postgres
         bultos_val = request.form.get('bultos', 1)
         try: bultos_val = int(bultos_val)
         except: bultos_val = 1
@@ -422,7 +427,6 @@ def guardia():
 
         if conn:
             try:
-                # 1. Buscamos de qué sucursal es el chofer para no romper la base
                 res_suc = conn.execute(text("SELECT sucursal FROM choferes WHERE nombre = :n"), {"n": chofer}).fetchone()
                 suc_chof = res_suc[0] if res_suc else 'Mendoza'
 
@@ -670,7 +674,6 @@ def gestion(id_op):
                     from PIL import Image
                     img = Image.open(ruta)
                     if img.mode in ("RGBA", "P"): img = img.convert("RGB")
-                    # 🔥 RESOLUCIÓN ALTA PARA REMITOS PERFECTOS 🔥
                     img.thumbnail((1600, 1600)) 
                     img.save(ruta, "JPEG", quality=85, optimize=True)
                 except: pass
@@ -680,6 +683,15 @@ def gestion(id_op):
         recibe = request.form.get('recibe', '').strip()
         motivo = request.form.get('motivo', '').strip()
         fecha_repro = request.form.get('fecha_repro', '')
+        
+        # 🔥 MODIFICACIÓN: Capturamos la fecha y hora manual si existe 🔥
+        fecha_hora_entrega_str = request.form.get('fecha_hora_entrega', '')
+        fecha_entrega_final = hora_arg()
+        if estado_btn == "ENTREGADO" and fecha_hora_entrega_str:
+            try:
+                fecha_entrega_final = datetime.strptime(fecha_hora_entrega_str, "%Y-%m-%dT%H:%M")
+            except:
+                pass
         
         if estado_btn == "ENTREGADO":
             if not recibe: 
@@ -734,7 +746,8 @@ def gestion(id_op):
                     else:
                         conn.execute(text("UPDATE operaciones SET estado=:e, chofer_asignado=NULL WHERE id=:i"), {"e": estado_db, "i": id_op})
                 else:
-                    conn.execute(text("UPDATE operaciones SET estado=:e, fecha_entrega=:f WHERE id=:i"), {"e": estado_db, "f": hora_arg(), "i": id_op})
+                    # 🔥 MODIFICACIÓN: Usamos la fecha_entrega_final en lugar de hora_arg()
+                    conn.execute(text("UPDATE operaciones SET estado=:e, fecha_entrega=:f WHERE id=:i"), {"e": estado_db, "f": fecha_entrega_final, "i": id_op})
                 
                 conn.execute(text("INSERT INTO historial_movimientos (operacion_id, usuario, accion, detalle, fecha_hora) VALUES (:o, :u, :acc, :d, :f)"), {"o": id_op, "u": chofer, "acc": accion_historial, "d": detalle_historial, "f": hora_arg()})
                 conn.commit()
@@ -743,7 +756,8 @@ def gestion(id_op):
             
         if estado_btn == "ENTREGADO" and tiene_foto:
             flash(f"✅ Confirmado. Enviando {len(rutas_fotos)} foto/s y correo...", "success")
-            enviar_email(recibe, op[0], rutas_fotos, op[10], link_mapa=enlace_gps)
+            # 🔥 MODIFICACIÓN: Le pasamos la fecha real a la función de email 🔥
+            enviar_email(recibe, op[0], rutas_fotos, op[10], link_mapa=enlace_gps, fecha_entrega=fecha_entrega_final)
         elif estado_btn == "ENTREGADO":
             flash("✅ Confirmado correctamente.", "success")
         elif estado_btn == "Pendiente":
@@ -810,6 +824,10 @@ def gestion(id_op):
                     <div id="panel_entregado" style="display:none; margin-top: 15px; padding-top: 15px; border-top: 1px solid #ddd;">
                         <label>Quien Recibe:</label>
                         <input type="text" name="recibe" placeholder="Nombre y Apellido...">
+                        
+                        <label>Fecha y Hora Real (Opcional):</label>
+                        <input type="datetime-local" name="fecha_hora_entrega">
+                        <p style="font-size: 0.8rem; color: #666; margin-top: 5px;">Si lo dejas vacío, usará la hora actual.</p>
                         
                         <label style="margin-top:20px; font-weight: bold; color: {'#d32f2f' if exige_foto else '#444'};">{texto_foto_lbl}</label>
                         <div id="contenedor_fotos"></div>
@@ -1025,17 +1043,15 @@ def update_km():
                         ch_id = res_c[0]
                         res_v = conn.execute(text("SELECT id, patente FROM vehiculos WHERE chofer_id = :cid AND estado = 'ACTIVO'"), {"cid": ch_id}).fetchone()
                         if res_v:
-                            # 1. GUARDAMOS EL KILOMETRAJE PRIMERO Y CONFIRMAMOS
                             conn.execute(text("UPDATE vehiculos SET kilometraje_actual = :km WHERE id = :vid"), {"km": int(nuevo_km), "vid": res_v[0]})
                             conn.commit()
                             
-                            # 2. INTENTAMOS GUARDAR EL HISTORIAL (Aislado por si falla)
                             try:
                                 detalle_hist = f"Actualizó el odómetro a {nuevo_km} km (Patente: {res_v[1]})"
                                 conn.execute(text("INSERT INTO historial_movimientos (usuario, accion, detalle, fecha_hora) VALUES (:u, 'APP - KILOMETROS', :d, :f)"), {"u": chofer, "d": detalle_hist, "f": hora_arg()})
                                 conn.commit()
                             except:
-                                conn.rollback() # Si la base rechaza el historial huérfano, no pasa nada
+                                conn.rollback()
                                 
                             flash(f"✅ Kilometraje actualizado a {nuevo_km} km.", "success")
                         else: flash("❌ No tienes un vehículo activo asignado en la base de datos.", "error")
@@ -1104,11 +1120,9 @@ def reportar_falla():
                         ch_id = res_c[0]
                         res_v = conn.execute(text("SELECT id, patente FROM vehiculos WHERE chofer_id = :cid AND estado = 'ACTIVO'"), {"cid": ch_id}).fetchone()
                         if res_v:
-                            # 1. GUARDAMOS LA FALLA EN EL VEHÍCULO PRIMERO
                             conn.execute(text("UPDATE vehiculos SET falla_reportada = :falla WHERE id = :vid"), {"falla": detalle_falla, "vid": res_v[0]})
                             conn.commit()
                             
-                            # 2. INTENTAMOS GUARDAR EL HISTORIAL
                             try:
                                 hist = f"Reportó falla mecánica: '{detalle_falla}' (Patente: {res_v[1]})"
                                 conn.execute(text("INSERT INTO historial_movimientos (usuario, accion, detalle, fecha_hora) VALUES (:u, 'APP - REPORTE FALLA', :d, :f)"), {"u": chofer, "d": hist, "f": hora_arg()})
