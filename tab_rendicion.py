@@ -245,14 +245,23 @@ class TabRendicion(QWidget):
             """)
             entregados = self.main.session.execute(sql_entregados, {"c": chofer, "f": fecha}).fetchall()
             
+            # 🔥 CORRECCIÓN: Rastrea las reprogramadas cruzando con las salidas a reparto del día 🔥
             sql_no_ent = text("""
-                SELECT o.guia_remito, o.destinatario, h.detalle, o.tipo_servicio, o.proveedor 
+                SELECT DISTINCT o.guia_remito, o.destinatario, h.detalle, o.tipo_servicio, o.proveedor 
                 FROM historial_movimientos h 
                 JOIN operaciones o ON h.operacion_id = o.id 
                 WHERE DATE(h.fecha_hora) = :f 
-                  AND ((h.usuario = :c AND h.detalle LIKE 'Motivo:%') 
-                       OR (h.usuario = :c AND h.detalle LIKE 'Pendiente%') 
-                       OR (o.chofer_asignado = :c AND h.accion LIKE '%REPROGRAMADO%'))
+                  AND (
+                      (h.usuario = :c AND h.detalle LIKE 'Motivo:%') 
+                      OR (h.usuario = :c AND h.detalle LIKE 'Pendiente%') 
+                      OR (o.chofer_asignado = :c AND h.accion LIKE '%REPROGRAMADO%')
+                      OR (h.accion LIKE '%REPROGRAMADO%' AND o.id IN (
+                          SELECT h2.operacion_id FROM historial_movimientos h2 
+                          WHERE DATE(h2.fecha_hora) = :f 
+                            AND h2.accion IN ('SALIDA A REPARTO', 'SALIDA A TERCERIZADO')
+                            AND (h2.usuario = :c OR h2.detalle LIKE '%' || :c || '%')
+                      ))
+                  )
                 UNION
                 SELECT guia_remito, destinatario, 'EN CALLE (Aún no gestionado)', tipo_servicio, proveedor 
                 FROM operaciones 
