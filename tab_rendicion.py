@@ -233,7 +233,8 @@ class TabRendicion(QWidget):
         self.tabs_rendicion.addTab(tab_res, "2. Resumen Diario por Chofer")
 
     def cargar_resumen_chofer_vista(self):
-        chofer = self.resumen_chofer.currentText(); fecha = self.resumen_fecha.date().toPyDate()
+        chofer = self.resumen_chofer.currentText()
+        fecha = self.resumen_fecha.date().toPyDate()
         if not chofer or chofer == "Todos": return
         try:
             sql_entregados = text("""
@@ -245,7 +246,6 @@ class TabRendicion(QWidget):
             """)
             entregados = self.main.session.execute(sql_entregados, {"c": chofer, "f": fecha}).fetchall()
             
-            # 🔥 CORRECCIÓN: Rastrea las reprogramadas cruzando con las salidas a reparto del día 🔥
             sql_no_ent = text("""
                 SELECT DISTINCT o.guia_remito, o.destinatario, h.detalle, o.tipo_servicio, o.proveedor 
                 FROM historial_movimientos h 
@@ -262,14 +262,25 @@ class TabRendicion(QWidget):
                             AND (h2.usuario = :c OR h2.detalle LIKE '%' || :c || '%')
                       ))
                   )
-                UNION
-                SELECT guia_remito, destinatario, 'EN CALLE (Aún no gestionado)', tipo_servicio, proveedor 
-                FROM operaciones 
-                WHERE chofer_asignado = :c AND estado = 'EN REPARTO'
             """)
-            no_entregados = self.main.session.execute(sql_no_ent, {"c": chofer, "f": fecha}).fetchall()
+            no_entregados_db = self.main.session.execute(sql_no_ent, {"c": chofer, "f": fecha}).fetchall()
+            no_entregados = [list(r) for r in no_entregados_db]
             
-            self.datos_resumen_exitos = entregados; self.datos_resumen_fallos = no_entregados
+            # 🔥 CORRECCIÓN 1: Sólo agregar guías "En Reparto" si consultamos EL DÍA DE HOY 🔥
+            if fecha == datetime.now().date():
+                sql_en_calle = text("""
+                    SELECT guia_remito, destinatario, 'EN CALLE (Aún no gestionado)', tipo_servicio, proveedor 
+                    FROM operaciones 
+                    WHERE chofer_asignado = :c AND estado IN ('EN REPARTO', 'EN REPARTO (TERCERIZADO)')
+                """)
+                en_calle = self.main.session.execute(sql_en_calle, {"c": chofer}).fetchall()
+                guias_ya_cargadas = [r[0] for r in no_entregados]
+                for r_calle in en_calle:
+                    if r_calle[0] not in guias_ya_cargadas:
+                        no_entregados.append(list(r_calle))
+            
+            self.datos_resumen_exitos = entregados
+            self.datos_resumen_fallos = no_entregados
             self.tabla_res_exitos.setRowCount(0)
             
             for r, row_data in enumerate(entregados):
@@ -305,23 +316,36 @@ class TabRendicion(QWidget):
                 self.tabla_res_fallos.setItem(r, 2, QTableWidgetItem(row_data[1] or "-"))
                 self.tabla_res_fallos.setItem(r, 3, QTableWidgetItem(row_data[2] or "-"))
                 
-            self.lbl_res_fallos.setText(f"⚠️ NO ENTREGADOS / PENDIENTES ({len(no_entregados)})")
+            # 🔥 CORRECCIÓN 2: Título actualizado 🔥
+            self.lbl_res_fallos.setText(f"⚠️ PENDIENTES / REPROGRAMADOS ({len(no_entregados)})")
         except Exception as e: 
-            self.main.session.rollback(); QMessageBox.critical(self, "Error", str(e))
+            self.main.session.rollback()
+            QMessageBox.critical(self, "Error", str(e))
 
     def imprimir_resumen_chofer(self):
-        if not hasattr(self, 'datos_resumen_exitos'): QMessageBox.warning(self, "Atención", "Busque primero."); return
-        chofer = self.resumen_chofer.currentText(); fecha_str = self.resumen_fecha.date().toPyDate().strftime("%d/%m/%Y"); fecha_file = self.resumen_fecha.date().toPyDate().strftime("%Y-%m-%d")
-        if not self.datos_resumen_exitos and not self.datos_resumen_fallos: QMessageBox.warning(self, "Sin datos", "No hay actividad."); return
+        if not hasattr(self, 'datos_resumen_exitos'): 
+            QMessageBox.warning(self, "Atención", "Busque primero.")
+            return
+            
+        chofer = self.resumen_chofer.currentText()
+        fecha_str = self.resumen_fecha.date().toPyDate().strftime("%d/%m/%Y")
+        fecha_file = self.resumen_fecha.date().toPyDate().strftime("%Y-%m-%d")
+        
+        if not self.datos_resumen_exitos and not self.datos_resumen_fallos: 
+            QMessageBox.warning(self, "Sin datos", "No hay actividad.")
+            return
+            
+        # 🔥 CORRECCIÓN 3: Se agrega la hora exacta al string que va al PDF 🔥
+        hora_actual = datetime.now().strftime("%H:%M")
+        fecha_con_hora = f"{fecha_str} - (Impreso a las {hora_actual} hs)"
         
         descargas_dir = os.path.join(os.path.expanduser('~'), 'Downloads')
         if not os.path.exists(descargas_dir): os.makedirs(descargas_dir, exist_ok=True)
         ruta_pdf = os.path.join(descargas_dir, f"Resumen_{chofer}_{fecha_file}.pdf")
         
-        crear_pdf_resumen_diario(ruta_pdf, chofer, fecha_str, self.datos_resumen_exitos, self.datos_resumen_fallos, self.main.sucursal_actual, self.main.usuario.username)
+        crear_pdf_resumen_diario(ruta_pdf, chofer, fecha_con_hora, self.datos_resumen_exitos, self.datos_resumen_fallos, self.main.sucursal_actual, self.main.usuario.username)
         try: os.startfile(ruta_pdf)
         except: pass
-
     def filtrar_tabla_rendicion(self, texto):
         texto = texto.lower()
         for r in range(self.tabla_rendicion.rowCount()):
