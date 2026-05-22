@@ -584,10 +584,11 @@ class PlataformaLogistica(QMainWindow):
             self.tabla_ruta.blockSignals(True); self.tabla_ruta.setRowCount(0); 
             estados_deposito = [Estados.EN_DEPOSITO, 'EN DEPOSITO', 'En Depósito', 'En Deposito', 'EN DEPÓSITO']
             
+            # 🔥 CORRECCIÓN UTC-3: Alineamos la consulta a la zona horaria argentina (-3) 🔥
             ops = self.session.query(Operacion).filter(
                 Operacion.estado.in_(estados_deposito), 
                 Operacion.sucursal == self.sucursal_actual,
-                text("DATE(COALESCE(fecha_salida, fecha_ingreso)) <= CURRENT_DATE")
+                text("DATE(COALESCE(fecha_salida, fecha_ingreso) - INTERVAL '3 hours') <= CURRENT_DATE")
             ).order_by(Operacion.domicilio.asc()).all()
             
             op_ids = [op.id for op in ops]; last_hists = {}

@@ -475,7 +475,14 @@ class TabIngreso(QWidget):
         try:
             self.tabla_ingresos.setRowCount(0)
             fecha_filtro = self.in_fecha.date().toPyDate()
-            ops = self.main.session.query(Operacion).filter(Operacion.estado.in_([Estados.EN_DEPOSITO, 'EN DEPÓSITO']), Operacion.sucursal == self.main.sucursal_actual, text("DATE(COALESCE(fecha_salida, fecha_ingreso)) <= :f").bindparams(f=fecha_filtro)).order_by(Operacion.id.desc()).all()
+            
+            # 🔥 CORRECCIÓN UTC-3: Se le restan 3 horas a la DB antes de sacar la fecha para que coincida con Argentina 🔥
+            ops = self.main.session.query(Operacion).filter(
+                Operacion.estado.in_([Estados.EN_DEPOSITO, 'EN DEPÓSITO']), 
+                Operacion.sucursal == self.main.sucursal_actual, 
+                text("DATE(COALESCE(fecha_salida, fecha_ingreso) - INTERVAL '3 hours') <= :f").bindparams(f=fecha_filtro)
+            ).order_by(Operacion.id.desc()).all()
+            
             for row, op in enumerate(ops):
                 if row % 10 == 0: QApplication.processEvents()
                 self.tabla_ingresos.insertRow(row); self.tabla_ingresos.setItem(row, 0, QTableWidgetItem(str(op.id)))
