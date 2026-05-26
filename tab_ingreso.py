@@ -458,18 +458,41 @@ class TabIngreso(QWidget):
             dlg = PreviewImportacionDialog(ops_data, self)
             if dlg.exec() == QDialog.DialogCode.Accepted:
                 datos_finales = dlg.resultados; agregadas = 0; omitidas = 0
+                
+                # 🔥 LISTA PARA GUARDAR QUÉ GUÍAS SE OMITEN 🔥
+                guias_omitidas_detalle = [] 
+                
                 self.main.setWindowTitle("E.K. LOGISTICA - ⏳ Guardando, por favor espere..."); QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor); QApplication.processEvents()
                 guias_txt = [d['guia'] for d in datos_finales]; guias_existentes = self.main.session.query(Operacion.guia_remito).filter(Operacion.guia_remito.in_(guias_txt)).all(); set_existentes = {g[0] for g in guias_existentes}
                 for i, d in enumerate(datos_finales):
                     if i % 15 == 0: QApplication.processEvents() 
-                    if d['guia'] in set_existentes: omitidas += 1; continue
+                    if d['guia'] in set_existentes: 
+                        omitidas += 1
+                        guias_omitidas_detalle.append(d['guia']) # <-- ANOTAMOS LA GUIA RECHAZADA
+                        continue
                     peso_txt = d.get('peso', 0.0); bultos_txt = d['bultos']; precio = self.main.obtener_precio(self.main.sucursal_actual, bultos_txt, 0, proveedor="DHL EXPRESS", peso=peso_txt, bultos_totales=bultos_txt)
                     op = Operacion(fecha_ingreso=d['fecha_ingreso'], sucursal=self.main.sucursal_actual, guia_remito=d['guia'], proveedor="DHL EXPRESS", destinatario=d['destinatario'][:100].upper(), domicilio=d['domicilio'][:150].upper(), localidad=self.main.sucursal_actual.upper(), celular=d['celular'][:50], bultos=bultos_txt, bultos_frio=0, peso=peso_txt, tipo_carga="COMUN", tipo_urgencia=Urgencia.CLASICO, monto_servicio=precio, estado=Estados.EN_DEPOSITO, tipo_servicio="Entrega (Reparto)")
                     self.main.session.add(op); hist = Historial(operacion=op, usuario=self.main.usuario.username, accion="INGRESO IMPORTADO", detalle="Carga masiva por TXT DHL"); self.main.session.add(hist); agregadas += 1
                 self.main.session.commit(); QApplication.restoreOverrideCursor(); self.main.setWindowTitle(f"E.K. LOGISTICA (NUBE) - Usuario: {self.main.usuario.username.upper()}")
-                QMessageBox.information(self, "Importación Exitosa", f"✅ {agregadas} guías agregadas.\n⚠️ {omitidas} omitidas (ya existían)."); self.cargar_movimientos_dia()
+                
+                # 🔥 ARMAMOS EL MENSAJE FINAL INTELIGENTE 🔥
+                mensaje = f"✅ {agregadas} guías agregadas.\n⚠️ {omitidas} omitidas (ya existían en la base de datos)."
+                if guias_omitidas_detalle:
+                    # Mostrar las primeras 15 para no romper la pantalla si son demasiadas de golpe
+                    ejemplos = ", ".join(guias_omitidas_detalle[:15])
+                    if len(guias_omitidas_detalle) > 15:
+                        ejemplos += " ... (y otras más)"
+                    mensaje += f"\n\n🛑 GUÍAS DUPLICADAS NO IMPORTADAS:\n{ejemplos}"
+
+                QMessageBox.information(self, "Importación Exitosa", mensaje)
+                self.cargar_movimientos_dia()
+                
                 if hasattr(self.main, 'cargar_monitor_global'): self.main.cargar_monitor_global()
-        except Exception: QApplication.restoreOverrideCursor(); self.main.setWindowTitle(f"E.K. LOGISTICA (NUBE) - Usuario: {self.main.usuario.username.upper()}"); self.main.session.rollback(); QMessageBox.warning(self, "Micro-corte", "Se interrumpió la conexión.")
+        except Exception: 
+            QApplication.restoreOverrideCursor()
+            self.main.setWindowTitle(f"E.K. LOGISTICA (NUBE) - Usuario: {self.main.usuario.username.upper()}")
+            self.main.session.rollback()
+            QMessageBox.warning(self, "Micro-corte", "Se interrumpió la conexión.")
 
     def cargar_movimientos_dia(self):
         try:
