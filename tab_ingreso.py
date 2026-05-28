@@ -100,6 +100,10 @@ class TabIngreso(QWidget):
         
         self.in_dest = QLineEdit(); self.in_cel = QLineEdit(); self.in_cel.setPlaceholderText("Ej: 261-155..."); self.in_dom = QLineEdit(); self.in_loc_combo = QComboBox()
         
+        # 🔥 NUEVO CAMPO: Observaciones de Ingreso 🔥
+        self.in_obs_ingreso = QLineEdit()
+        self.in_obs_ingreso.setPlaceholderText("Observaciones internas, precintos, indicaciones...")
+        
         fl.addRow("Tipo:", self.in_serv)
         fl.addRow(self.lbl_cli_ret, self.in_cliente_retiro)
         fl.addRow("Fecha:", self.in_fecha)
@@ -110,6 +114,7 @@ class TabIngreso(QWidget):
         fl.addRow("Celular:", self.in_cel)
         fl.addRow("Domicilio:", self.in_dom)
         fl.addRow("Zona:", self.in_loc_combo)
+        fl.addRow("📝 Obs. de Ingreso:", self.in_obs_ingreso) # <-- AÑADIDO AL LAYOUT
         p_datos.setLayout(fl)
         
         gb_tipo = QGroupBox("Configuración de Carga")
@@ -224,7 +229,6 @@ class TabIngreso(QWidget):
         self.btn_dhl.clicked.connect(self.importar_txt_dhl)
         if self.main.sucursal_actual != "San Juan": self.btn_dhl.hide()
         
-        # 🔥 CREAMOS EL SPLITTER (PUNTITOS) PARA QUE SEA 100% RESPONSIVO 🔥
         panel_izquierdo = QWidget()
         layout_izquierdo = QVBoxLayout(panel_izquierdo)
         layout_izquierdo.setContentsMargins(0, 0, 5, 0)
@@ -302,7 +306,6 @@ class TabIngreso(QWidget):
                 self.cargar_destinos_frecuentes_combo(destino_db.proveedor)
                 self.actualizar_interfaz_peso()
                 
-                # 🔥 FORZAMOS A BORRAR LA BASURA DEL PROVEEDOR EN LA CASILLA 🔥
                 QTimer.singleShot(10, lambda: self.in_dest.setText(destino_db.destinatario.upper()))
                 
                 self.in_dom.setText(destino_db.domicilio.upper())
@@ -329,7 +332,6 @@ class TabIngreso(QWidget):
         is_flete = texto.startswith("Flete"); is_retiro = texto.startswith("Retiro")
         
         if is_retiro: 
-            # 🔥 AHORA MOSTRAMOS LA GUÍA PERO LE AVISAMOS QUE ES OPCIONAL 🔥
             self.lbl_guia.show(); self.in_guia.show(); self.in_guia.setPlaceholderText("Opcional (Dejar vacío para Auto-generar)"); self.lbl_cli_ret.show(); self.in_cliente_retiro.show(); self.in_guia.clear()
         elif is_flete: 
             self.lbl_guia.hide(); self.in_guia.hide(); self.lbl_cli_ret.hide(); self.in_cliente_retiro.hide(); self.in_guia.clear()
@@ -399,8 +401,8 @@ class TabIngreso(QWidget):
             peso_manual = self.in_peso_manual.value()
             prov = self.in_prov.currentText().strip().upper()
             guia_final = self.in_guia.text().strip().upper()
+            obs_ing = self.in_obs_ingreso.text().strip().upper() # 🔥 EXTRAEMOS LA NOTA 🔥
             
-            # 🔥 LIMPIEZA FINAL DE CORCHETES POR LAS DUDAS 🔥
             dest_texto = self.in_dest.text().strip().upper()
             if "[" in dest_texto:
                 dest_texto = re.sub(r'\s*-?\s*\[.*?\]', '', dest_texto).strip()
@@ -435,8 +437,14 @@ class TabIngreso(QWidget):
                     nuevo_dest = DestinoFrecuente(proveedor=prov, sucursal=self.main.sucursal_actual, destinatario=dest_texto, domicilio=dom_texto, localidad=loc, celular=cel_texto)
                     self.main.session.add(nuevo_dest); self.main.session.flush() 
                 else: mensaje_toast = "✅ GUARDADO (Destino ya existía, se evitó duplicarlo)"
-            op = Operacion(fecha_ingreso=self.in_fecha.date().toPyDate(), sucursal=self.main.sucursal_actual, guia_remito=guia_final, proveedor=prov, destinatario=dest_texto, celular=cel_texto, domicilio=dom_texto, localidad=loc, bultos=bultos_total, bultos_frio=c_frio, peso=peso_manual, tipo_carga=tipo_carga_txt, tipo_urgencia=Urgencia.CLASICO, monto_servicio=precio, es_contra_reembolso=tiene_cr, monto_recaudacion=monto_cr, info_intercambio=info_cr, tipo_servicio=servicio)
-            self.main.session.add(op); self.main.session.flush(); self.main.log_movimiento(op, "INGRESO A DEPOSITO", "Carga inicial en sistema"); self.main.session.commit()
+            
+            # 🔥 GUARDAMOS EL OBJETO CON LA OBSERVACIÓN DE INGRESO 🔥
+            op = Operacion(fecha_ingreso=self.in_fecha.date().toPyDate(), sucursal=self.main.sucursal_actual, guia_remito=guia_final, proveedor=prov, destinatario=dest_texto, celular=cel_texto, domicilio=dom_texto, localidad=loc, bultos=bultos_total, bultos_frio=c_frio, peso=peso_manual, tipo_carga=tipo_carga_txt, tipo_urgencia=Urgencia.CLASICO, monto_servicio=precio, es_contra_reembolso=tiene_cr, monto_recaudacion=monto_cr, info_intercambio=info_cr, tipo_servicio=servicio, observaciones_ingreso=obs_ing)
+            
+            self.main.session.add(op); self.main.session.flush(); 
+            self.main.log_movimiento(op, "INGRESO A DEPOSITO", f"Carga inicial. Obs: {obs_ing}") 
+            self.main.session.commit()
+            
             try:
                 if "Retiro" in servicio: 
                     descargas_dir = os.path.join(os.path.expanduser('~'), 'Downloads'); os.makedirs(descargas_dir, exist_ok=True); ruta_pdf = os.path.join(descargas_dir, f"Comprobante_Retiro_{op.guia_remito or op.id}.pdf"); crear_pdf_retiro(ruta_pdf, op)
@@ -445,6 +453,8 @@ class TabIngreso(QWidget):
             except Exception: pass
             if hasattr(self.main, 'cargar_ruta'): self.main.cargar_ruta()
             self.in_guia.clear(); self.in_dest.clear(); self.in_cel.clear(); self.in_dom.clear(); self.in_monto_recaudar.setValue(0); self.in_info_intercambio.clear(); self.chk_cr.setChecked(False); self.in_cliente_retiro.setCurrentIndex(0); self.in_bultos_simple.setValue(1); self.in_peso_manual.setValue(0); self.in_precio_flete.setValue(0); self.radio_ida.setChecked(True); self.in_cant_comun.setValue(1); self.in_cant_frio.setValue(1); self.radio_comun.setChecked(True); self.cambiar_interfaz_tipo(); self.chk_contingencia.setChecked(False); self.in_monto_contingencia.setValue(1500.0)
+            self.in_obs_ingreso.clear() # 🔥 LIMPIAMOS LA CASILLA 🔥
+            
             self.cargar_destinos_frecuentes_combo(prov); self.cargar_movimientos_dia(); self.in_destinos_frecuentes.setCurrentIndex(0); self.configurar_autocompletado_global(); self.main.toast.mostrar(mensaje_toast)
             if hasattr(self.main, 'cargar_monitor_global'): self.main.cargar_monitor_global()
         except Exception: self.main.session.rollback(); QMessageBox.warning(self, "Micro-corte", "La conexión parpadeó. Intenta de nuevo.")
@@ -458,8 +468,6 @@ class TabIngreso(QWidget):
             dlg = PreviewImportacionDialog(ops_data, self)
             if dlg.exec() == QDialog.DialogCode.Accepted:
                 datos_finales = dlg.resultados; agregadas = 0; omitidas = 0
-                
-                # 🔥 LISTA PARA GUARDAR QUÉ GUÍAS SE OMITEN 🔥
                 guias_omitidas_detalle = [] 
                 
                 self.main.setWindowTitle("E.K. LOGISTICA - ⏳ Guardando, por favor espere..."); QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor); QApplication.processEvents()
@@ -468,17 +476,15 @@ class TabIngreso(QWidget):
                     if i % 15 == 0: QApplication.processEvents() 
                     if d['guia'] in set_existentes: 
                         omitidas += 1
-                        guias_omitidas_detalle.append(d['guia']) # <-- ANOTAMOS LA GUIA RECHAZADA
+                        guias_omitidas_detalle.append(d['guia'])
                         continue
                     peso_txt = d.get('peso', 0.0); bultos_txt = d['bultos']; precio = self.main.obtener_precio(self.main.sucursal_actual, bultos_txt, 0, proveedor="DHL EXPRESS", peso=peso_txt, bultos_totales=bultos_txt)
                     op = Operacion(fecha_ingreso=d['fecha_ingreso'], sucursal=self.main.sucursal_actual, guia_remito=d['guia'], proveedor="DHL EXPRESS", destinatario=d['destinatario'][:100].upper(), domicilio=d['domicilio'][:150].upper(), localidad=self.main.sucursal_actual.upper(), celular=d['celular'][:50], bultos=bultos_txt, bultos_frio=0, peso=peso_txt, tipo_carga="COMUN", tipo_urgencia=Urgencia.CLASICO, monto_servicio=precio, estado=Estados.EN_DEPOSITO, tipo_servicio="Entrega (Reparto)")
                     self.main.session.add(op); hist = Historial(operacion=op, usuario=self.main.usuario.username, accion="INGRESO IMPORTADO", detalle="Carga masiva por TXT DHL"); self.main.session.add(hist); agregadas += 1
                 self.main.session.commit(); QApplication.restoreOverrideCursor(); self.main.setWindowTitle(f"E.K. LOGISTICA (NUBE) - Usuario: {self.main.usuario.username.upper()}")
                 
-                # 🔥 ARMAMOS EL MENSAJE FINAL INTELIGENTE 🔥
                 mensaje = f"✅ {agregadas} guías agregadas.\n⚠️ {omitidas} omitidas (ya existían en la base de datos)."
                 if guias_omitidas_detalle:
-                    # Mostrar las primeras 15 para no romper la pantalla si son demasiadas de golpe
                     ejemplos = ", ".join(guias_omitidas_detalle[:15])
                     if len(guias_omitidas_detalle) > 15:
                         ejemplos += " ... (y otras más)"
@@ -499,7 +505,6 @@ class TabIngreso(QWidget):
             self.tabla_ingresos.setRowCount(0)
             fecha_filtro = self.in_fecha.date().toPyDate()
             
-            # 🔥 CORRECCIÓN UTC-3: Se le restan 3 horas a la DB antes de sacar la fecha para que coincida con Argentina 🔥
             ops = self.main.session.query(Operacion).filter(
                 Operacion.estado.in_([Estados.EN_DEPOSITO, 'EN DEPÓSITO']), 
                 Operacion.sucursal == self.main.sucursal_actual, 

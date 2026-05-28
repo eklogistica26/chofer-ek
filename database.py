@@ -155,6 +155,8 @@ class Operacion(Base):
     controlada = Column(Boolean, default=False)
     papel_enviado = Column(Boolean, default=False)
     lote_papel = Column(String(100), nullable=True)
+    observaciones_ingreso = Column(Text)
+    observaciones_facturacion = Column(Text)
 
 class Historial(Base):
     __tablename__ = "historial_movimientos"

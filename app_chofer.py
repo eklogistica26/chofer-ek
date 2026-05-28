@@ -636,7 +636,7 @@ def gestion(id_op):
             sql = text("""
                 SELECT o.guia_remito, o.destinatario, o.domicilio, o.localidad, o.celular, 
                        o.tipo_urgencia, o.tipo_carga, o.es_contra_reembolso, o.monto_recaudacion, 
-                       o.info_intercambio, o.proveedor, o.tipo_servicio, c.exige_remito 
+                       o.info_intercambio, o.proveedor, o.tipo_servicio, c.exige_remito, o.observaciones_ingreso 
                 FROM operaciones o 
                 LEFT JOIN clientes_principales c ON UPPER(TRIM(o.proveedor)) = UPPER(TRIM(c.nombre))
                 WHERE o.id = :i
@@ -781,6 +781,10 @@ def gestion(id_op):
     if op[9]:
         intercambio_html = f"<div style='background:#e2e3e5; padding:15px; border-radius:8px; margin-bottom:20px; border-left: 5px solid #6c757d; color:#383d41;'>📦 <b>OBS / INTERCAMBIO:</b><br>{op[9]}</div>"
 
+    obs_ingreso_html = ""
+    if len(op) > 13 and op[13]:
+        obs_ingreso_html = f"<div style='background:#e3f2fd; padding:15px; border-radius:8px; margin-bottom:20px; border-left: 5px solid #1565C0; color:#0d47a1; font-weight:500;'>📝 <b>OBS. DE INGRESO:</b><br>{op[13]}</div>"
+
     telefono_limpio = limpiar_telefono_wsp(op[4])
     mensaje_wa = urllib.parse.quote(f"Hola, soy el chofer de EK Logística. Estoy en camino con tu envío (Guía/Remito: {op[0]}).")
     link_wa = f"https://wa.me/{telefono_limpio}?text={mensaje_wa}" if telefono_limpio else "#"
@@ -801,6 +805,7 @@ def gestion(id_op):
             <div class="card">
                 {cobranza_html}
                 {intercambio_html}
+                {obs_ingreso_html}
                 <div style="color:#888; font-size:0.8rem; text-transform:uppercase; letter-spacing:1px; margin-bottom:5px;">Destinatario</div>
                 <h2 style="margin:0 0 5px 0; font-size:1.4rem;">{op[1]}</h2>
                 <div style="font-size:1.1rem; margin-bottom:15px;">📍 {op[2]} <br> <small style="color:#666;">({op[3]})</small></div>

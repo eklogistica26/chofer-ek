@@ -485,7 +485,12 @@ class PlataformaLogistica(QMainWindow):
                 if op.tipo_servicio and "Retiro" in op.tipo_servicio: guia_texto = f"🔄 {guia_texto}"
                 elif op.tipo_servicio and "Flete" in op.tipo_servicio: guia_texto = f"⏱️ {guia_texto}"
                 
-                self.tabla_monitor.setItem(row_idx, 0, QTableWidgetItem(estado_visual)); self.tabla_monitor.setItem(row_idx, 1, QTableWidgetItem(guia_texto)); self.tabla_monitor.setItem(row_idx, 2, QTableWidgetItem(op.proveedor)); self.tabla_monitor.setItem(row_idx, 3, QTableWidgetItem(op.destinatario))
+                item_guia = QTableWidgetItem(guia_texto)
+                if getattr(op, 'observaciones_ingreso', ''):
+                    item_guia.setToolTip(f"📝 OBS INGRESO: {op.observaciones_ingreso}")
+                    item_guia.setBackground(QBrush(QColor("#e3f2fd")))
+                
+                self.tabla_monitor.setItem(row_idx, 0, QTableWidgetItem(estado_visual)); self.tabla_monitor.setItem(row_idx, 1, item_guia); self.tabla_monitor.setItem(row_idx, 2, QTableWidgetItem(op.proveedor)); self.tabla_monitor.setItem(row_idx, 3, QTableWidgetItem(op.destinatario))
                 extra = ""
                 if op.es_contra_reembolso and op.monto_recaudacion: extra += f"Cobrar ${op.monto_recaudacion} "
                 if op.info_intercambio: extra += op.info_intercambio
@@ -853,8 +858,7 @@ class PlataformaLogistica(QMainWindow):
             total_dinero = 0
             total_guias = len(resultados)
             
-            desglose_est = {}; c_cli = {}; c_chof_general = {}
-            c_zonas = {} # 🔥 CONTADOR PARA TOP ZONAS 🔥
+            desglose_est = {}; c_cli = {}; c_chof_general = {}; c_zonas = {}
             
             for row, op in enumerate(resultados):
                 es_jetpaq = bool(op.proveedor and op.proveedor.lower() == 'jetpaq')
@@ -866,7 +870,14 @@ class PlataformaLogistica(QMainWindow):
                 self.tabla_reportes.setItem(row, 0, QTableWidgetItem(f_ing))
                 self.tabla_reportes.setItem(row, 1, QTableWidgetItem(op.sucursal or "-"))
                 self.tabla_reportes.setItem(row, 2, QTableWidgetItem(op.proveedor or "-"))
-                self.tabla_reportes.setItem(row, 3, QTableWidgetItem(op.guia_remito or "-"))
+                
+                # 🔥 MEJORA DE MONITOR GLOBAL: Mostramos la guía y si tiene observaciones, le clavamos un cartel informativo flotante (Tooltip) 🔥
+                item_guia = QTableWidgetItem(op.guia_remito or "-")
+                if getattr(op, 'observaciones_ingreso', ''):
+                    item_guia.setToolTip(f"📝 OBS INGRESO: {op.observaciones_ingreso}")
+                    item_guia.setBackground(QBrush(QColor("#e3f2fd"))) # Teñimos levemente de celeste para avisar que tiene notas
+                self.tabla_reportes.setItem(row, 3, item_guia)
+                
                 self.tabla_reportes.setItem(row, 4, QTableWidgetItem(op.chofer_asignado or "-"))
                 self.tabla_reportes.setItem(row, 5, QTableWidgetItem(op.destinatario or "-"))
                 self.tabla_reportes.setItem(row, 6, QTableWidgetItem(op.localidad or "-"))
@@ -906,7 +917,7 @@ class PlataformaLogistica(QMainWindow):
 
                 c_cli[cli] = c_cli.get(cli, 0) + 1
                 c_chof_general[chof] = c_chof_general.get(chof, 0) + 1
-                c_zonas[zona] = c_zonas.get(zona, 0) + 1 # Suma zona
+                c_zonas[zona] = c_zonas.get(zona, 0) + 1
 
             html = "<div style='font-family: Arial, sans-serif; color: #333; padding: 5px;'>"
             html += f"""
@@ -918,7 +929,6 @@ class PlataformaLogistica(QMainWindow):
             </table>
             """
             html += "<table width='100%' cellpadding='8'><tr>"
-            
             html += "<td width='45%' valign='top' style='background-color: #ffffff; border: 1px solid #dee2e6; border-radius: 6px; padding: 15px;'>"
             html += "<h3 style='color: #495057; margin-top: 0; border-bottom: 1px solid #eee; padding-bottom: 5px;'>📈 Desglose por Estado</h3>"
             if not desglose_est: html += "<span style='color: #6c757d;'>Sin datos.</span>"
@@ -927,7 +937,6 @@ class PlataformaLogistica(QMainWindow):
             html += "</td><td width='2%'></td>"
             
             html += "<td width='53%' valign='top'>"
-            # 🔥 NUEVO PANEL: TOP ZONAS 🔥
             html += "<div style='background-color: #ffffff; border: 1px solid #dee2e6; border-radius: 6px; padding: 15px; margin-bottom: 15px;'>"
             html += "<h4 style='color: #495057; margin-top: 0; border-bottom: 1px solid #eee; padding-bottom: 5px;'>📍 Top Zonas (Demanda)</h4>"
             for z, cant in sorted(c_zonas.items(), key=lambda x: x[1], reverse=True)[:5]:

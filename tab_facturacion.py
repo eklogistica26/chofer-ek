@@ -277,6 +277,10 @@ class AjusteAvanzadoFacturacionDialog(QDialog):
         self.in_doble_visita.setRange(0, 1000000)
         self.in_doble_visita.setPrefix("$ ")
         self.in_doble_visita.setSingleStep(500.0)
+        
+        self.in_obs_fact = QLineEdit(getattr(op, 'observaciones_facturacion', '') or "")
+        self.in_obs_fact.setPlaceholderText("Ej: Se cobra doble visita por rechazo")
+        
         self.in_finde.setValue(getattr(op, 'monto_finde', 0.0) or 0.0)
         self.in_feriado.setValue(getattr(op, 'monto_feriado', 0.0) or 0.0)
         self.in_contingencia.setValue(getattr(op, 'monto_contingencia', 0.0) or 0.0)
@@ -287,6 +291,7 @@ class AjusteAvanzadoFacturacionDialog(QDialog):
             lbl_visita.setStyleSheet("color: #d32f2f; font-weight: bold;") 
         form_extras.addRow("⚠️ Contingencia (Solo manual):", self.in_contingencia)
         form_extras.addRow(lbl_visita, self.in_doble_visita)
+        form_extras.addRow("📝 Nota de Ajuste (Va al PDF):", self.in_obs_fact)
         layout.addLayout(form_extras)
         self.lbl_base = QLabel("Tarifa Base: $ 0.00")
         self.lbl_base.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -893,6 +898,7 @@ class TabFacturacion(QWidget):
                 op.monto_contingencia = dlg.in_contingencia.value()
                 op.monto_espera = dlg.in_doble_visita.value()
                 op.monto_servicio = dlg.precio_final
+                op.observaciones_facturacion = dlg.in_obs_fact.text().strip().upper()
                 
                 self.main.log_movimiento(op, "EDICIÓN DE FACTURACIÓN", f"Precio ajustado a ${dlg.precio_final}")
                 self.main.session.commit()
@@ -1179,7 +1185,14 @@ class TabFacturacion(QWidget):
             if it_sel and it_sel.checkState() == Qt.CheckState.Checked:
                 fecha = self.tabla_cierre.item(r, 2).text()
                 if fecha == "-": fecha = self.tabla_cierre.item(r, 1).text()
+                
                 guia = self.tabla_cierre.item(r, 4).text()
+                op_id = it_sel.data(Qt.ItemDataRole.UserRole)
+                if op_id:
+                    op_db = self.main.session.query(Operacion).get(op_id)
+                    obs_fac = getattr(op_db, 'observaciones_facturacion', '') or ''
+                    if obs_fac: guia = f"{guia}\n[{obs_fac}]"
+                
                 zona = self.tabla_cierre.item(r, 6).text()
                 bultos = self.tabla_cierre.item(r, 7).text()
                 base_txt = self.tabla_cierre.item(r, 9).text()
