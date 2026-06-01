@@ -12,7 +12,51 @@ from sqlalchemy import text, func
 
 from database import Operacion, Historial, Estados, ReciboPago
 from utilidades import crear_pdf_facturacion, crear_pdf_despacho_papeles
-from dialogos import AgregarCargoDialog, CargarPagoDialog
+from dialogos import CargarPagoDialog
+
+# 🔥 NUEVA VENTANA PARA CARGO FIJO CON FECHA 🔥
+class NuevoCargoFijoDialog(QDialog):
+    def __init__(self, proveedores, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("➕ Agregar Cargo Fijo / Extra")
+        self.setFixedSize(400, 300)
+        layout = QFormLayout(self)
+        
+        self.in_fecha = QDateEdit(QDate.currentDate())
+        self.in_fecha.setCalendarPopup(True)
+        self.in_fecha.setDisplayFormat("dd/MM/yyyy")
+        self.in_fecha.setStyleSheet("padding: 5px; font-weight: bold;")
+        
+        self.in_prov = QComboBox()
+        self.in_prov.addItems(proveedores)
+        self.in_prov.setStyleSheet("padding: 5px;")
+        
+        self.in_concepto = QLineEdit()
+        self.in_concepto.setPlaceholderText("Ej: Diferencia de tarifa, peaje...")
+        self.in_concepto.setStyleSheet("padding: 5px;")
+        
+        self.in_monto = QDoubleSpinBox()
+        self.in_monto.setRange(-9999999, 9999999) 
+        self.in_monto.setPrefix("$ ")
+        self.in_monto.setSingleStep(1000)
+        self.in_monto.setStyleSheet("padding: 5px; font-weight: bold; color: #198754;")
+        
+        layout.addRow("📅 Fecha del Cargo:", self.in_fecha)
+        layout.addRow("🏢 Proveedor:", self.in_prov)
+        layout.addRow("📝 Concepto / Detalle:", self.in_concepto)
+        layout.addRow("💵 Monto ($):", self.in_monto)
+        
+        btn_box = QHBoxLayout()
+        btn_ok = QPushButton("💾 Guardar")
+        btn_ok.setStyleSheet("background-color: #198754; color: white; font-weight: bold; padding: 8px;")
+        btn_ok.clicked.connect(self.accept)
+        btn_cancel = QPushButton("Cancelar")
+        btn_cancel.setStyleSheet("padding: 8px;")
+        btn_cancel.clicked.connect(self.reject)
+        btn_box.addWidget(btn_ok)
+        btn_box.addWidget(btn_cancel)
+        
+        layout.addRow(btn_box)
 
 class RestrictedComboBox(QComboBox):
     def __init__(self, main_app, parent=None):
@@ -185,7 +229,7 @@ class AjusteAvanzadoFacturacionDialog(QDialog):
         super().__init__(parent)
         self.op = op; self.main_app = main_app
         self.setWindowTitle(f"🛠️ Ajuste Integral de Facturación - ID: {op.id}")
-        self.setFixedSize(520, 850) 
+        self.setFixedSize(520, 890) 
         layout = QVBoxLayout(self)
         bultos_tot = int(op.bultos) if op.bultos else 1
         bultos_fr = int(op.bultos_frio) if op.bultos_frio else 0
@@ -237,7 +281,7 @@ class AjusteAvanzadoFacturacionDialog(QDialog):
         self.in_frio = QSpinBox()
         self.in_frio.setRange(0, 1000)
         self.in_frio.setValue(bultos_fr)
-        self.chk_combinado = QCheckBox("📦 CARGA COMBINADA (Cobrar todo junto por mayor valor)")
+        self.chk_combinado = QCheckBox("📦 CARGA COMBINADA (Cobrar todo junto)")
         self.chk_combinado.setStyleSheet("color: #d32f2f; font-weight: bold; padding: 5px;")
         if bultos_com > 0 and bultos_fr > 0: 
             self.chk_combinado.setChecked(True)
@@ -293,6 +337,8 @@ class AjusteAvanzadoFacturacionDialog(QDialog):
         form_extras.addRow(lbl_visita, self.in_doble_visita)
         form_extras.addRow("📝 Nota de Ajuste (Va al PDF):", self.in_obs_fact)
         layout.addLayout(form_extras)
+        
+        # 🔥 PRECIO BASE AHORA ES EDITABLE 🔥
         layout.addWidget(QLabel("<b>💵 Precio Base (Calculado / Manual):</b>"))
         self.in_precio_base = QDoubleSpinBox()
         self.in_precio_base.setRange(0, 10000000)
@@ -305,10 +351,12 @@ class AjusteAvanzadoFacturacionDialog(QDialog):
         self.lbl_total.setStyleSheet("font-size: 24px; font-weight: bold; color: #1565c0; padding: 15px; border: 2px dashed #1565c0; border-radius: 8px; background-color: #e3f2fd;")
         self.lbl_total.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(self.lbl_total)
+        
         btn_guardar = QPushButton("💾 GUARDAR CAMBIOS")
         btn_guardar.setStyleSheet("background-color: #198754; color: white; font-weight: bold; padding: 12px; margin-top: 10px; font-size: 14px; border-radius: 6px;")
         btn_guardar.clicked.connect(self.accept)
         layout.addWidget(btn_guardar)
+        
         self.in_prov.currentTextChanged.connect(self.evaluar_reglas_y_recalcular)
         self.in_peso.valueChanged.connect(self.recalcular)
         self.combo_zona.currentTextChanged.connect(self.recalcular)
@@ -323,12 +371,13 @@ class AjusteAvanzadoFacturacionDialog(QDialog):
         self.btn_finde.clicked.connect(self.aplicar_finde)
         self.btn_feriado.clicked.connect(self.aplicar_feriado)
         
+        # Conectamos el precio base a la sumatoria final
         self.in_precio_base.valueChanged.connect(self.recalcular_solo_total)
         
         self.base_calculada = 0.0
         self.evaluar_reglas_y_recalcular()
         
-        # Cargar precio base real que tenía en DB para no pisarlo
+        # 🔥 Rescatamos el precio base real que tenía en la base de datos sin pisarlo 🔥
         m_finde_db = getattr(op, 'monto_finde', 0.0) or 0.0
         m_feriado_db = getattr(op, 'monto_feriado', 0.0) or 0.0
         m_esp_db = getattr(op, 'monto_espera', 0.0) or 0.0
@@ -382,6 +431,7 @@ class AjusteAvanzadoFacturacionDialog(QDialog):
         self.recalcular()
 
     def aplicar_finde(self): 
+        # Usa el precio de la casilla por si lo editaste manual
         self.in_finde.setValue(self.in_precio_base.value() * 1.0) 
         
     def aplicar_feriado(self): 
@@ -413,14 +463,21 @@ class AjusteAvanzadoFacturacionDialog(QDialog):
         es_finde_real = datetime(d.year(), d.month(), d.day()).weekday() >= 5
         exento = any(x in prov_actual.upper() for x in ["DHL", "JETPAQ", "AMBIENTALES"])
         
-        self.btn_seleccionar_todo = QPushButton("☑️ Deseleccionar Todo")
-        self.btn_seleccionar_todo.setStyleSheet("background-color: #17a2b8; color: white; padding: 8px; font-weight: bold;")
-        self.btn_seleccionar_todo.clicked.connect(self.toggle_seleccionar_todo)
+        if not exento and es_finde_real: 
+            self.in_finde.blockSignals(True)
+            self.in_finde.setValue(self.base_calculada)
+            self.in_finde.blockSignals(False)
+            
+        # Refleja el cálculo del motor en la casilla manual
+        self.in_precio_base.blockSignals(True)
+        self.in_precio_base.setValue(self.base_calculada)
+        self.in_precio_base.blockSignals(False)
         
-        lay_abajo.addWidget(self.btn_deshacer_fac)
-        lay_abajo.addWidget(self.btn_seleccionar_todo)
-        lay_abajo.addStretch()
-        lay_abajo.addWidget(self.lbl_resumen)
+        self.recalcular_solo_total()
+
+    def recalcular_solo_total(self):
+        self.precio_final = self.in_precio_base.value() + self.in_finde.value() + self.in_feriado.value() + self.in_contingencia.value() + self.in_doble_visita.value()
+        self.lbl_total.setText(f"$ {self.precio_final:,.2f}")
 
 class TabFacturacion(QWidget):
     def __init__(self, main_window):
@@ -520,8 +577,14 @@ class TabFacturacion(QWidget):
         self.btn_seleccionar_todo.setStyleSheet("background-color: #17a2b8; color: white; padding: 8px; font-weight: bold;")
         self.btn_seleccionar_todo.clicked.connect(self.toggle_seleccionar_todo)
         
+        # 🔥 BOTÓN PARA ELIMINAR GUÍAS DEFINTIVAMENTE 🔥
+        self.btn_eliminar_fac = QPushButton("🗑️ Eliminar Guías")
+        self.btn_eliminar_fac.setStyleSheet("background-color: #dc3545; color: white; padding: 8px; font-weight: bold;")
+        self.btn_eliminar_fac.clicked.connect(self.eliminar_guias_facturacion)
+        
         lay_abajo.addWidget(self.btn_deshacer_fac)
         lay_abajo.addWidget(self.btn_seleccionar_todo)
+        lay_abajo.addWidget(self.btn_eliminar_fac) # <-- Agregado al panel
         lay_abajo.addStretch()
         lay_abajo.addWidget(self.lbl_resumen)
         
@@ -584,7 +647,6 @@ class TabFacturacion(QWidget):
         lay_lote.addWidget(QLabel("<b>📦 Armar Lote para Proveedor:</b>"))
         self.combo_prov_papel = QComboBox()
         
-        # 🔥 CONEXIÓN DIRECTA A LA BASE DE DATOS 🔥
         from database import ClientePrincipal
         try:
             provs_db = self.main.session.query(ClientePrincipal).order_by(ClientePrincipal.nombre.asc()).all()
@@ -615,7 +677,6 @@ class TabFacturacion(QWidget):
         self.tabla_papeles.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         layout_despacho.addWidget(self.tabla_papeles)
         
-        # 🔥 ACÁ ESTÁN LOS DOS BOTONES JUNTOS 🔥
         lay_botones_lote = QHBoxLayout()
         btn_generar_lote = QPushButton("📦 Generar Lote PDF y Marcar como Enviados")
         btn_generar_lote.setStyleSheet("background-color: #198754; color: white; padding: 12px; font-weight: bold; font-size: 14px; border-radius: 6px;")
@@ -690,8 +751,6 @@ class TabFacturacion(QWidget):
         prov = self.combo_prov_papel.currentText()
         try:
             self.tabla_papeles.setRowCount(0)
-            
-            # 🔥 REGLA CAMBIADA: Ya no pide "facturado == True" y busca el proveedor de forma inteligente (ilike) 🔥
             query = self.main.session.query(Operacion).filter(
                 Operacion.estado.in_([Estados.ENTREGADO, Estados.DEVUELTO_ORIGEN]), 
                 (Operacion.papel_enviado == False) | (Operacion.papel_enviado == None), 
@@ -749,7 +808,6 @@ class TabFacturacion(QWidget):
                 self.main.session.rollback()
                 QMessageBox.critical(self, "Error", str(e))
 
-    # 🔥 NUEVO MÉTODO PARA ABRIR LA VENTANA DE DESHACER LOTE 🔥
     def abrir_dialogo_deshacer_papeles(self):
         dlg = DeshacerPapelesDialog(self.main, self)
         if dlg.exec() == QDialog.DialogCode.Accepted:
@@ -829,6 +887,7 @@ class TabFacturacion(QWidget):
             self.calcular_cierre()
             self.cargar_ctas_ctes()
             
+    # 🔥 NUEVO MÉTODO PARA ELIMINAR GUÍAS DEFINITIVAMENTE 🔥
     def eliminar_guias_facturacion(self):
         ids = [int(self.tabla_cierre.item(r, 0).text()) for r in range(self.tabla_cierre.rowCount()) if self.tabla_cierre.item(r, 0) and self.tabla_cierre.item(r, 0).checkState() == Qt.CheckState.Checked]
         if not ids:
@@ -841,7 +900,7 @@ class TabFacturacion(QWidget):
                     op = self.main.session.query(Operacion).get(op_id)
                     if op: self.main.session.delete(op)
                 self.main.session.commit()
-                self.main.toast.mostrar(f"✅ {len(ids)} guía(s) eliminada(s).")
+                self.main.toast.mostrar(f"✅ {len(ids)} guía(s) eliminada(s) por completo.")
                 self.calcular_cierre()
                 if hasattr(self.main, 'cargar_monitor_global'): self.main.cargar_monitor_global()
             except Exception as e:
@@ -850,13 +909,35 @@ class TabFacturacion(QWidget):
         
     def agregar_cargo_fijo(self):
         proveedores = [self.cierre_prov.itemText(i) for i in range(self.cierre_prov.count()) if self.cierre_prov.itemText(i) != "Todos"]
-        dlg = AgregarCargoDialog(proveedores, self)
+        
+        # 🔥 AHORA LLAMA A LA VENTANA NUEVA CON FECHA 🔥
+        dlg = NuevoCargoFijoDialog(proveedores, self)
+        
         if dlg.exec() == QDialog.DialogCode.Accepted:
             try: 
-                op = Operacion(fecha_ingreso=datetime.now(), sucursal=self.cierre_sucursal.currentText() if self.cierre_sucursal.currentText() != "Todas" else self.main.sucursal_actual, guia_remito="CARGO-FIJO", proveedor=dlg.in_prov.currentText().upper(), destinatario=dlg.in_concepto.text().upper(), domicilio="-", localidad="-", bultos=1, bultos_frio=0, peso=0.0, tipo_carga="COMUN", monto_servicio=dlg.in_monto.value(), estado=Estados.ENTREGADO, facturado=False, tipo_servicio="Cargo Extra")
+                fecha_elegida = datetime.combine(dlg.in_fecha.date().toPyDate(), datetime.now().time())
+                
+                op = Operacion(
+                    fecha_ingreso=fecha_elegida, 
+                    fecha_entrega=fecha_elegida,
+                    sucursal=self.cierre_sucursal.currentText() if self.cierre_sucursal.currentText() != "Todas" else self.main.sucursal_actual, 
+                    guia_remito="CARGO-FIJO", 
+                    proveedor=dlg.in_prov.currentText().upper(), 
+                    destinatario=dlg.in_concepto.text().upper(), 
+                    domicilio="-", 
+                    localidad="-", 
+                    bultos=1, 
+                    bultos_frio=0, 
+                    peso=0.0, 
+                    tipo_carga="COMUN", 
+                    monto_servicio=dlg.in_monto.value(), 
+                    estado=Estados.ENTREGADO, 
+                    facturado=False, 
+                    tipo_servicio="Cargo Extra"
+                )
                 self.main.session.add(op)
                 self.main.session.commit()
-                self.main.toast.mostrar("✅ Cargo extra agregado.")
+                self.main.toast.mostrar("✅ Cargo extra agregado con su fecha correcta.")
                 self.calcular_cierre()
             except Exception: self.main.session.rollback()
             
@@ -934,8 +1015,10 @@ class TabFacturacion(QWidget):
                 op.monto_feriado = dlg.in_feriado.value()
                 op.monto_contingencia = dlg.in_contingencia.value()
                 op.monto_espera = dlg.in_doble_visita.value()
-                op.monto_servicio = dlg.precio_final
                 op.observaciones_facturacion = dlg.in_obs_fact.text().strip().upper()
+                
+                # 🔥 GUARDA EL PRECIO FINAL DEL ESPEJO 🔥
+                op.monto_servicio = dlg.precio_final
                 
                 self.main.log_movimiento(op, "EDICIÓN DE FACTURACIÓN", f"Precio ajustado a ${dlg.precio_final}")
                 self.main.session.commit()
