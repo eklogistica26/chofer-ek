@@ -293,10 +293,14 @@ class AjusteAvanzadoFacturacionDialog(QDialog):
         form_extras.addRow(lbl_visita, self.in_doble_visita)
         form_extras.addRow("📝 Nota de Ajuste (Va al PDF):", self.in_obs_fact)
         layout.addLayout(form_extras)
-        self.lbl_base = QLabel("Tarifa Base: $ 0.00")
-        self.lbl_base.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.lbl_base.setStyleSheet("color: #6c757d; font-style: italic;")
-        layout.addWidget(self.lbl_base)
+        layout.addWidget(QLabel("<b>💵 Precio Base (Calculado / Manual):</b>"))
+        self.in_precio_base = QDoubleSpinBox()
+        self.in_precio_base.setRange(0, 10000000)
+        self.in_precio_base.setPrefix("$ ")
+        self.in_precio_base.setSingleStep(500.0)
+        self.in_precio_base.setStyleSheet("font-size: 16px; font-weight: bold; color: #198754; padding: 5px;")
+        layout.addWidget(self.in_precio_base)
+        
         self.lbl_total = QLabel("$ 0.00")
         self.lbl_total.setStyleSheet("font-size: 24px; font-weight: bold; color: #1565c0; padding: 15px; border: 2px dashed #1565c0; border-radius: 8px; background-color: #e3f2fd;")
         self.lbl_total.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -318,8 +322,25 @@ class AjusteAvanzadoFacturacionDialog(QDialog):
         self.in_doble_visita.valueChanged.connect(self.recalcular_solo_total)
         self.btn_finde.clicked.connect(self.aplicar_finde)
         self.btn_feriado.clicked.connect(self.aplicar_feriado)
+        
+        self.in_precio_base.valueChanged.connect(self.recalcular_solo_total)
+        
         self.base_calculada = 0.0
         self.evaluar_reglas_y_recalcular()
+        
+        # Cargar precio base real que tenía en DB para no pisarlo
+        m_finde_db = getattr(op, 'monto_finde', 0.0) or 0.0
+        m_feriado_db = getattr(op, 'monto_feriado', 0.0) or 0.0
+        m_esp_db = getattr(op, 'monto_espera', 0.0) or 0.0
+        m_cont_db = getattr(op, 'monto_contingencia', 0.0) or 0.0
+        m_serv_db = getattr(op, 'monto_servicio', 0.0) or 0.0
+        base_real_db = m_serv_db - (m_finde_db + m_feriado_db + m_esp_db + m_cont_db)
+        if base_real_db < 0: base_real_db = 0.0
+        
+        self.in_precio_base.blockSignals(True)
+        self.in_precio_base.setValue(base_real_db)
+        self.in_precio_base.blockSignals(False)
+        self.recalcular_solo_total()
 
     def evaluar_reglas_y_recalcular(self):
         prov = self.in_prov.currentText().upper()
@@ -361,10 +382,10 @@ class AjusteAvanzadoFacturacionDialog(QDialog):
         self.recalcular()
 
     def aplicar_finde(self): 
-        self.in_finde.setValue(self.base_calculada * 1.0) 
+        self.in_finde.setValue(self.in_precio_base.value() * 1.0) 
         
     def aplicar_feriado(self): 
-        self.in_feriado.setValue(self.base_calculada * 2.0) 
+        self.in_feriado.setValue(self.in_precio_base.value() * 2.0) 
         
     def recalcular(self):
         b_tot = self.in_bultos.value()
@@ -392,17 +413,14 @@ class AjusteAvanzadoFacturacionDialog(QDialog):
         es_finde_real = datetime(d.year(), d.month(), d.day()).weekday() >= 5
         exento = any(x in prov_actual.upper() for x in ["DHL", "JETPAQ", "AMBIENTALES"])
         
-        if not exento and es_finde_real: 
-            self.in_finde.blockSignals(True)
-            self.in_finde.setValue(self.base_calculada)
-            self.in_finde.blockSignals(False)
-            
-        self.lbl_base.setText(f"Tarifa Base Calculada (S/ extras): $ {self.base_calculada:,.2f}")
-        self.recalcular_solo_total()
-
-    def recalcular_solo_total(self):
-        self.precio_final = self.base_calculada + self.in_finde.value() + self.in_feriado.value() + self.in_contingencia.value() + self.in_doble_visita.value()
-        self.lbl_total.setText(f"$ {self.precio_final:,.2f}")
+        self.btn_seleccionar_todo = QPushButton("☑️ Deseleccionar Todo")
+        self.btn_seleccionar_todo.setStyleSheet("background-color: #17a2b8; color: white; padding: 8px; font-weight: bold;")
+        self.btn_seleccionar_todo.clicked.connect(self.toggle_seleccionar_todo)
+        
+        lay_abajo.addWidget(self.btn_deshacer_fac)
+        lay_abajo.addWidget(self.btn_seleccionar_todo)
+        lay_abajo.addStretch()
+        lay_abajo.addWidget(self.lbl_resumen)
 
 class TabFacturacion(QWidget):
     def __init__(self, main_window):
@@ -810,6 +828,25 @@ class TabFacturacion(QWidget):
         if dlg.exec() == QDialog.DialogCode.Accepted: 
             self.calcular_cierre()
             self.cargar_ctas_ctes()
+            
+    def eliminar_guias_facturacion(self):
+        ids = [int(self.tabla_cierre.item(r, 0).text()) for r in range(self.tabla_cierre.rowCount()) if self.tabla_cierre.item(r, 0) and self.tabla_cierre.item(r, 0).checkState() == Qt.CheckState.Checked]
+        if not ids:
+            QMessageBox.warning(self, "Aviso", "Seleccione al menos una guía para eliminar.")
+            return
+        reply = QMessageBox.question(self, "Confirmar Eliminación", f"¿Está seguro de eliminar definitivamente {len(ids)} guía(s) del sistema?\nEsta acción NO se puede deshacer.", QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+        if reply == QMessageBox.StandardButton.Yes:
+            try:
+                for op_id in ids:
+                    op = self.main.session.query(Operacion).get(op_id)
+                    if op: self.main.session.delete(op)
+                self.main.session.commit()
+                self.main.toast.mostrar(f"✅ {len(ids)} guía(s) eliminada(s).")
+                self.calcular_cierre()
+                if hasattr(self.main, 'cargar_monitor_global'): self.main.cargar_monitor_global()
+            except Exception as e:
+                self.main.session.rollback()
+                QMessageBox.critical(self, "Error", f"Error al eliminar: {e}")
         
     def agregar_cargo_fijo(self):
         proveedores = [self.cierre_prov.itemText(i) for i in range(self.cierre_prov.count()) if self.cierre_prov.itemText(i) != "Todos"]
