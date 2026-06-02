@@ -1389,10 +1389,11 @@ class TabFacturacion(QWidget):
             
             self.lbl_info_audit.setText(f"✅ Rango detectado: {min_date.strftime('%d/%m')} al {max_date.strftime('%d/%m')} | Guías en Excel: {len(guias_excel)}")
             
+            # 🔥 CORRECCIÓN HORARIA PARA SUPABASE 🔥
             ops_db = self.main.session.query(Operacion).filter(
                 Operacion.proveedor.ilike('%DHL%'), 
-                func.date(func.coalesce(Operacion.fecha_entrega, Operacion.fecha_ingreso)) >= min_date, 
-                func.date(func.coalesce(Operacion.fecha_entrega, Operacion.fecha_ingreso)) <= max_date, 
+                text("DATE(COALESCE(fecha_entrega, fecha_ingreso) - INTERVAL '3 hours') >= :f_min").bindparams(f_min=min_date),
+                text("DATE(COALESCE(fecha_entrega, fecha_ingreso) - INTERVAL '3 hours') <= :f_max").bindparams(f_max=max_date),
                 Operacion.sucursal == "San Juan"
             ).all()
             
@@ -1407,14 +1408,42 @@ class TabFacturacion(QWidget):
                     g_db_limpia = "".join(c for c in str(op.guia_remito) if c.isalnum())
                     guias_db.add(g_db_limpia)
                     
-            faltan_en_plataforma = sorted(list(guias_excel - guias_db))
+            faltan_en_plataforma_inicial = sorted(list(guias_excel - guias_db))
             sobran_en_plataforma = sorted(list(guias_db - guias_excel))
+            
+            # 🔥 MAGIA: DIAGNÓSTICO INTELIGENTE DE FALTANTES 🔥
+            faltan_totalmente = []
+            estan_mal_cargadas = []
+            
+            if faltan_en_plataforma_inicial:
+                from datetime import timedelta
+                f_limite = min_date - timedelta(days=45)
+                # Buscamos en toda la base sin filtros estrictos para ver si está perdida por ahí
+                ops_recientes = self.main.session.query(Operacion).filter(
+                    text("DATE(fecha_ingreso - INTERVAL '3 hours') >= :f_lim").bindparams(f_lim=f_limite)
+                ).all()
+                
+                mapa_guias_recientes = {}
+                for op in ops_recientes:
+                    if op.guia_remito:
+                        cl = "".join(c for c in str(op.guia_remito) if c.isalnum())
+                        if cl: mapa_guias_recientes[cl] = op
+                        
+                for guia in faltan_en_plataforma_inicial:
+                    if guia in mapa_guias_recientes:
+                        op_e = mapa_guias_recientes[guia]
+                        f_i = op_e.fecha_ingreso.strftime('%d/%m') if op_e.fecha_ingreso else 'S/D'
+                        # Te avisa exactamente DÓNDE y CÓMO se cargó
+                        estan_mal_cargadas.append(f"{guia} -> (Fue cargada: {f_i} | Suc: {op_e.sucursal} | Prov: {op_e.proveedor})")
+                    else:
+                        faltan_totalmente.append(guia)
             
             QApplication.restoreOverrideCursor()
             
+            # --- ARMADO VISUAL DE LA VENTANA DE RESULTADOS ---
             dlg = QDialog(self)
             dlg.setWindowTitle("🕵️ Auditoría de Carga - Control Interno")
-            dlg.resize(950, 650)
+            dlg.resize(1100, 650)
             lay = QVBoxLayout(dlg)
             
             lbl_tit = QLabel(f"<h2 style='color:#0d6efd; margin:0;'>Auditoría de Carga en Plataforma</h2>"
@@ -1425,14 +1454,25 @@ class TabFacturacion(QWidget):
             
             h_lay = QHBoxLayout()
             
+            # COLUMNA 1: FALTAN O MAL CARGADAS
             v_izq = QVBoxLayout()
-            v_izq.addWidget(QLabel(f"🔴 <b>FALTAN CARGAR EN EL SISTEMA ({len(faltan_en_plataforma)})</b>"))
+            v_izq.addWidget(QLabel(f"🔴 <b>FALTAN TOTALMENTE ({len(faltan_totalmente)})</b>"))
             text_izq = QTextBrowser()
-            text_izq.setText("\n".join(faltan_en_plataforma) if faltan_en_plataforma else "¡Todo cargado!")
+            text_izq.setText("\n".join(faltan_totalmente) if faltan_totalmente else "¡Todo cargado!")
             text_izq.setStyleSheet("background-color: #f8d7da; color: #721c24; font-weight: bold; font-family: 'Consolas'; font-size: 15px;")
             v_izq.addWidget(text_izq)
+            
+            # EL NUEVO CARTEL NARANJA
+            if estan_mal_cargadas:
+                v_izq.addWidget(QLabel(f"🟠 <b>ESTÁN EN EL SISTEMA, PERO FUERA DE RANGO/SUCURSAL ({len(estan_mal_cargadas)})</b>"))
+                text_mal = QTextBrowser()
+                text_mal.setText("\n".join(estan_mal_cargadas))
+                text_mal.setStyleSheet("background-color: #ffe8cc; color: #fd7e14; font-weight: bold; font-family: 'Consolas'; font-size: 13px;")
+                v_izq.addWidget(text_mal)
+                
             h_lay.addLayout(v_izq)
             
+            # COLUMNA 2: SOBRANTES
             v_der = QVBoxLayout()
             v_der.addWidget(QLabel(f"🟡 <b>SOBRAN EN EL SISTEMA ({len(sobran_en_plataforma)})</b>"))
             text_der = QTextBrowser()
@@ -1444,7 +1484,6 @@ class TabFacturacion(QWidget):
             lay.addLayout(h_lay)
             
             lay_btn = QHBoxLayout()
-            
             btn_imprimir = QPushButton("🖨️ Exportar Faltantes (TXT)")
             btn_imprimir.setStyleSheet("background-color: #17a2b8; color: white; padding: 10px; font-weight: bold; font-size: 14px; border-radius: 4px;")
             
@@ -1452,19 +1491,22 @@ class TabFacturacion(QWidget):
                 import os
                 descargas_dir = os.path.join(os.path.expanduser('~'), 'Downloads')
                 ruta_txt = os.path.join(descargas_dir, f"Faltantes_DHL_{datetime.now().strftime('%d%m%Y_%H%M')}.txt")
-                with open(ruta_txt, "w") as f:
+                with open(ruta_txt, "w", encoding='utf-8') as f:
                     f.write("=== REPORTE DE GUIAS FALTANTES EN PLATAFORMA ===\n")
                     f.write(f"Rango: {min_date.strftime('%d/%m/%Y')} al {max_date.strftime('%d/%m/%Y')}\n")
                     f.write(f"Retiros cargados sin guia en plataforma: {retiros_count}\n")
-                    f.write("-" * 50 + "\n")
-                    f.write("Las siguientes guias figuran en el Excel pero NO en tu sistema:\n\n")
-                    for guia in faltan_en_plataforma:
+                    f.write("-" * 50 + "\n\n")
+                    f.write(f"1. FALTAN TOTALMENTE EN EL SISTEMA ({len(faltan_totalmente)}):\n")
+                    for guia in faltan_totalmente:
+                        f.write(f"{guia}\n")
+                    f.write("\n")
+                    f.write(f"2. ESTÁN, PERO FUERA DE RANGO/SUCURSAL ({len(estan_mal_cargadas)}):\n")
+                    for guia in estan_mal_cargadas:
                         f.write(f"{guia}\n")
                 os.startfile(ruta_txt)
                 
             btn_imprimir.clicked.connect(exportar_txt)
             lay_btn.addWidget(btn_imprimir)
-            
             lay_btn.addStretch()
             
             btn_cerrar = QPushButton("Cerrar Reporte")
@@ -1473,9 +1515,9 @@ class TabFacturacion(QWidget):
             lay_btn.addWidget(btn_cerrar)
             
             lay.addLayout(lay_btn)
-            
             dlg.exec()
             self.main.toast.mostrar(f"Auditoría terminada.")
+            
         except Exception as e: 
             QApplication.restoreOverrideCursor()
             QMessageBox.critical(self, "Error", f"No se pudo procesar el Excel:\n{str(e)}")
