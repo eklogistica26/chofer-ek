@@ -239,7 +239,14 @@ class TabIngreso(QWidget):
         col_der = QVBoxLayout(); h_header_ingreso = QHBoxLayout(); h_header_ingreso.addWidget(QLabel("<b>EN DEPOSITO:</b>"))
         btn_ref_ingreso = QPushButton("🔄 Actualizar")
         btn_ref_ingreso.clicked.connect(self.cargar_movimientos_dia)
-        h_header_ingreso.addWidget(btn_ref_ingreso); h_header_ingreso.addStretch()
+        
+        btn_exportar_stock = QPushButton("📊 Exportar Stock a Excel")
+        btn_exportar_stock.setStyleSheet("background-color: #28a745; color: white; font-weight: bold; padding: 4px 10px;")
+        btn_exportar_stock.clicked.connect(self.exportar_stock_excel)
+        
+        h_header_ingreso.addWidget(btn_ref_ingreso)
+        h_header_ingreso.addWidget(btn_exportar_stock)
+        h_header_ingreso.addStretch()
         
         self.tabla_ingresos = QTableWidget(); self.tabla_ingresos.setColumnCount(8); 
         self.tabla_ingresos.setHorizontalHeaderLabels(["ID", "Serv", "Guía", "Proveedor", "Destino", "Domicilio", "Zona", "Bultos/Hs"]); self.tabla_ingresos.hideColumn(0); 
@@ -523,3 +530,60 @@ class TabIngreso(QWidget):
                 elif bultos_fr == bultos_tot: det_b += " (R)"
                 self.tabla_ingresos.setItem(row, 7, QTableWidgetItem(det_b))
         except Exception: self.main.session.rollback()
+
+    def exportar_stock_excel(self):
+        import pandas as pd
+        from datetime import datetime
+        try:
+            QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+            # Buscamos TODO lo que esté en depósito sin importar la fecha de ingreso
+            ops = self.main.session.query(Operacion).filter(
+                Operacion.estado.in_([Estados.EN_DEPOSITO, 'EN DEPÓSITO']), 
+                Operacion.sucursal == self.main.sucursal_actual
+            ).order_by(Operacion.fecha_ingreso.asc()).all()
+            
+            if not ops:
+                QApplication.restoreOverrideCursor()
+                QMessageBox.information(self, "Stock", "No hay guías en depósito actualmente.")
+                return
+                
+            data = []
+            for op in ops:
+                dias_deposito = (datetime.now().date() - op.fecha_ingreso).days if op.fecha_ingreso else 0
+                data.append({
+                    "Días en Depósito": dias_deposito,
+                    "Fecha Ingreso": op.fecha_ingreso.strftime("%d/%m/%Y") if op.fecha_ingreso else "-",
+                    "Guía / Remito": op.guia_remito or "-",
+                    "Proveedor": op.proveedor or "-",
+                    "Destinatario": op.destinatario or "-",
+                    "Domicilio": op.domicilio or "-",
+                    "Localidad": op.localidad or "-",
+                    "Bultos": op.bultos or 1,
+                    "Servicio": op.tipo_servicio or "-"
+                })
+            
+            df = pd.DataFrame(data)
+            
+            descargas_dir = os.path.join(os.path.expanduser('~'), 'Downloads')
+            os.makedirs(descargas_dir, exist_ok=True)
+            ruta_excel = os.path.join(descargas_dir, f"Stock_Deposito_{self.main.sucursal_actual}_{datetime.now().strftime('%d%m%Y_%H%M')}.xlsx")
+            
+            with pd.ExcelWriter(ruta_excel, engine='xlsxwriter') as writer:
+                df.to_excel(writer, index=False, sheet_name='Stock')
+                workbook  = writer.book
+                worksheet = writer.sheets['Stock']
+                formato_texto = workbook.add_format({'num_format': '@', 'align': 'left'})
+                
+                worksheet.set_column('C:C', 20, formato_texto) 
+                worksheet.set_column('A:B', 15)
+                worksheet.set_column('D:G', 25)
+                
+            QApplication.restoreOverrideCursor()
+            try: os.startfile(ruta_excel)
+            except: pass
+            self.main.toast.mostrar(f"✅ Stock exportado ({len(ops)} guías)")
+            
+        except Exception as e:
+            QApplication.restoreOverrideCursor()
+            self.main.session.rollback()
+            QMessageBox.critical(self, "Error", f"Error al exportar stock: {e}")
