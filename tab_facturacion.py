@@ -1142,7 +1142,9 @@ class TabFacturacion(QWidget):
                     
             self.mapa_filas_cierre = {}
             total_ops = len(self.resultados_cierre)
-            progreso = QProgressDialog("Preparando datos de facturación...", None, 0, total_ops, self)
+            
+            # 🔥 1. CAMBIAMOS "None" POR "Cancelar" PARA QUE EL BOTÓN SEA VISIBLE 🔥
+            progreso = QProgressDialog("Preparando datos de facturación...", "Cancelar", 0, total_ops, self)
             progreso.setWindowTitle("⏳ Calculando Facturación")
             progreso.setWindowModality(Qt.WindowModality.WindowModal)
             progreso.setMinimumDuration(0)
@@ -1150,6 +1152,10 @@ class TabFacturacion(QWidget):
             hubo_reparacion = False 
             
             for row, op in enumerate(self.resultados_cierre):
+                # 🔥 2. LE ENSEÑAMOS A ESCUCHAR EL BOTÓN Y FRENAR DE GOLPE 🔥
+                if progreso.wasCanceled():
+                    break
+                    
                 if row % 2 == 0 or row == total_ops - 1: 
                     progreso.setLabelText(f"Calculando tarifa: guía {row + 1} de {total_ops}...")
                     progreso.setValue(row)
