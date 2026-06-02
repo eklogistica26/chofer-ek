@@ -536,7 +536,7 @@ class TabIngreso(QWidget):
         from datetime import datetime
         try:
             QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
-            # Buscamos TODO lo que esté en depósito sin importar la fecha de ingreso
+            
             ops = self.main.session.query(Operacion).filter(
                 Operacion.estado.in_([Estados.EN_DEPOSITO, 'EN DEPÓSITO']), 
                 Operacion.sucursal == self.main.sucursal_actual
@@ -569,19 +569,51 @@ class TabIngreso(QWidget):
             ruta_excel = os.path.join(descargas_dir, f"Stock_Deposito_{self.main.sucursal_actual}_{datetime.now().strftime('%d%m%Y_%H%M')}.xlsx")
             
             with pd.ExcelWriter(ruta_excel, engine='xlsxwriter') as writer:
-                df.to_excel(writer, index=False, sheet_name='Stock')
+                df.to_excel(writer, index=False, sheet_name='Stock_EK')
                 workbook  = writer.book
-                worksheet = writer.sheets['Stock']
-                formato_texto = workbook.add_format({'num_format': '@', 'align': 'left'})
+                worksheet = writer.sheets['Stock_EK']
                 
-                worksheet.set_column('C:C', 20, formato_texto) 
-                worksheet.set_column('A:B', 15)
-                worksheet.set_column('D:G', 25)
+                # 🔥 CREAMOS LOS ESTILOS PREMIUM 🔥
+                formato_header = workbook.add_format({
+                    'bold': True, 'text_wrap': True, 'valign': 'vcenter', 'align': 'center',
+                    'fg_color': '#1565C0', 'font_color': 'white', 'border': 1
+                })
                 
+                formato_texto = workbook.add_format({'num_format': '@', 'align': 'left', 'valign': 'vcenter'})
+                formato_centro = workbook.add_format({'align': 'center', 'valign': 'vcenter'})
+                
+                # Colores para el semáforo
+                formato_alerta_roja = workbook.add_format({'bg_color': '#f8d7da', 'font_color': '#721c24', 'align': 'center', 'valign': 'vcenter', 'bold': True})
+                formato_alerta_ama = workbook.add_format({'bg_color': '#fff3cd', 'font_color': '#856404', 'align': 'center', 'valign': 'vcenter', 'bold': True})
+                formato_ok = workbook.add_format({'bg_color': '#d4edda', 'font_color': '#155724', 'align': 'center', 'valign': 'vcenter', 'bold': True})
+
+                # 1. Aplicamos el formato al encabezado
+                for col_num, value in enumerate(df.columns.values):
+                    worksheet.write(0, col_num, value, formato_header)
+                
+                # 2. Ajustamos los anchos de las columnas para que no salga todo apretado
+                worksheet.set_column('A:A', 18, formato_centro) # Dias
+                worksheet.set_column('B:B', 15, formato_centro) # Fecha
+                worksheet.set_column('C:C', 20, formato_texto)  # Guia
+                worksheet.set_column('D:E', 25, formato_texto)  # Prov, Dest
+                worksheet.set_column('F:F', 35, formato_texto)  # Domicilio
+                worksheet.set_column('G:G', 20, formato_texto)  # Loc
+                worksheet.set_column('H:H', 10, formato_centro) # Bultos
+                worksheet.set_column('I:I', 20, formato_centro) # Servicio
+
+                # 3. Congelamos la primera fila y ponemos autofiltros
+                worksheet.freeze_panes(1, 0)
+                worksheet.autofilter(0, 0, len(df), len(df.columns) - 1)
+                
+                # 4. Magia del Semáforo Condicional para la columna A ("Días")
+                worksheet.conditional_format(f'A2:A{len(df)+1}', {'type': 'cell', 'criteria': '>=', 'value': 5, 'format': formato_alerta_roja})
+                worksheet.conditional_format(f'A2:A{len(df)+1}', {'type': 'cell', 'criteria': 'between', 'minimum': 2, 'maximum': 4, 'format': formato_alerta_ama})
+                worksheet.conditional_format(f'A2:A{len(df)+1}', {'type': 'cell', 'criteria': '<', 'value': 2, 'format': formato_ok})
+
             QApplication.restoreOverrideCursor()
             try: os.startfile(ruta_excel)
             except: pass
-            self.main.toast.mostrar(f"✅ Stock exportado ({len(ops)} guías)")
+            self.main.toast.mostrar(f"✅ Stock exportado con diseño ({len(ops)} guías)")
             
         except Exception as e:
             QApplication.restoreOverrideCursor()
