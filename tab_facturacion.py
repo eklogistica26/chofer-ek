@@ -889,20 +889,32 @@ class TabFacturacion(QWidget):
             
     # 🔥 NUEVO MÉTODO PARA ELIMINAR GUÍAS DEFINITIVAMENTE 🔥
     def eliminar_guias_facturacion(self):
-        ids = [int(self.tabla_cierre.item(r, 0).text()) for r in range(self.tabla_cierre.rowCount()) if self.tabla_cierre.item(r, 0) and self.tabla_cierre.item(r, 0).checkState() == Qt.CheckState.Checked]
+        ids = []
+        for r in range(self.tabla_cierre.rowCount()):
+            it = self.tabla_cierre.item(r, 0)
+            if it and it.checkState() == Qt.CheckState.Checked:
+                # Extraemos el ID que está "oculto" en la memoria del CheckBox
+                op_id = it.data(Qt.ItemDataRole.UserRole)
+                if op_id:
+                    ids.append(op_id)
+                    
         if not ids:
             QMessageBox.warning(self, "Aviso", "Seleccione al menos una guía para eliminar.")
             return
+            
         reply = QMessageBox.question(self, "Confirmar Eliminación", f"¿Está seguro de eliminar definitivamente {len(ids)} guía(s) del sistema?\nEsta acción NO se puede deshacer.", QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+        
         if reply == QMessageBox.StandardButton.Yes:
             try:
                 for op_id in ids:
                     op = self.main.session.query(Operacion).get(op_id)
-                    if op: self.main.session.delete(op)
+                    if op: 
+                        self.main.session.delete(op)
                 self.main.session.commit()
                 self.main.toast.mostrar(f"✅ {len(ids)} guía(s) eliminada(s) por completo.")
                 self.calcular_cierre()
-                if hasattr(self.main, 'cargar_monitor_global'): self.main.cargar_monitor_global()
+                if hasattr(self.main, 'cargar_monitor_global'): 
+                    self.main.cargar_monitor_global()
             except Exception as e:
                 self.main.session.rollback()
                 QMessageBox.critical(self, "Error", f"Error al eliminar: {e}")
