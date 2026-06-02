@@ -901,8 +901,8 @@ class PlataformaLogistica(QMainWindow):
                 est = op.estado or "S/D"
                 suc = op.sucursal or "S/D"
                 chof = op.chofer_asignado or "Sin Chofer"
-                cli = op.proveedor or "S/D"
-                zona = op.localidad or "S/D"
+                cli = (op.proveedor or "S/D").strip().upper()
+                zona = (op.localidad or "S/D").strip().upper()
                 
                 if est not in desglose_est:
                     desglose_est[est] = {'tot': 0, 'MZA': 0, 'SJ': 0, 'choferes': {}}
@@ -938,14 +938,14 @@ class PlataformaLogistica(QMainWindow):
             
             html += "<td width='53%' valign='top'>"
             html += "<div style='background-color: #ffffff; border: 1px solid #dee2e6; border-radius: 6px; padding: 15px; margin-bottom: 15px;'>"
-            html += "<h4 style='color: #495057; margin-top: 0; border-bottom: 1px solid #eee; padding-bottom: 5px;'>📍 Top Zonas (Demanda)</h4>"
-            for z, cant in sorted(c_zonas.items(), key=lambda x: x[1], reverse=True)[:5]:
+            html += "<h4 style='color: #495057; margin-top: 0; border-bottom: 1px solid #eee; padding-bottom: 5px;'>📍 Zonas de Demanda (Reporte Total)</h4>"
+            for z, cant in sorted(c_zonas.items(), key=lambda x: x[1], reverse=True):
                 html += f"<div style='font-size: 14px; margin-bottom: 6px;'>• <b>{z}</b>: {cant} guías</div>"
             html += "</div>"
             
             html += "<div style='background-color: #ffffff; border: 1px solid #dee2e6; border-radius: 6px; padding: 15px; margin-bottom: 15px;'>"
-            html += "<h4 style='color: #495057; margin-top: 0; border-bottom: 1px solid #eee; padding-bottom: 5px;'>🏢 Top Clientes</h4>"
-            for cli, cant in sorted(c_cli.items(), key=lambda x: x[1], reverse=True)[:5]:
+            html += "<h4 style='color: #495057; margin-top: 0; border-bottom: 1px solid #eee; padding-bottom: 5px;'>🏢 Clientes (Reporte Total)</h4>"
+            for cli, cant in sorted(c_cli.items(), key=lambda x: x[1], reverse=True):
                 html += f"<div style='font-size: 14px; margin-bottom: 6px;'>• <b>{cli}</b>: {cant} guías</div>"
             html += "</div>"
             
