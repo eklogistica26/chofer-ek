@@ -218,11 +218,12 @@ class PlataformaLogistica(QMainWindow):
         try:
             zs = self.session.query(Tarifa.localidad).filter(Tarifa.sucursal == self.sucursal_actual).distinct().all()
             chs = self.session.query(Chofer.nombre).filter(Chofer.sucursal == self.sucursal_actual).all()
-            nombres_choferes = [c[0] for c in chs]
+            nombres_choferes = [c[0].strip().upper() for c in chs if c[0]]
             clis = self.session.query(ClienteRetiro).filter(ClienteRetiro.sucursal == self.sucursal_actual).order_by(ClienteRetiro.nombre).all()
-            # Extraemos todos los choferes históricos reales de las operaciones (incluye tercerizados)
+            
+            # Extraemos todos los choferes históricos reales (incluye tercerizados) y unificamos mayúsculas
             chs_operaciones = self.session.query(Operacion.chofer_asignado).filter(Operacion.chofer_asignado != None).distinct().all()
-            nombres_historicos = sorted(list(set([c[0] for c in chs_operaciones if c[0].strip()])))
+            nombres_historicos = sorted(list(set([c[0].strip().upper() for c in chs_operaciones if c[0] and c[0].strip()])))
             
             clientes_db = self.session.query(ClientePrincipal).order_by(ClientePrincipal.nombre.asc()).all()
             self.lista_proveedores = [c.nombre for c in clientes_db] if clientes_db else ["Andreani", "DHL", "Directo", "JetPaq", "MercadoLibre", "Otro"]
@@ -782,17 +783,18 @@ class PlataformaLogistica(QMainWindow):
         layout = QVBoxLayout(self.tab_reportes); filtros = QGroupBox("Filtros"); flayout = QHBoxLayout()
         self.rep_fecha_desde = QDateEdit(QDate.currentDate().addDays(-30)); self.rep_fecha_hasta = QDateEdit(QDate.currentDate()); self.rep_fecha_desde.setCalendarPopup(True); self.rep_fecha_hasta.setCalendarPopup(True)
         
-        self.rep_sucursal = QComboBox(); self.rep_sucursal.addItems(["Todas", "Mendoza", "San Juan"])
-        self.rep_sucursal.setMinimumWidth(100) 
+        # 🔥 ESTILO AVANZADO: Botón compacto, pero lista desplegable súper ancha 🔥
+        estilo_combos = "QComboBox { min-width: 130px; padding: 4px; font-weight: bold; } QComboBox QAbstractItemView { min-width: 250px; background-color: white; selection-background-color: #1565c0; }"
         
-        self.rep_chofer = QComboBox(); self.rep_chofer.setMinimumWidth(150); self.rep_chofer.addItem("Todos")
-        self.rep_cliente = QComboBox(); self.rep_cliente.addItem("Todos"); self.rep_cliente.addItems(self.lista_proveedores)
-        self.rep_estado = QComboBox(); self.rep_estado.addItem("Todos"); self.rep_estado.addItems(Estados.LISTA_TODOS)
-        self.rep_tipo = QComboBox(); self.rep_tipo.addItems(["Todos", "Entrega", "Retiro", "Flete", "Cargo Extra"])
-        self.rep_facturado = QComboBox(); self.rep_facturado.addItems(["Todos", "Facturado", "NO Facturado"]) 
+        self.rep_sucursal = QComboBox(); self.rep_sucursal.addItems(["Todas", "Mendoza", "San Juan"]); self.rep_sucursal.setStyleSheet(estilo_combos)
+        self.rep_chofer = QComboBox(); self.rep_chofer.addItem("Todos"); self.rep_chofer.setStyleSheet(estilo_combos)
+        self.rep_cliente = QComboBox(); self.rep_cliente.addItem("Todos"); self.rep_cliente.addItems(self.lista_proveedores); self.rep_cliente.setStyleSheet(estilo_combos)
+        self.rep_estado = QComboBox(); self.rep_estado.addItem("Todos"); self.rep_estado.addItems(Estados.LISTA_TODOS); self.rep_estado.setStyleSheet(estilo_combos)
+        self.rep_tipo = QComboBox(); self.rep_tipo.addItems(["Todos", "Entrega", "Retiro", "Flete", "Cargo Extra"]); self.rep_tipo.setStyleSheet(estilo_combos)
+        self.rep_facturado = QComboBox(); self.rep_facturado.addItems(["Todos", "Facturado", "NO Facturado"]); self.rep_facturado.setStyleSheet(estilo_combos)
         
         # 🔥 NUEVO FILTRO DE ZONA 🔥
-        self.rep_zona = QComboBox(); self.rep_zona.setMinimumWidth(150); self.rep_zona.addItem("Todas")
+        self.rep_zona = QComboBox(); self.rep_zona.addItem("Todas"); self.rep_zona.setStyleSheet(estilo_combos)
         
         btn_buscar = QPushButton("🔍 Generar"); btn_buscar.clicked.connect(self.generar_reporte_avanzado)
         btn_excel = QPushButton("Excel"); btn_excel.setStyleSheet("background-color: #28a745 !important; color: white !important;"); btn_excel.clicked.connect(self.exportar_reporte_excel)
