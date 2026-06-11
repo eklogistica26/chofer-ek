@@ -220,7 +220,10 @@ class PlataformaLogistica(QMainWindow):
             chs = self.session.query(Chofer.nombre).filter(Chofer.sucursal == self.sucursal_actual).all()
             nombres_choferes = [c[0] for c in chs]
             clis = self.session.query(ClienteRetiro).filter(ClienteRetiro.sucursal == self.sucursal_actual).order_by(ClienteRetiro.nombre).all()
-            chs_todos = self.session.query(Chofer.nombre).all()
+            # Extraemos todos los choferes históricos reales de las operaciones (incluye tercerizados)
+            chs_operaciones = self.session.query(Operacion.chofer_asignado).filter(Operacion.chofer_asignado != None).distinct().all()
+            nombres_historicos = sorted(list(set([c[0] for c in chs_operaciones if c[0].strip()])))
+            
             clientes_db = self.session.query(ClientePrincipal).order_by(ClientePrincipal.nombre.asc()).all()
             self.lista_proveedores = [c.nombre for c in clientes_db] if clientes_db else ["Andreani", "DHL", "Directo", "JetPaq", "MercadoLibre", "Otro"]
             
@@ -235,7 +238,8 @@ class PlataformaLogistica(QMainWindow):
             if hasattr(self, 'tab_rendicion'): self.tab_rendicion.resumen_chofer.clear(); self.tab_rendicion.resumen_chofer.addItems(nombres_choferes)
             
             if hasattr(self, 'rep_chofer'): 
-                self.rep_chofer.clear(); self.rep_chofer.addItem("Todos"); self.rep_chofer.addItems(sorted(list(set([c[0] for c in chs_todos]))))
+                self.rep_chofer.clear(); self.rep_chofer.addItem("Todos"); self.rep_chofer.addItem("Sin Asignar")
+                self.rep_chofer.addItems(nombres_historicos)
                 self.rep_cliente.clear(); self.rep_cliente.addItem("Todos"); self.rep_cliente.addItems(self.lista_proveedores)
                 # 🔥 SE AGREGAN LAS ZONAS AL COMBO DE REPORTES 🔥
                 if hasattr(self, 'rep_zona'):
@@ -802,14 +806,15 @@ class PlataformaLogistica(QMainWindow):
         flayout.addWidget(QLabel("Fac:")); flayout.addWidget(self.rep_facturado)
         flayout.addWidget(btn_buscar); flayout.addWidget(btn_excel); flayout.addWidget(btn_pdf_rep); filtros.setLayout(flayout)
         
-        self.tabla_reportes = QTableWidget(); self.tabla_reportes.setAlternatingRowColors(True); self.tabla_reportes.setColumnCount(11); 
-        self.tabla_reportes.setHorizontalHeaderLabels(["Fecha", "Suc", "Cliente", "Guía", "Chofer", "Destinatario", "Zona", "Estado", "Fac?", "Bultos", "Precio"]); 
+        self.tabla_reportes = QTableWidget(); self.tabla_reportes.setAlternatingRowColors(True); self.tabla_reportes.setColumnCount(12); 
+        self.tabla_reportes.setHorizontalHeaderLabels(["F. Ingreso", "F. Entrega", "Sucursal", "Cliente", "Guía", "Chofer", "Destinatario", "Zona", "Estado", "Fac?", "Bultos", "Precio"]); 
         
         header_rep = self.tabla_reportes.horizontalHeader(); 
         header_rep.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
-        self.tabla_reportes.setColumnWidth(0, 90); self.tabla_reportes.setColumnWidth(1, 100); self.tabla_reportes.setColumnWidth(2, 140)
-        self.tabla_reportes.setColumnWidth(3, 140); self.tabla_reportes.setColumnWidth(4, 140); self.tabla_reportes.setColumnWidth(5, 250)
-        self.tabla_reportes.setColumnWidth(6, 140); self.tabla_reportes.setColumnWidth(7, 150); self.tabla_reportes.setColumnWidth(8, 70); self.tabla_reportes.setColumnWidth(9, 70)
+        self.tabla_reportes.setColumnWidth(0, 85); self.tabla_reportes.setColumnWidth(1, 85); self.tabla_reportes.setColumnWidth(2, 90)
+        self.tabla_reportes.setColumnWidth(3, 130); self.tabla_reportes.setColumnWidth(4, 130); self.tabla_reportes.setColumnWidth(5, 130)
+        self.tabla_reportes.setColumnWidth(6, 200); self.tabla_reportes.setColumnWidth(7, 130); self.tabla_reportes.setColumnWidth(8, 140)
+        self.tabla_reportes.setColumnWidth(9, 60); self.tabla_reportes.setColumnWidth(10, 60)
         header_rep.setStretchLastSection(True)
         
         self.tabla_reportes.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows); self.tabla_reportes.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
@@ -831,7 +836,15 @@ class PlataformaLogistica(QMainWindow):
         query = self.session.query(Operacion).filter(func.date(fecha_ref) >= f_desde, func.date(fecha_ref) <= f_hasta)
         
         if self.rep_sucursal.currentText() != "Todas": query = query.filter(Operacion.sucursal == self.rep_sucursal.currentText())
-        if self.rep_chofer.currentText() != "Todos": query = query.filter(Operacion.chofer_asignado == self.rep_chofer.currentText())
+        
+        # Filtro de Choferes corregido (Abarca Tercerizados y "Sin Asignar" para Cargos Fijos)
+        chof_filtro = self.rep_chofer.currentText()
+        if chof_filtro != "Todos": 
+            if chof_filtro == "Sin Asignar":
+                query = query.filter((Operacion.chofer_asignado == None) | (Operacion.chofer_asignado == ""))
+            else:
+                query = query.filter(Operacion.chofer_asignado == chof_filtro)
+                
         if self.rep_cliente.currentText() != "Todos": query = query.filter(Operacion.proveedor.ilike(self.rep_cliente.currentText()))
         if self.rep_estado.currentText() != "Todos": query = query.filter(Operacion.estado == self.rep_estado.currentText())
         
@@ -866,35 +879,36 @@ class PlataformaLogistica(QMainWindow):
 
                 self.tabla_reportes.insertRow(row)
                 f_ing = op.fecha_ingreso.strftime("%d/%m/%Y") if op.fecha_ingreso else "-"
+                f_ent = op.fecha_entrega.strftime("%d/%m/%Y") if op.fecha_entrega else "-"
                 
                 self.tabla_reportes.setItem(row, 0, QTableWidgetItem(f_ing))
-                self.tabla_reportes.setItem(row, 1, QTableWidgetItem(op.sucursal or "-"))
-                self.tabla_reportes.setItem(row, 2, QTableWidgetItem(op.proveedor or "-"))
+                self.tabla_reportes.setItem(row, 1, QTableWidgetItem(f_ent))
+                self.tabla_reportes.setItem(row, 2, QTableWidgetItem(op.sucursal or "-"))
+                self.tabla_reportes.setItem(row, 3, QTableWidgetItem(op.proveedor or "-"))
                 
-                # 🔥 MEJORA DE MONITOR GLOBAL: Mostramos la guía y si tiene observaciones, le clavamos un cartel informativo flotante (Tooltip) 🔥
                 item_guia = QTableWidgetItem(op.guia_remito or "-")
                 if getattr(op, 'observaciones_ingreso', ''):
                     item_guia.setToolTip(f"📝 OBS INGRESO: {op.observaciones_ingreso}")
-                    item_guia.setBackground(QBrush(QColor("#e3f2fd"))) # Teñimos levemente de celeste para avisar que tiene notas
-                self.tabla_reportes.setItem(row, 3, item_guia)
+                    item_guia.setBackground(QBrush(QColor("#e3f2fd")))
+                self.tabla_reportes.setItem(row, 4, item_guia)
                 
-                self.tabla_reportes.setItem(row, 4, QTableWidgetItem(op.chofer_asignado or "-"))
-                self.tabla_reportes.setItem(row, 5, QTableWidgetItem(op.destinatario or "-"))
-                self.tabla_reportes.setItem(row, 6, QTableWidgetItem(op.localidad or "-"))
-                self.tabla_reportes.setItem(row, 7, QTableWidgetItem(op.estado or "-"))
+                self.tabla_reportes.setItem(row, 5, QTableWidgetItem(op.chofer_asignado or "Sin Asignar"))
+                self.tabla_reportes.setItem(row, 6, QTableWidgetItem(op.destinatario or "-"))
+                self.tabla_reportes.setItem(row, 7, QTableWidgetItem(op.localidad or "-"))
+                self.tabla_reportes.setItem(row, 8, QTableWidgetItem(op.estado or "-"))
                 
                 item_fac = QTableWidgetItem("SI" if op.facturado else "NO")
                 if op.facturado: 
                     item_fac.setForeground(QColor("green")); item_fac.setFont(QFont("Arial", 9, QFont.Weight.Bold))
-                self.tabla_reportes.setItem(row, 8, item_fac)
-                self.tabla_reportes.setItem(row, 9, QTableWidgetItem(str(op.bultos or 1)))
+                self.tabla_reportes.setItem(row, 9, item_fac)
+                self.tabla_reportes.setItem(row, 10, QTableWidgetItem(str(op.bultos or 1)))
                 
                 if es_jetpaq:
                     item_precio = QTableWidgetItem("Uso Interno ($0)")
                     item_precio.setForeground(QColor("gray"))
                 else:
                     item_precio = QTableWidgetItem(f"$ {precio_mostrar:,.2f}")
-                self.tabla_reportes.setItem(row, 10, item_precio)
+                self.tabla_reportes.setItem(row, 11, item_precio)
                 
                 total_dinero += precio_mostrar
                 
@@ -983,16 +997,18 @@ class PlataformaLogistica(QMainWindow):
             resultados = self.construir_query_reportes()
             data = []
             for op in resultados: 
-                # 🔥 FIX EXCEL: El número de guía ahora se manda puro y Excel lo tomará como Texto 🔥
                 data.append({
-                    "Fecha": op.fecha_ingreso.strftime("%d/%m/%Y") if op.fecha_ingreso else "-", 
-                    "Sucursal": op.sucursal, 
-                    "Cliente": op.proveedor, 
+                    "Fecha Ingreso": op.fecha_ingreso.strftime("%d/%m/%Y") if op.fecha_ingreso else "-", 
+                    "Fecha Entrega": op.fecha_entrega.strftime("%d/%m/%Y") if op.fecha_entrega else "-", 
+                    "Sucursal": op.sucursal or "-", 
+                    "Cliente": op.proveedor or "-", 
                     "Guía / Remito": op.guia_remito or "-", 
-                    "Destinatario": op.destinatario, 
-                    "Zona / Localidad": op.localidad, # <-- Agregado el campo de Zona
-                    "Bultos": op.bultos or 1,         # <-- Agregado el campo Bultos
-                    "Estado": op.estado, 
+                    "Chofer Asignado": op.chofer_asignado or "Sin Asignar",
+                    "Destinatario": op.destinatario or "-", 
+                    "Domicilio": op.domicilio or "-",
+                    "Zona / Localidad": op.localidad or "-", 
+                    "Bultos": op.bultos or 1,
+                    "Estado": op.estado or "-", 
                     "Facturado": "SI" if op.facturado else "NO", 
                     "Monto ($)": op.monto_servicio or 0.0
                 })
@@ -1002,17 +1018,19 @@ class PlataformaLogistica(QMainWindow):
             if not os.path.exists(descargas_dir): os.makedirs(descargas_dir, exist_ok=True)
             ruta_excel = os.path.join(descargas_dir, f"Reporte_Gestion_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx")
             
-            # 🔥 MOTOR AVANZADO PARA BLOQUEAR LOS NÚMEROS LARGOS A LA IZQUIERDA 🔥
             with pd.ExcelWriter(ruta_excel, engine='xlsxwriter') as writer:
                 df.to_excel(writer, index=False, sheet_name='Reporte')
                 workbook  = writer.book
                 worksheet = writer.sheets['Reporte']
-                # Le decimos a Excel: "La columna D es Texto (@) y va alineada a la izquierda"
+                
                 formato_texto = workbook.add_format({'num_format': '@', 'align': 'left'})
-                worksheet.set_column('D:D', 20, formato_texto) 
-                # Ajustamos anchos visuales para que se vea lindo
-                worksheet.set_column('A:A', 12)
-                worksheet.set_column('E:F', 25)
+                
+                worksheet.set_column('E:E', 20, formato_texto) # Guia
+                worksheet.set_column('A:B', 14) # Fechas
+                worksheet.set_column('C:D', 20) # Suc, Cliente
+                worksheet.set_column('F:F', 20) # Chofer
+                worksheet.set_column('G:I', 30) # Destinatario, Domicilio, Zona
+                worksheet.set_column('J:K', 15) # Bultos, Estado
                 
             try: os.startfile(ruta_excel)
             except: pass

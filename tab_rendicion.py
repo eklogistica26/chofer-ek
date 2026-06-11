@@ -157,8 +157,9 @@ class TabRendicion(QWidget):
         top.addWidget(QLabel("<b>GUIAS EN REPARTO:</b>")); top.addStretch(); top.addWidget(btn_mark); top.addWidget(btn_confirmar); top.addWidget(btn_pendiente); top.addWidget(btn_ref)
         admin_bar = QHBoxLayout(); 
         btn_deshacer = QPushButton("↩️ DESHACER (Admin)"); btn_deshacer.clicked.connect(self.deshacer_estado)
-        if not getattr(self.main.usuario, 'es_admin_total', False): btn_deshacer.hide()
-        admin_bar.addWidget(btn_deshacer); admin_bar.addStretch()
+        btn_dev_origen = QPushButton("🔙 DEVUELTO A ORIGEN"); btn_dev_origen.setStyleSheet("background-color: #fd7e14; color: white; font-weight: bold;"); btn_dev_origen.clicked.connect(self.marcar_devuelto_origen)
+        if not getattr(self.main.usuario, 'es_admin_total', False): btn_deshacer.hide(); btn_dev_origen.hide()
+        admin_bar.addWidget(btn_deshacer); admin_bar.addWidget(btn_dev_origen); admin_bar.addStretch()
         self.txt_filtro_rendir = QLineEdit(); self.txt_filtro_rendir.setPlaceholderText("🔎 Filtrar por Chofer, Guía..."); self.txt_filtro_rendir.textChanged.connect(self.filtrar_tabla_rendicion)
         top.insertWidget(2, self.txt_filtro_rendir)
         
@@ -463,5 +464,28 @@ class TabRendicion(QWidget):
             if hasattr(self.main, 'cargar_ruta'):
                 self.main.cargar_ruta()
                 
+        except Exception: 
+            self.main.session.rollback()
+    
+    def marcar_devuelto_origen(self):
+        ids = []
+        for r in range(self.tabla_rendicion.rowCount()):
+            if self.tabla_rendicion.item(r, 1).checkState() == Qt.CheckState.Checked: 
+                ids.append(int(self.tabla_rendicion.item(r, 0).text()))
+        if not ids: return
+        
+        reply = QMessageBox.question(self, "Confirmar", f"¿Marcar {len(ids)} guías como DEVUELTO A ORIGEN?", QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+        if reply != QMessageBox.StandardButton.Yes: return
+        
+        try:
+            ops = self.main.session.query(Operacion).filter(Operacion.id.in_(ids)).all()
+            for op in ops:
+                op.estado = Estados.DEVUELTO_ORIGEN
+                op.chofer_asignado = None
+                self.main.log_movimiento(op, "DEVUELTO A ORIGEN", "Devuelto desde panel Rendición")
+            self.main.session.commit()
+            self.cargar_rendicion()
+            if hasattr(self.main, 'cargar_monitor_global'): 
+                self.main.cargar_monitor_global()
         except Exception: 
             self.main.session.rollback()
