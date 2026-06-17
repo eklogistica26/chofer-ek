@@ -125,7 +125,7 @@ class TabIngreso(QWidget):
         ly_normal = QVBoxLayout(self.widget_carga_normal)
         ly_normal.setContentsMargins(0,0,0,0)
         
-        self.radio_comun = QRadioButton("📦 COMÚN"); self.radio_frio = QRadioButton("❄️ REFRIGERADO"); self.radio_comb = QRadioButton("🔄 COMBINADO"); self.bg_tipo = QButtonGroup(); self.bg_tipo.addButton(self.radio_comun); self.bg_tipo.addButton(self.radio_frio); self.bg_tipo.addButton(self.radio_comb); self.radio_comun.setChecked(True)
+        self.radio_comun = QRadioButton("📦 AMBIENTE"); self.radio_frio = QRadioButton("❄️ FROZEN"); self.radio_comb = QRadioButton("🔄 COMBINADO"); self.bg_tipo = QButtonGroup(); self.bg_tipo.addButton(self.radio_comun); self.bg_tipo.addButton(self.radio_frio); self.bg_tipo.addButton(self.radio_comb); self.radio_comun.setChecked(True)
         ly_radios = QHBoxLayout(); ly_radios.addWidget(self.radio_comun); ly_radios.addWidget(self.radio_frio); ly_radios.addWidget(self.radio_comb)
         
         self.widget_simple = QWidget(); ly_simple = QHBoxLayout(self.widget_simple); ly_simple.setContentsMargins(0,0,0,0)
@@ -136,7 +136,7 @@ class TabIngreso(QWidget):
         ly_simple.addWidget(self.lbl_bultos_simple); ly_simple.addWidget(self.in_bultos_simple)
         ly_simple.addWidget(self.lbl_peso); ly_simple.addWidget(self.in_peso_manual)
         
-        self.widget_comb = QWidget(); ly_comb = QFormLayout(self.widget_comb); ly_comb.setContentsMargins(0,0,0,0); self.in_cant_comun = QSpinBox(); self.in_cant_comun.setRange(1, 999); self.in_cant_comun.setPrefix("📦 "); self.in_cant_frio = QSpinBox(); self.in_cant_frio.setRange(1, 999); self.in_cant_frio.setPrefix("❄️ "); ly_comb.addRow("Cant. Común:", self.in_cant_comun); ly_comb.addRow("Cant. Refrigerado:", self.in_cant_frio); self.widget_comb.hide()
+        self.widget_comb = QWidget(); ly_comb = QFormLayout(self.widget_comb); ly_comb.setContentsMargins(0,0,0,0); self.in_cant_comun = QSpinBox(); self.in_cant_comun.setRange(1, 999); self.in_cant_comun.setPrefix("📦 "); self.in_cant_frio = QSpinBox(); self.in_cant_frio.setRange(1, 999); self.in_cant_frio.setPrefix("❄️ "); ly_comb.addRow("Cant. Ambiente:", self.in_cant_comun); ly_comb.addRow("Cant. Frozen:", self.in_cant_frio); self.widget_comb.hide()
         
         self.chk_contingencia = QCheckBox("❄️ Aplicar Contingencia de Frío")
         self.chk_contingencia.setStyleSheet("color: #0d47a1; font-weight: bold;")
@@ -325,8 +325,13 @@ class TabIngreso(QWidget):
 
     def actualizar_interfaz_peso(self):
         prov = self.in_prov.currentText().upper()
-        if "DHL EXPRESS" in prov: self.lbl_peso.show(); self.in_peso_manual.show()
-        else: self.lbl_peso.hide(); self.in_peso_manual.hide(); self.in_peso_manual.setValue(0.0)
+        if "DHL" in prov: 
+            self.lbl_peso.show()
+            self.in_peso_manual.show()
+        else: 
+            self.lbl_peso.hide()
+            self.in_peso_manual.hide()
+            self.in_peso_manual.setValue(0.0)
 
     def cambiar_interfaz_tipo(self):
         if self.radio_comb.isChecked(): self.widget_simple.hide(); self.widget_comb.show(); self.chk_contingencia.show()
@@ -347,6 +352,9 @@ class TabIngreso(QWidget):
             
         if is_flete: self.widget_carga_normal.hide(); self.widget_carga_flete.show(); self.group_cr.hide(); self.chk_cr.setChecked(False) 
         else: self.widget_carga_normal.show(); self.widget_carga_flete.hide(); self.group_cr.show()
+        
+        # 🔥 FORZAMOS A QUE EVALÚE SI DEBE MOSTRAR EL PESO PARA DHL TANTO EN ENTREGA COMO RETIRO 🔥
+        self.actualizar_interfaz_peso()
 
     def cargar_datos_cliente(self):
         try:
@@ -423,8 +431,8 @@ class TabIngreso(QWidget):
                 if self.radio_comb.isChecked(): c_comun = self.in_cant_comun.value(); c_frio = self.in_cant_frio.value(); bultos_total = c_comun + c_frio; tipo_carga_txt = "COMBINADO"
                 else:
                     bultos_total = self.in_bultos_simple.value()
-                    if self.radio_frio.isChecked(): c_frio = bultos_total; c_comun = 0; tipo_carga_txt = "REFRIGERADO"
-                    else: c_frio = 0; c_comun = bultos_total; tipo_carga_txt = "COMUN"
+                    if self.radio_frio.isChecked(): c_frio = bultos_total; c_comun = 0; tipo_carga_txt = "FROZEN"
+                    else: c_frio = 0; c_comun = bultos_total; tipo_carga_txt = "AMBIENTE"
                 if bultos_total == 0: QMessageBox.warning(self, "Error", "Debe ingresar al menos 1 bulto."); return
                 precio = self.main.obtener_precio(loc, c_comun, c_frio, proveedor=prov, peso=peso_manual, bultos_totales=bultos_total)
                 if self.chk_contingencia.isChecked(): precio += self.in_monto_contingencia.value(); tipo_carga_txt += " (+Contingencia)"
@@ -486,7 +494,7 @@ class TabIngreso(QWidget):
                         guias_omitidas_detalle.append(d['guia'])
                         continue
                     peso_txt = d.get('peso', 0.0); bultos_txt = d['bultos']; precio = self.main.obtener_precio(self.main.sucursal_actual, bultos_txt, 0, proveedor="DHL EXPRESS", peso=peso_txt, bultos_totales=bultos_txt)
-                    op = Operacion(fecha_ingreso=d['fecha_ingreso'], sucursal=self.main.sucursal_actual, guia_remito=d['guia'], proveedor="DHL EXPRESS", destinatario=d['destinatario'][:100].upper(), domicilio=d['domicilio'][:150].upper(), localidad=self.main.sucursal_actual.upper(), celular=d['celular'][:50], bultos=bultos_txt, bultos_frio=0, peso=peso_txt, tipo_carga="COMUN", tipo_urgencia=Urgencia.CLASICO, monto_servicio=precio, estado=Estados.EN_DEPOSITO, tipo_servicio="Entrega (Reparto)")
+                    op = Operacion(fecha_ingreso=d['fecha_ingreso'], sucursal=self.main.sucursal_actual, guia_remito=d['guia'], proveedor="DHL EXPRESS", destinatario=d['destinatario'][:100].upper(), domicilio=d['domicilio'][:150].upper(), localidad=self.main.sucursal_actual.upper(), celular=d['celular'][:50], bultos=bultos_txt, bultos_frio=0, peso=peso_txt, tipo_carga="AMBIENTE", tipo_urgencia=Urgencia.CLASICO, monto_servicio=precio, estado=Estados.EN_DEPOSITO, tipo_servicio="Entrega (Reparto)")
                     self.main.session.add(op); hist = Historial(operacion=op, usuario=self.main.usuario.username, accion="INGRESO IMPORTADO", detalle="Carga masiva por TXT DHL"); self.main.session.add(hist); agregadas += 1
                 self.main.session.commit(); QApplication.restoreOverrideCursor(); self.main.setWindowTitle(f"E.K. LOGISTICA (NUBE) - Usuario: {self.main.usuario.username.upper()}")
                 

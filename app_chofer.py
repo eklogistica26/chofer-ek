@@ -539,8 +539,8 @@ def guardia():
                     <div style="flex:1;">
                         <label>Tipo de Carga:</label>
                         <select name="tipo_carga">
-                            <option value="Común">Común</option>
-                            <option value="Refrigerada">Refrigerada</option>
+                            <option value="Ambiente">Ambiente</option>
+                            <option value="Frozen">Frozen</option>
                         </select>
                     </div>
                     <div style="flex:1;">

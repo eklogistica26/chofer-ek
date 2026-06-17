@@ -941,7 +941,7 @@ class TabFacturacion(QWidget):
                     bultos=1, 
                     bultos_frio=0, 
                     peso=0.0, 
-                    tipo_carga="COMUN", 
+                    tipo_carga="AMBIENTE", 
                     monto_servicio=dlg.in_monto.value(), 
                     estado=Estados.ENTREGADO, 
                     facturado=False, 
