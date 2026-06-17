@@ -192,6 +192,23 @@ class PlataformaLogistica(QMainWindow):
         if self.usuario.ver_configuracion: self.tabs.addTab(self.tab_config, "⚙️ Configuración")
         
         self.setup_monitor(); self.setup_ruta(); self.setStatusBar(QStatusBar())
+        QTimer.singleShot(2500, self.verificar_alertas_stock)
+    
+    def verificar_alertas_stock(self):
+        try:
+            from datetime import timedelta
+            limite = datetime.now().date() - timedelta(days=3) # Avisa si lleva 3 días o más
+            ops_viejas = self.session.query(Operacion).filter(
+                Operacion.estado.in_([Estados.EN_DEPOSITO, 'EN DEPÓSITO']),
+                Operacion.sucursal == self.sucursal_actual,
+                text("DATE(fecha_ingreso) <= :lim").bindparams(lim=limite)
+            ).count()
+            
+            if ops_viejas > 0:
+                QMessageBox.warning(self, "⚠️ ALERTA DE STOCK RETENIDO", 
+                    f"¡ATENCIÓN!\n\nTienes {ops_viejas} guía(s) en estado 'EN DEPOSITO' que llevan MÁS DE 3 DÍAS guardadas en tu sucursal.\n\n"
+                    "Por favor, revisá el reporte de stock para darles seguimiento.")
+        except Exception as e: pass
 
     def mostrar_ayuda_inteligente(self):
         indice_actual = self.tabs.currentIndex()
@@ -793,8 +810,11 @@ class PlataformaLogistica(QMainWindow):
         self.rep_tipo = QComboBox(); self.rep_tipo.addItems(["Todos", "Entrega", "Retiro", "Flete", "Cargo Extra"]); self.rep_tipo.setStyleSheet(estilo_combos)
         self.rep_facturado = QComboBox(); self.rep_facturado.addItems(["Todos", "Facturado", "NO Facturado"]); self.rep_facturado.setStyleSheet(estilo_combos)
         
-        # 🔥 NUEVO FILTRO DE ZONA 🔥
+       # 🔥 NUEVO FILTRO DE ZONA 🔥
         self.rep_zona = QComboBox(); self.rep_zona.addItem("Todas"); self.rep_zona.setStyleSheet(estilo_combos)
+        
+        # 🔥 NUEVO FILTRO DE TIPO DE CARGA 🔥
+        self.rep_carga = QComboBox(); self.rep_carga.addItems(["Todas", "Ambiente", "Frozen", "Combinado"]); self.rep_carga.setStyleSheet(estilo_combos)
         
         btn_buscar = QPushButton("🔍 Generar"); btn_buscar.clicked.connect(self.generar_reporte_avanzado)
         btn_excel = QPushButton("Excel"); btn_excel.setStyleSheet("background-color: #28a745 !important; color: white !important;"); btn_excel.clicked.connect(self.exportar_reporte_excel)
@@ -803,20 +823,21 @@ class PlataformaLogistica(QMainWindow):
         # Agregamos todo a la vista
         flayout.addWidget(QLabel("Desde:")); flayout.addWidget(self.rep_fecha_desde); flayout.addWidget(QLabel("Hasta:")); flayout.addWidget(self.rep_fecha_hasta); flayout.addWidget(QLabel("Suc:")); flayout.addWidget(self.rep_sucursal)
         flayout.addWidget(QLabel("Cliente:")); flayout.addWidget(self.rep_cliente); flayout.addWidget(QLabel("Chof:")); flayout.addWidget(self.rep_chofer); flayout.addWidget(QLabel("Est:")); flayout.addWidget(self.rep_estado)
-        flayout.addWidget(QLabel("Zona:")); flayout.addWidget(self.rep_zona) # <-- Zona agregada
+        flayout.addWidget(QLabel("Zona:")); flayout.addWidget(self.rep_zona) 
+        flayout.addWidget(QLabel("Carga:")); flayout.addWidget(self.rep_carga) # <-- Carga agregada
         flayout.addWidget(QLabel("Tipo:")); flayout.addWidget(self.rep_tipo) 
         flayout.addWidget(QLabel("Fac:")); flayout.addWidget(self.rep_facturado)
         flayout.addWidget(btn_buscar); flayout.addWidget(btn_excel); flayout.addWidget(btn_pdf_rep); filtros.setLayout(flayout)
         
-        self.tabla_reportes = QTableWidget(); self.tabla_reportes.setAlternatingRowColors(True); self.tabla_reportes.setColumnCount(12); 
-        self.tabla_reportes.setHorizontalHeaderLabels(["F. Ingreso", "F. Entrega", "Sucursal", "Cliente", "Guía", "Chofer", "Destinatario", "Zona", "Estado", "Fac?", "Bultos", "Precio"]); 
+        self.tabla_reportes = QTableWidget(); self.tabla_reportes.setAlternatingRowColors(True); self.tabla_reportes.setColumnCount(13); 
+        self.tabla_reportes.setHorizontalHeaderLabels(["F. Ingreso", "F. Entrega", "Sucursal", "Cliente", "Guía", "Chofer", "Destinatario", "Zona", "Estado", "Fac?", "Bultos", "Peso", "Precio"]); 
         
         header_rep = self.tabla_reportes.horizontalHeader(); 
         header_rep.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
         self.tabla_reportes.setColumnWidth(0, 85); self.tabla_reportes.setColumnWidth(1, 85); self.tabla_reportes.setColumnWidth(2, 90)
         self.tabla_reportes.setColumnWidth(3, 130); self.tabla_reportes.setColumnWidth(4, 130); self.tabla_reportes.setColumnWidth(5, 130)
         self.tabla_reportes.setColumnWidth(6, 200); self.tabla_reportes.setColumnWidth(7, 130); self.tabla_reportes.setColumnWidth(8, 140)
-        self.tabla_reportes.setColumnWidth(9, 60); self.tabla_reportes.setColumnWidth(10, 60)
+        self.tabla_reportes.setColumnWidth(9, 60); self.tabla_reportes.setColumnWidth(10, 60); self.tabla_reportes.setColumnWidth(11, 60)
         header_rep.setStretchLastSection(True)
         
         self.tabla_reportes.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows); self.tabla_reportes.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
@@ -853,6 +874,10 @@ class PlataformaLogistica(QMainWindow):
         # 🔥 APLICAR FILTRO DE ZONA 🔥
         if hasattr(self, 'rep_zona') and self.rep_zona.currentText() != "Todas":
             query = query.filter(Operacion.localidad.ilike(self.rep_zona.currentText()))
+            
+        # 🔥 APLICAR FILTRO DE CARGA (AMBIENTE/FROZEN) 🔥
+        if hasattr(self, 'rep_carga') and self.rep_carga.currentText() != "Todas":
+            query = query.filter(Operacion.tipo_carga.ilike(f"%{self.rep_carga.currentText()}%"))
         
         tipo_sel = self.rep_tipo.currentText()
         if tipo_sel != "Todos":
@@ -904,13 +929,14 @@ class PlataformaLogistica(QMainWindow):
                     item_fac.setForeground(QColor("green")); item_fac.setFont(QFont("Arial", 9, QFont.Weight.Bold))
                 self.tabla_reportes.setItem(row, 9, item_fac)
                 self.tabla_reportes.setItem(row, 10, QTableWidgetItem(str(op.bultos or 1)))
+                self.tabla_reportes.setItem(row, 11, QTableWidgetItem(f"{op.peso or 0.0} Kg"))
                 
                 if es_jetpaq:
                     item_precio = QTableWidgetItem("Uso Interno ($0)")
                     item_precio.setForeground(QColor("gray"))
                 else:
                     item_precio = QTableWidgetItem(f"$ {precio_mostrar:,.2f}")
-                self.tabla_reportes.setItem(row, 11, item_precio)
+                self.tabla_reportes.setItem(row, 12, item_precio)
                 
                 total_dinero += precio_mostrar
                 
@@ -1009,7 +1035,9 @@ class PlataformaLogistica(QMainWindow):
                     "Destinatario": op.destinatario or "-", 
                     "Domicilio": op.domicilio or "-",
                     "Zona / Localidad": op.localidad or "-", 
+                    "Tipo de Carga": op.tipo_carga or "-",
                     "Bultos": op.bultos or 1,
+                    "Peso (Kg)": op.peso or 0.0,
                     "Estado": op.estado or "-", 
                     "Facturado": "SI" if op.facturado else "NO", 
                     "Monto ($)": op.monto_servicio or 0.0
@@ -1032,7 +1060,7 @@ class PlataformaLogistica(QMainWindow):
                 worksheet.set_column('C:D', 20) # Suc, Cliente
                 worksheet.set_column('F:F', 20) # Chofer
                 worksheet.set_column('G:I', 30) # Destinatario, Domicilio, Zona
-                worksheet.set_column('J:K', 15) # Bultos, Estado
+                worksheet.set_column('J:M', 15) # Tipo Carga, Bultos, Peso, Estado
                 
             try: os.startfile(ruta_excel)
             except: pass
