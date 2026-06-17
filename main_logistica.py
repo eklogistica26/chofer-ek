@@ -892,9 +892,15 @@ class PlataformaLogistica(QMainWindow):
         if hasattr(self, 'rep_zona') and self.rep_zona.currentText() != "Todas":
             query = query.filter(Operacion.localidad.ilike(self.rep_zona.currentText()))
             
-        # 🔥 APLICAR FILTRO DE CARGA (AMBIENTE/FROZEN) 🔥
+        # 🔥 APLICAR FILTRO DE CARGA (SOPORTA HISTORIAL VIEJO Y NUEVO) 🔥
         if hasattr(self, 'rep_carga') and self.rep_carga.currentText() != "Todas":
-            query = query.filter(Operacion.tipo_carga.ilike(f"%{self.rep_carga.currentText()}%"))
+            carga_sel = self.rep_carga.currentText()
+            if carga_sel == "Ambiente":
+                query = query.filter((Operacion.tipo_carga.ilike('%Ambiente%')) | (Operacion.tipo_carga.ilike('%Comun%')) | (Operacion.tipo_carga.ilike('%Común%')))
+            elif carga_sel == "Frozen":
+                query = query.filter((Operacion.tipo_carga.ilike('%Frozen%')) | (Operacion.tipo_carga.ilike('%Refrigerad%')))
+            else:
+                query = query.filter(Operacion.tipo_carga.ilike(f"%{carga_sel}%"))
         
         tipo_sel = self.rep_tipo.currentText()
         if tipo_sel != "Todos":
