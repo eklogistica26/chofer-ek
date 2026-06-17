@@ -115,8 +115,8 @@ def crear_pdf_ruta(nombre_archivo, ops, sucursal, chofer, usuario, fecha_generac
             dom_txt = Paragraph(f"{op.domicilio} - <b>{op.localidad}</b>", estilo_celda)
             
             det_b = str(op.bultos)
-            if op.bultos_frio and op.bultos_frio > 0 and op.bultos_frio < op.bultos: det_b += f" <br/>({op.bultos-op.bultos_frio}C/{op.bultos_frio}R)"
-            elif op.bultos_frio == op.bultos: det_b += " <br/>(FRIO)"
+            if op.bultos_frio and op.bultos_frio > 0 and op.bultos_frio < op.bultos: det_b += f" <br/>({op.bultos-op.bultos_frio}A/{op.bultos_frio}F)"
+            elif op.bultos_frio == op.bultos: det_b += " <br/>(FROZEN)"
             bultos_p = Paragraph(f"<b>{det_b}</b>", estilo_celda_centro)
             
             checkbox = Paragraph("<font size=12>O</font>", estilo_celda_centro)
@@ -208,7 +208,8 @@ def crear_pdf_tercerizados(nombre_archivo, ops, sucursal, transporte, usuario, f
         nonlocal current_row
         for op in lista_ops:
             det_b = str(op.bultos)
-            if op.bultos_frio and op.bultos_frio > 0: det_b += f" ({op.bultos-op.bultos_frio}C/{op.bultos_frio}R)"
+            if op.bultos_frio and op.bultos_frio > 0 and op.bultos_frio < op.bultos: det_b += f" ({op.bultos-op.bultos_frio}A/{op.bultos_frio}F)"
+            elif op.bultos_frio == op.bultos: det_b += " (F)"
             
             prefijo = "<b>[RET]</b> " if es_retiro else ""
             guia_txt = Paragraph(f"{prefijo}{op.guia_remito or '-'}", estilo_celda_centro)

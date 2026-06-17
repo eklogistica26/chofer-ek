@@ -636,7 +636,7 @@ class PlataformaLogistica(QMainWindow):
                 
                 self.tabla_ruta.setItem(row, 2, QTableWidgetItem(guia_texto)); self.tabla_ruta.setItem(row, 3, QTableWidgetItem(op.proveedor)); self.tabla_ruta.setItem(row, 4, QTableWidgetItem(op.destinatario)); self.tabla_ruta.setItem(row, 5, QTableWidgetItem(op.domicilio)); self.tabla_ruta.setItem(row, 6, QTableWidgetItem(op.localidad))
                 det_b = str(op.bultos); 
-                if op.bultos_frio and op.bultos_frio > 0 and op.bultos_frio < op.bultos: det_b += f" ({op.bultos-op.bultos_frio}C/{op.bultos_frio}R)"
+                if op.bultos_frio and op.bultos_frio > 0 and op.bultos_frio < op.bultos: det_b += f" ({op.bultos-op.bultos_frio}A/{op.bultos_frio}F)"
                 elif op.bultos_frio == op.bultos: det_b += " (R)"
                 self.tabla_ruta.setItem(row, 7, QTableWidgetItem(det_b))
                 estado_visual = op.estado; hist = last_hists.get(op.id); es_reprogramado = False
@@ -820,14 +820,31 @@ class PlataformaLogistica(QMainWindow):
         btn_excel = QPushButton("Excel"); btn_excel.setStyleSheet("background-color: #28a745 !important; color: white !important;"); btn_excel.clicked.connect(self.exportar_reporte_excel)
         btn_pdf_rep = QPushButton("PDF"); btn_pdf_rep.setStyleSheet("background-color: #dc3545 !important; color: white !important;"); btn_pdf_rep.clicked.connect(self.generar_pdf_rep)
         
-        # Agregamos todo a la vista
-        flayout.addWidget(QLabel("Desde:")); flayout.addWidget(self.rep_fecha_desde); flayout.addWidget(QLabel("Hasta:")); flayout.addWidget(self.rep_fecha_hasta); flayout.addWidget(QLabel("Suc:")); flayout.addWidget(self.rep_sucursal)
-        flayout.addWidget(QLabel("Cliente:")); flayout.addWidget(self.rep_cliente); flayout.addWidget(QLabel("Chof:")); flayout.addWidget(self.rep_chofer); flayout.addWidget(QLabel("Est:")); flayout.addWidget(self.rep_estado)
-        flayout.addWidget(QLabel("Zona:")); flayout.addWidget(self.rep_zona) 
-        flayout.addWidget(QLabel("Carga:")); flayout.addWidget(self.rep_carga) # <-- Carga agregada
-        flayout.addWidget(QLabel("Tipo:")); flayout.addWidget(self.rep_tipo) 
-        flayout.addWidget(QLabel("Fac:")); flayout.addWidget(self.rep_facturado)
-        flayout.addWidget(btn_buscar); flayout.addWidget(btn_excel); flayout.addWidget(btn_pdf_rep); filtros.setLayout(flayout)
+        # 🔥 FIX VISUAL: Repartimos los filtros en DOS filas para que no se aprieten 🔥
+        lay_main_filtros = QVBoxLayout()
+        
+        row1 = QHBoxLayout()
+        row1.addWidget(QLabel("Desde:")); row1.addWidget(self.rep_fecha_desde)
+        row1.addWidget(QLabel("Hasta:")); row1.addWidget(self.rep_fecha_hasta)
+        row1.addWidget(QLabel("Sucursal:")); row1.addWidget(self.rep_sucursal)
+        row1.addWidget(QLabel("Cliente:")); row1.addWidget(self.rep_cliente)
+        row1.addWidget(QLabel("Chofer:")); row1.addWidget(self.rep_chofer)
+        
+        row2 = QHBoxLayout()
+        row2.addWidget(QLabel("Estado:")); row2.addWidget(self.rep_estado)
+        row2.addWidget(QLabel("Zona:")); row2.addWidget(self.rep_zona)
+        row2.addWidget(QLabel("Carga:")); row2.addWidget(self.rep_carga)
+        row2.addWidget(QLabel("Tipo:")); row2.addWidget(self.rep_tipo)
+        row2.addWidget(QLabel("Facturación:")); row2.addWidget(self.rep_facturado)
+        
+        row_btn = QHBoxLayout()
+        row_btn.addStretch()
+        row_btn.addWidget(btn_buscar); row_btn.addWidget(btn_excel); row_btn.addWidget(btn_pdf_rep)
+        
+        lay_main_filtros.addLayout(row1)
+        lay_main_filtros.addLayout(row2)
+        lay_main_filtros.addLayout(row_btn)
+        filtros.setLayout(lay_main_filtros)
         
         self.tabla_reportes = QTableWidget(); self.tabla_reportes.setAlternatingRowColors(True); self.tabla_reportes.setColumnCount(13); 
         self.tabla_reportes.setHorizontalHeaderLabels(["F. Ingreso", "F. Entrega", "Sucursal", "Cliente", "Guía", "Chofer", "Destinatario", "Zona", "Estado", "Fac?", "Bultos", "Peso", "Precio"]); 

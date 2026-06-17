@@ -534,8 +534,8 @@ class TabIngreso(QWidget):
                 bultos_tot = op.bultos or 1
                 bultos_fr = op.bultos_frio or 0
                 det_b = str(bultos_tot)
-                if bultos_fr > 0 and bultos_fr < bultos_tot: det_b += f" ({bultos_tot-bultos_fr}C/{bultos_fr}R)"
-                elif bultos_fr == bultos_tot: det_b += " (R)"
+                if bultos_fr > 0 and bultos_fr < bultos_tot: det_b += f" ({bultos_tot-bultos_fr}A/{bultos_fr}F)"
+                elif bultos_fr == bultos_tot: det_b += " (F)"
                 self.tabla_ingresos.setItem(row, 7, QTableWidgetItem(det_b))
         except Exception: self.main.session.rollback()
 
