@@ -548,10 +548,11 @@ class TabIngreso(QWidget):
         try:
             QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
             
+            # 🔥 REGLA DE ORO: Traer absolutamente TODO lo que esté en depósito, sin importar la fecha 🔥
             ops = self.main.session.query(Operacion).filter(
                 Operacion.estado.in_([Estados.EN_DEPOSITO, 'EN DEPÓSITO']), 
                 Operacion.sucursal == self.main.sucursal_actual
-            ).order_by(Operacion.fecha_ingreso.asc()).all()
+            ).order_by(Operacion.id.desc()).all()
             
             if not ops:
                 QApplication.restoreOverrideCursor()
