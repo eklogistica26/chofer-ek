@@ -453,8 +453,8 @@ class TabIngreso(QWidget):
                     self.main.session.add(nuevo_dest); self.main.session.flush() 
                 else: mensaje_toast = "✅ GUARDADO (Destino ya existía, se evitó duplicarlo)"
             
-            # 🔥 GUARDAMOS EL OBJETO CON LA OBSERVACIÓN DE INGRESO 🔥
-            op = Operacion(fecha_ingreso=self.in_fecha.date().toPyDate(), sucursal=self.main.sucursal_actual, guia_remito=guia_final, proveedor=prov, destinatario=dest_texto, celular=cel_texto, domicilio=dom_texto, localidad=loc, bultos=bultos_total, bultos_frio=c_frio, peso=peso_manual, tipo_carga=tipo_carga_txt, tipo_urgencia=Urgencia.CLASICO, monto_servicio=precio, es_contra_reembolso=tiene_cr, monto_recaudacion=monto_cr, info_intercambio=info_cr, tipo_servicio=servicio, observaciones_ingreso=obs_ing)
+            # 🔥 GUARDAMOS EL OBJETO CON ESTADO INICIAL Y OBSERVACIONES 🔥
+            op = Operacion(fecha_ingreso=self.in_fecha.date().toPyDate(), sucursal=self.main.sucursal_actual, guia_remito=guia_final, proveedor=prov, destinatario=dest_texto, celular=cel_texto, domicilio=dom_texto, localidad=loc, bultos=bultos_total, bultos_frio=c_frio, peso=peso_manual, tipo_carga=tipo_carga_txt, tipo_urgencia=Urgencia.CLASICO, monto_servicio=precio, estado=Estados.EN_DEPOSITO, es_contra_reembolso=tiene_cr, monto_recaudacion=monto_cr, info_intercambio=info_cr, tipo_servicio=servicio, observaciones_ingreso=obs_ing)
             
             self.main.session.add(op); self.main.session.flush(); 
             self.main.log_movimiento(op, "INGRESO A DEPOSITO", f"Carga inicial. Obs: {obs_ing}") 
