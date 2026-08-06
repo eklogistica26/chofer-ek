@@ -618,7 +618,7 @@ class GestorAvisosDialog(QDialog):
         
         self.arbol_receptores = QTreeWidget()
         self.arbol_receptores.setHeaderHidden(True)
-        self.arbol_receptores.setMaximumHeight(200)
+        self.arbol_receptores.setMinimumHeight(280) # Se agranda el árbol de destinatarios
         
         # ESTILO QSS: Para limpiar qt_material y dibujar un tilde azul claro
         self.arbol_receptores.setStyleSheet("""
@@ -680,6 +680,7 @@ class GestorAvisosDialog(QDialog):
         self.in_fecha.setCalendarPopup(True)
         
         self.in_mensaje = QTextEdit()
+        self.in_mensaje.setMaximumHeight(80) # Se achica el campo del mensaje para parecer un chat
         self.in_mensaje.setPlaceholderText("Escriba el aviso o alerta aquí (Ej: El lunes recordar pedir el remito de C Y E)...")
         
         form.addRow("Destinatarios:", self.arbol_receptores)
@@ -697,6 +698,15 @@ class GestorAvisosDialog(QDialog):
         # PESTAÑA 2: HISTORIAL
         tab_historial = QWidget()
         lay_hist = QVBoxLayout(tab_historial)
+        
+        # Añadido del buscador inteligente en el historial
+        h_filtro = QHBoxLayout()
+        self.in_filtro_hist = QLineEdit()
+        self.in_filtro_hist.setPlaceholderText("🔎 Filtrar por Destinatario (Para)...")
+        self.in_filtro_hist.textChanged.connect(self.filtrar_historial)
+        h_filtro.addWidget(self.in_filtro_hist)
+        lay_hist.addLayout(h_filtro)
+        
         self.tabla_hist = QTableWidget()
         self.tabla_hist.setColumnCount(7)
         self.tabla_hist.setHorizontalHeaderLabels(["Creación", "De", "Para", "Programado", "Mensaje", "Estado", "Leído el"])
@@ -809,8 +819,20 @@ class GestorAvisosDialog(QDialog):
                     
                 self.tabla_hist.setItem(r, 5, it_est)
                 self.tabla_hist.setItem(r, 6, QTableWidgetItem(fecha_lec))
+                
+            # Reaplicar filtro por si estaba escrito algo
+            self.filtrar_historial(self.in_filtro_hist.text())
         except Exception as e: 
             self.session.rollback()
+            
+    def filtrar_historial(self, texto):
+        texto = texto.lower()
+        for r in range(self.tabla_hist.rowCount()):
+            item_para = self.tabla_hist.item(r, 2)
+            if item_para and texto in item_para.text().lower():
+                self.tabla_hist.setRowHidden(r, False)
+            else:
+                self.tabla_hist.setRowHidden(r, True)
 
     def borrar_aviso(self):
         r = self.tabla_hist.currentRow()
