@@ -94,8 +94,8 @@ class PlataformaLogistica(QMainWindow):
         from vista_configuracion import TabConfiguracion
         from tab_flota import TabFlota
         
-        global ToastNotification, ConfirmarEntregaDialog, ReprogramarAdminDialog, HistorialHojasRutaDialog, EditarOperacionDialog, CambiarFechaDialog, TrackingDialog, AvisosPendientesDialog, GestorAvisosDialog
-        from dialogos import ToastNotification, ConfirmarEntregaDialog, ReprogramarAdminDialog, HistorialHojasRutaDialog, EditarOperacionDialog, CambiarFechaDialog, TrackingDialog, AvisosPendientesDialog, GestorAvisosDialog
+        global ToastNotification, ConfirmarEntregaDialog, ReprogramarAdminDialog, HistorialHojasRutaDialog, EditarOperacionDialog, CambiarFechaDialog, AvisosPendientesDialog, GestorAvisosDialog
+        from dialogos import ToastNotification, ConfirmarEntregaDialog, ReprogramarAdminDialog, HistorialHojasRutaDialog, EditarOperacionDialog, CambiarFechaDialog, AvisosPendientesDialog, GestorAvisosDialog
         
         global crear_pdf_ruta, crear_pdf_tercerizados, crear_pdf_reporte, crear_pdf_stock_historico
         from utilidades import crear_pdf_ruta, crear_pdf_tercerizados, crear_pdf_reporte, crear_pdf_stock_historico
@@ -1095,6 +1095,7 @@ class PlataformaLogistica(QMainWindow):
                 worksheet.set_column('G:G', 20)
                 worksheet.set_column('H:H', 10)
             
+            import os
             os.startfile(ruta_excel)
             self.toast.mostrar("✅ Stock histórico exportado correctamente")
         except Exception as e:
@@ -1117,6 +1118,7 @@ class PlataformaLogistica(QMainWindow):
             
             crear_pdf_stock_historico(ruta_pdf, self.resultados_stock_hist, fecha_corte, sucursal, proveedor, self.usuario.username, datetime.now().strftime('%d/%m/%Y %H:%M'))
             
+            import os
             os.startfile(ruta_pdf)
             self.toast.mostrar("✅ PDF de Stock Histórico generado")
         except Exception as e:
