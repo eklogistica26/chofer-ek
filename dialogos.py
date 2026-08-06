@@ -620,6 +620,32 @@ class GestorAvisosDialog(QDialog):
         self.arbol_receptores.setHeaderHidden(True)
         self.arbol_receptores.setMaximumHeight(200)
         
+        # ESTILO QSS: Para limpiar qt_material y dibujar un tilde azul claro
+        self.arbol_receptores.setStyleSheet("""
+            QTreeWidget { font-size: 14px; background-color: #ffffff; border: 1px solid #ced4da; border-radius: 5px; }
+            QTreeWidget::item { padding: 5px; border-bottom: 1px solid #e9ecef; }
+            QTreeView::indicator {
+                width: 20px;
+                height: 20px;
+                background-color: transparent;
+                border: 2px solid #0d6efd;
+                border-radius: 4px;
+            }
+            QTreeView::indicator:checked {
+                image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%230d6efd' stroke-width='4' stroke-linecap='round' stroke-linejoin='round'><polyline points='20 6 9 17 4 12'></polyline></svg>");
+            }
+            QTreeView::indicator:indeterminate {
+                image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%236c757d' stroke-width='4' stroke-linecap='round' stroke-linejoin='round'><line x1='5' y1='12' x2='19' y2='12'></line></svg>");
+                border: 2px solid #6c757d;
+            }
+            QTreeView::indicator:unchecked {
+                border: 2px solid #ced4da;
+            }
+            QTreeView::indicator:unchecked:hover {
+                border: 2px solid #0d6efd;
+            }
+        """)
+        
         try:
             usuarios_db = self.session.query(Usuario).all()
             sucursales = {}
@@ -632,14 +658,14 @@ class GestorAvisosDialog(QDialog):
             item_todos.setFlags(Qt.ItemFlag.ItemIsUserCheckable | Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsAutoTristate)
             item_todos.setCheckState(0, Qt.CheckState.Unchecked)
             font_t = QFont(); font_t.setBold(True); item_todos.setFont(0, font_t)
-            item_todos.setBackground(0, QColor("#d1e7dd"))
+            item_todos.setBackground(0, QColor("#e7f1ff"))
 
             for suc, users in sorted(sucursales.items()):
                 item_suc = QTreeWidgetItem(item_todos, [f"🏢 {suc}"])
                 item_suc.setFlags(Qt.ItemFlag.ItemIsUserCheckable | Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsAutoTristate)
                 item_suc.setCheckState(0, Qt.CheckState.Unchecked)
                 font_s = QFont(); font_s.setBold(True); item_suc.setFont(0, font_s)
-                item_suc.setBackground(0, QColor("#e9ecef"))
+                item_suc.setBackground(0, QColor("#f8f9fa"))
 
                 for uname in sorted(users):
                     item_u = QTreeWidgetItem(item_suc, [f"👤 {uname}"])
