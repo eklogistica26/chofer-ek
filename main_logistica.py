@@ -882,7 +882,7 @@ class PlataformaLogistica(QMainWindow):
         lay_dash.addWidget(filtros); lay_dash.addWidget(self.tabla_reportes); lay_dash.addWidget(self.panel_resumen)
         self.tabs_reportes_internos.addTab(tab_dashboard, "📊 Dashboard Gerencial")
         
-        # --- SUB PESTAÑA 2: STOCK HISTÓRICO (EL VIAJE EN EL TIEMPO) ---
+        # --- SUB PESTAÑA 2: STOCK HISTÓRICO (CONTROL DE INVENTARIO) ---
         tab_stock = QWidget()
         lay_stock = QVBoxLayout(tab_stock)
         
@@ -891,6 +891,7 @@ class PlataformaLogistica(QMainWindow):
         self.date_stock_hist.setCalendarPopup(True)
         self.combo_suc_stock = QComboBox()
         self.combo_suc_stock.addItems(["Todas", "Mendoza", "San Juan"])
+        self.combo_suc_stock.setMinimumWidth(150)
         
         self.combo_prov_stock = QComboBox()
         self.combo_prov_stock.addItem("Todos")
@@ -942,17 +943,20 @@ class PlataformaLogistica(QMainWindow):
         lay_stock.addWidget(self.tabla_stock_hist)
         lay_stock.addWidget(self.lbl_resumen_stock)
         
-        self.tabs_reportes_internos.addTab(tab_stock, "📦 Stock Histórico (Viaje en el Tiempo)")
+        self.tabs_reportes_internos.addTab(tab_stock, "📦 Stock Histórico")
 
     def calcular_stock_historico(self):
         try:
+            QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
             self.tabla_stock_hist.setRowCount(0)
             fecha_corte = self.date_stock_hist.date().toPyDate()
             sucursal = self.combo_suc_stock.currentText()
             proveedor = self.combo_prov_stock.currentText()
             
+            # Optimización: Se filtra la fecha de corte y el estado directamente en la base de datos
             query = self.session.query(Operacion).filter(
-                func.date(Operacion.fecha_ingreso) <= fecha_corte
+                func.date(Operacion.fecha_ingreso) <= fecha_corte,
+                (Operacion.fecha_entrega == None) | (func.date(Operacion.fecha_entrega) > fecha_corte)
             )
             
             if sucursal != "Todas":
@@ -961,15 +965,8 @@ class PlataformaLogistica(QMainWindow):
             if proveedor != "Todos":
                 query = query.filter(Operacion.proveedor.ilike(proveedor))
                 
-            ops = query.all()
-            stock_en_fecha = []
-            
-            for op in ops:
-                if op.fecha_entrega and op.fecha_entrega.date() <= fecha_corte:
-                    continue
-                stock_en_fecha.append(op)
-            
-            stock_en_fecha.sort(key=lambda x: x.fecha_ingreso)
+            query = query.order_by(Operacion.fecha_ingreso.asc())
+            stock_en_fecha = query.all()
             self.resultados_stock_hist = stock_en_fecha
             
             for row, op in enumerate(stock_en_fecha):
@@ -987,6 +984,8 @@ class PlataformaLogistica(QMainWindow):
         except Exception as e:
             self.session.rollback()
             QMessageBox.critical(self, "Error", f"Ocurrió un error al calcular el stock: {str(e)}")
+        finally:
+            QApplication.restoreOverrideCursor()
 
     def exportar_stock_historico_excel(self):
         import pandas as pd
