@@ -305,11 +305,7 @@ class TabIngreso(QWidget):
         try:
             if texto in self.mapa_destinos_global:
                 destino_db = self.mapa_destinos_global[texto]
-                self.in_prov.blockSignals(True) 
                 self.in_prov.setCurrentText(destino_db.proveedor.upper())
-                self.in_prov.blockSignals(False)
-                self.cargar_destinos_frecuentes_combo(destino_db.proveedor)
-                self.actualizar_interfaz_peso()
                 
                 QTimer.singleShot(10, lambda: self.in_dest.setText(destino_db.destinatario.upper()))
                 
@@ -363,6 +359,7 @@ class TabIngreso(QWidget):
 
     def cargar_destinos_frecuentes_combo(self, proveedor_texto):
         try:
+            self.in_destinos_frecuentes.blockSignals(True)
             self.in_destinos_frecuentes.clear(); self.in_destinos_frecuentes.addItem("--- Destinos Guardados ---")
             destinos = self.main.session.query(DestinoFrecuente).filter(DestinoFrecuente.proveedor == proveedor_texto, DestinoFrecuente.sucursal == self.main.sucursal_actual).order_by(DestinoFrecuente.destinatario).all()
             if destinos:
@@ -370,6 +367,7 @@ class TabIngreso(QWidget):
                 for d in destinos: 
                     self.in_destinos_frecuentes.addItem(f"{d.id} - {d.destinatario.upper()}", d.id)
             else: self.in_destinos_frecuentes.setEnabled(False); self.in_destinos_frecuentes.addItem("(Sin destinos guardados)")
+            self.in_destinos_frecuentes.blockSignals(False)
         except Exception: self.main.session.rollback()
 
     def buscar_destino_por_codigo(self):
@@ -456,13 +454,13 @@ class TabIngreso(QWidget):
                         except: pass
                 guia_final = f"{prefijo} {c_year}-{c_month}-{max_seq + 1:03d}"
             
-            dom_texto = self.in_dom.text().strip().upper(); cel_texto = self.in_cel.text().strip(); mensaje_toast = "✅ GUARDADO EN DEPÓSITO CORRECTAMENTE"
+            dom_texto = self.in_dom.text().strip().upper(); cel_texto = self.in_cel.text().strip()
+            
             if prov and prov != "JETPAQ" and dest_texto and dom_texto:
                 existe_dest = self.main.session.query(DestinoFrecuente).filter(DestinoFrecuente.proveedor == prov, DestinoFrecuente.sucursal == self.main.sucursal_actual, DestinoFrecuente.destinatario == dest_texto, DestinoFrecuente.domicilio == dom_texto).first()
                 if not existe_dest:
                     nuevo_dest = DestinoFrecuente(proveedor=prov, sucursal=self.main.sucursal_actual, destinatario=dest_texto, domicilio=dom_texto, localidad=loc, celular=cel_texto)
                     self.main.session.add(nuevo_dest); self.main.session.flush() 
-                else: mensaje_toast = "✅ GUARDADO (Destino ya existía, se evitó duplicarlo)"
             
             fecha_ingreso_real = datetime.now() 
             fecha_entrega_asignada = datetime.combine(fecha_seleccionada, datetime.now().time()) if fecha_seleccionada != datetime.now().date() else None
@@ -481,7 +479,6 @@ class TabIngreso(QWidget):
             except Exception: pass
             if hasattr(self.main, 'cargar_ruta'): self.main.cargar_ruta()
             
-            # Limpieza total del formulario de ingreso
             self.in_fecha.setDate(QDate.currentDate())
             self.in_guia.clear()
             self.in_dest.clear()
@@ -490,7 +487,11 @@ class TabIngreso(QWidget):
             self.in_monto_recaudar.setValue(0)
             self.in_info_intercambio.clear()
             self.chk_cr.setChecked(False)
+            
+            self.in_cliente_retiro.blockSignals(True)
             self.in_cliente_retiro.setCurrentIndex(0)
+            self.in_cliente_retiro.blockSignals(False)
+            
             self.in_bultos_simple.setValue(1)
             self.in_peso_manual.setValue(0)
             self.in_precio_flete.setValue(0)
@@ -503,18 +504,13 @@ class TabIngreso(QWidget):
             self.in_monto_contingencia.setValue(1500.0)
             self.in_obs_ingreso.clear() 
             
-            self.in_prov.blockSignals(True)
             self.in_prov.setCurrentIndex(0) 
-            self.in_prov.blockSignals(False)
-            self.cargar_destinos_frecuentes_combo("--- SELECCIONE CLIENTE ---")
-            self.actualizar_interfaz_peso()
             if self.in_loc_combo.count() > 0:
                 self.in_loc_combo.setCurrentIndex(0)
             
             self.cargar_movimientos_dia()
-            self.in_destinos_frecuentes.setCurrentIndex(0)
             self.configurar_autocompletado_global()
-            self.main.toast.mostrar(mensaje_toast)
+            self.main.toast.mostrar("✅ GUARDADO EN DEPÓSITO CORRECTAMENTE")
             if hasattr(self.main, 'cargar_monitor_global'): self.main.cargar_monitor_global()
         except Exception: self.main.session.rollback(); QMessageBox.warning(self, "Micro-corte", "La conexión parpadeó. Intenta de nuevo.")
 
