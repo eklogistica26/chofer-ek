@@ -4,7 +4,8 @@ from PyQt6.QtWidgets import (QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QCombo
                              QHeaderView, QMessageBox, QDateEdit, QGroupBox, 
                              QFormLayout, QWidget, QSpinBox, QDoubleSpinBox, 
                              QRadioButton, QButtonGroup, QCheckBox, QDialog, 
-                             QTimeEdit, QAbstractItemView, QFileDialog, QTextBrowser, QTextEdit, QTabWidget)
+                             QTimeEdit, QAbstractItemView, QFileDialog, QTextBrowser, 
+                             QTextEdit, QTabWidget, QTreeWidget, QTreeWidgetItem)
 from PyQt6.QtCore import Qt, QDate, QTimer, QTime
 from PyQt6.QtGui import QColor, QFont
 from sqlalchemy import extract, desc, text
@@ -560,7 +561,6 @@ class AvisosPendientesDialog(QDialog):
         self.avisos = avisos
         self.session = session
         self.setWindowTitle("🚨 TIENES AVISOS IMPORTANTES")
-        # El CustomizeWindowHint saca la cruz de cerrar, obligando al usuario a darle al boton
         self.setWindowFlags(Qt.WindowType.Dialog | Qt.WindowType.CustomizeWindowHint | Qt.WindowType.WindowTitleHint) 
         self.setGeometry(400, 200, 550, 450)
         self.setStyleSheet("background-color: #fff3cd;")
@@ -616,13 +616,39 @@ class GestorAvisosDialog(QDialog):
         lay_nuevo = QVBoxLayout(tab_nuevo)
         form = QFormLayout()
         
-        self.in_receptor = QComboBox()
-        self.in_receptor.addItem("TODOS")
+        self.arbol_receptores = QTreeWidget()
+        self.arbol_receptores.setHeaderHidden(True)
+        self.arbol_receptores.setMaximumHeight(200)
+        
         try:
             usuarios_db = self.session.query(Usuario).all()
+            sucursales = {}
             for u in usuarios_db:
-                self.in_receptor.addItem(u.username)
-        except: pass
+                suc = (u.sucursal_asignada or "S/D").upper()
+                if suc not in sucursales: sucursales[suc] = []
+                sucursales[suc].append(u.username)
+
+            item_todos = QTreeWidgetItem(self.arbol_receptores, ["🌍 SELECCIONAR TODA LA EMPRESA"])
+            item_todos.setFlags(Qt.ItemFlag.ItemIsUserCheckable | Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsAutoTristate)
+            item_todos.setCheckState(0, Qt.CheckState.Unchecked)
+            font_t = QFont(); font_t.setBold(True); item_todos.setFont(0, font_t)
+            item_todos.setBackground(0, QColor("#d1e7dd"))
+
+            for suc, users in sorted(sucursales.items()):
+                item_suc = QTreeWidgetItem(item_todos, [f"🏢 {suc}"])
+                item_suc.setFlags(Qt.ItemFlag.ItemIsUserCheckable | Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsAutoTristate)
+                item_suc.setCheckState(0, Qt.CheckState.Unchecked)
+                font_s = QFont(); font_s.setBold(True); item_suc.setFont(0, font_s)
+                item_suc.setBackground(0, QColor("#e9ecef"))
+
+                for uname in sorted(users):
+                    item_u = QTreeWidgetItem(item_suc, [f"👤 {uname}"])
+                    item_u.setData(0, Qt.ItemDataRole.UserRole, uname)
+                    item_u.setFlags(Qt.ItemFlag.ItemIsUserCheckable | Qt.ItemFlag.ItemIsEnabled)
+                    item_u.setCheckState(0, Qt.CheckState.Unchecked)
+
+            self.arbol_receptores.expandAll()
+        except Exception as e: print(e)
         
         self.in_fecha = QDateEdit(QDate.currentDate())
         self.in_fecha.setCalendarPopup(True)
@@ -630,7 +656,7 @@ class GestorAvisosDialog(QDialog):
         self.in_mensaje = QTextEdit()
         self.in_mensaje.setPlaceholderText("Escriba el aviso o alerta aquí (Ej: El lunes recordar pedir el remito de C Y E)...")
         
-        form.addRow("Para quién es el aviso:", self.in_receptor)
+        form.addRow("Destinatarios:", self.arbol_receptores)
         form.addRow("Programar para el día:", self.in_fecha)
         form.addRow("Mensaje:", self.in_mensaje)
         lay_nuevo.addLayout(form)
@@ -651,8 +677,8 @@ class GestorAvisosDialog(QDialog):
         self.tabla_hist.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
         self.tabla_hist.setColumnWidth(0, 110)
         self.tabla_hist.setColumnWidth(1, 80)
-        self.tabla_hist.setColumnWidth(2, 80)
-        self.tabla_hist.setColumnWidth(3, 80)
+        self.tabla_hist.setColumnWidth(2, 100)
+        self.tabla_hist.setColumnWidth(3, 90)
         self.tabla_hist.setColumnWidth(4, 250)
         self.tabla_hist.setColumnWidth(5, 100)
         self.tabla_hist.horizontalHeader().setStretchLastSection(True)
@@ -681,18 +707,44 @@ class GestorAvisosDialog(QDialog):
         if not msg:
             QMessageBox.warning(self, "Error", "El mensaje no puede estar vacío.")
             return
+            
+        receptores = []
+        root = self.arbol_receptores.topLevelItem(0)
+        if root:
+            for i in range(root.childCount()):
+                suc_item = root.child(i)
+                for j in range(suc_item.childCount()):
+                    user_item = suc_item.child(j)
+                    if user_item.checkState(0) == Qt.CheckState.Checked:
+                        receptores.append(user_item.data(0, Qt.ItemDataRole.UserRole))
+                
+        if not receptores:
+            QMessageBox.warning(self, "Error", "Debe seleccionar al menos un destinatario de la lista.")
+            return
+
         try:
-            nuevo_aviso = AvisoInterno(
-                emisor=self.usuario_actual,
-                receptor=self.in_receptor.currentText(),
-                fecha_programada=self.in_fecha.date().toPyDate(),
-                mensaje=msg,
-                leido=False
-            )
-            self.session.add(nuevo_aviso)
+            agregados = 0
+            for rec in receptores:
+                # Opcional: Descomentar la linea de abajo si no queres que el emisor se mande un aviso a si mismo
+                # if rec.lower() == self.usuario_actual.lower(): continue 
+                
+                nuevo_aviso = AvisoInterno(
+                    emisor=self.usuario_actual,
+                    receptor=rec,
+                    fecha_programada=self.in_fecha.date().toPyDate(),
+                    mensaje=msg,
+                    leido=False
+                )
+                self.session.add(nuevo_aviso)
+                agregados += 1
+                
             self.session.commit()
-            QMessageBox.information(self, "Éxito", "Aviso programado correctamente.")
+            QMessageBox.information(self, "Éxito", f"Aviso programado y enviado a {agregados} usuario(s).")
+            
             self.in_mensaje.clear()
+            if root:
+                root.setCheckState(0, Qt.CheckState.Unchecked)
+            
             self.cargar_historial()
             self.tabs.setCurrentIndex(1)
         except Exception as e:
@@ -704,7 +756,7 @@ class GestorAvisosDialog(QDialog):
             avisos = self.session.query(AvisoInterno).filter(
                 (AvisoInterno.emisor == self.usuario_actual) | 
                 (AvisoInterno.receptor == self.usuario_actual) | 
-                (AvisoInterno.receptor == "TODOS")
+                (AvisoInterno.receptor == "TODOS") 
             ).order_by(AvisoInterno.id.desc()).limit(100).all()
             
             self.tabla_hist.setRowCount(0)
