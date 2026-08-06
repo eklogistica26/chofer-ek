@@ -48,7 +48,6 @@ class EditarPrecioFacturacionDialog(QDialog):
         
         form = QFormLayout()
 
-        # 🔥 FIX 5: EDICIÓN DE ZONA EN FACTURACIÓN 🔥
         self.in_zona = QComboBox()
         self.in_zona.setEditable(True)
         try:
@@ -251,8 +250,15 @@ class ConfirmarEntregaDialog(QDialog):
         if not self.in_recibe.text().strip():
             QMessageBox.warning(self, "Error", "Debe indicar quién recibió.")
             return
+            
+        # Validación de integridad temporal: prevención de registro de entregas en fechas futuras
+        fecha_ingresada = self.in_fecha.date().toPyDate()
+        if fecha_ingresada > datetime.now().date():
+            QMessageBox.warning(self, "Alerta de Fecha", "⚠️ ¡ERROR!\nNo puedes confirmar una entrega en una fecha futura.")
+            return
+            
         self.recibe_final = self.in_recibe.text().strip().upper()
-        self.fecha_final = self.in_fecha.date().toPyDate()
+        self.fecha_final = fecha_ingresada
         if self.chk_hora.isChecked():
             self.hora_final = self.in_hora.time().toPyTime()
         self.accept()
