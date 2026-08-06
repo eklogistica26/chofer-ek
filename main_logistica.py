@@ -84,8 +84,8 @@ class PlataformaLogistica(QMainWindow):
         self.setWindowTitle(f"E.K. LOGISTICA (NUBE) - Usuario: {self.usuario.username.upper()}")
         self.setWindowState(Qt.WindowState.WindowMaximized) 
         
-        global Operacion, Historial, Tarifa, Chofer, ClienteRetiro, ClientePrincipal, DestinoFrecuente, Estados, Urgencia, TarifaDHL, HistorialTarifas, ReciboPago
-        from database import Operacion, Historial, Tarifa, Chofer, ClienteRetiro, ClientePrincipal, DestinoFrecuente, Estados, Urgencia, TarifaDHL, HistorialTarifas, ReciboPago
+        global Operacion, Historial, Tarifa, Chofer, ClienteRetiro, ClientePrincipal, DestinoFrecuente, Estados, Urgencia, TarifaDHL, HistorialTarifas, ReciboPago, AvisoInterno
+        from database import Operacion, Historial, Tarifa, Chofer, ClienteRetiro, ClientePrincipal, DestinoFrecuente, Estados, Urgencia, TarifaDHL, HistorialTarifas, ReciboPago, AvisoInterno
         
         global TabIngreso, TabRendicion, TabFacturacion, TabConfiguracion, TabFlota
         from tab_ingreso import TabIngreso
@@ -94,8 +94,8 @@ class PlataformaLogistica(QMainWindow):
         from vista_configuracion import TabConfiguracion
         from tab_flota import TabFlota
         
-        global ToastNotification, ConfirmarEntregaDialog, ReprogramarAdminDialog, HistorialHojasRutaDialog, EditarOperacionDialog, CambiarFechaDialog, TrackingDialog
-        from dialogos import ToastNotification, ConfirmarEntregaDialog, ReprogramarAdminDialog, HistorialHojasRutaDialog, EditarOperacionDialog, CambiarFechaDialog
+        global ToastNotification, ConfirmarEntregaDialog, ReprogramarAdminDialog, HistorialHojasRutaDialog, EditarOperacionDialog, CambiarFechaDialog, TrackingDialog, AvisosPendientesDialog, GestorAvisosDialog
+        from dialogos import ToastNotification, ConfirmarEntregaDialog, ReprogramarAdminDialog, HistorialHojasRutaDialog, EditarOperacionDialog, CambiarFechaDialog, TrackingDialog, AvisosPendientesDialog, GestorAvisosDialog
         
         global crear_pdf_ruta, crear_pdf_tercerizados, crear_pdf_reporte, crear_pdf_stock_historico
         from utilidades import crear_pdf_ruta, crear_pdf_tercerizados, crear_pdf_reporte, crear_pdf_stock_historico
@@ -105,6 +105,10 @@ class PlataformaLogistica(QMainWindow):
         self.lista_proveedores = []; self.toast = ToastNotification(self); self.filtro_monitor = None
         self.init_ui()
         self.tabs.currentChanged.connect(self.al_cambiar_pestana)
+        
+        # Ejecuta la comprobación de alertas pendientes de forma silenciosa al arrancar
+        QTimer.singleShot(1500, self.revisar_avisos_inicio)
+        
         self.timer = QTimer(); self.timer.timeout.connect(self.actualizar_tablas_automatico); self.timer.start(15000) 
 
     def safe_rollback(self):
@@ -133,6 +137,7 @@ class PlataformaLogistica(QMainWindow):
         try: self.session.execute(text("SELECT 1")).fetchall()
         except Exception: self.safe_rollback()
         if self.isActiveWindow():
+            self.actualizar_campanita() # Actualizamos la campanita de notificaciones
             idx = self.tabs.currentIndex()
             if idx == 0: self.cargar_monitor_global(); self.cargar_novedades()
             elif idx == 1: self.tab_ingreso.cargar_movimientos_dia() 
@@ -140,6 +145,45 @@ class PlataformaLogistica(QMainWindow):
     def log_movimiento(self, operacion, accion, detalle=""):
         try: self.session.add(Historial(operacion_id=operacion.id, usuario=self.usuario.username, accion=accion, detalle=detalle))
         except Exception: pass
+
+    def revisar_avisos_inicio(self):
+        try:
+            hoy = datetime.now().date()
+            avisos = self.session.query(AvisoInterno).filter(
+                (AvisoInterno.receptor == self.usuario.username) | (AvisoInterno.receptor == "TODOS"),
+                AvisoInterno.leido == False,
+                AvisoInterno.fecha_programada <= hoy
+            ).all()
+            
+            if avisos:
+                dlg = AvisosPendientesDialog(avisos, self.session, self)
+                dlg.exec()
+            self.actualizar_campanita()
+        except Exception as e:
+            self.session.rollback()
+
+    def actualizar_campanita(self):
+        try:
+            hoy = datetime.now().date()
+            cant = self.session.query(AvisoInterno).filter(
+                (AvisoInterno.receptor == self.usuario.username) | (AvisoInterno.receptor == "TODOS"),
+                AvisoInterno.leido == False,
+                AvisoInterno.fecha_programada <= hoy
+            ).count()
+            
+            if cant > 0:
+                self.btn_alertas.setText(f"🔔 ALERTAS ({cant})")
+                self.btn_alertas.setStyleSheet("background-color: #dc3545 !important; color: white !important; font-weight: bold !important; padding: 8px 15px !important; border-radius: 4px !important;")
+            else:
+                self.btn_alertas.setText("🔔 ALERTAS")
+                self.btn_alertas.setStyleSheet("background-color: #6c757d !important; color: white !important; font-weight: bold !important; padding: 8px 15px !important; border-radius: 4px !important;")
+        except Exception:
+            self.session.rollback()
+
+    def abrir_gestor_avisos(self):
+        dlg = GestorAvisosDialog(self.session, self.usuario.username, self)
+        dlg.exec()
+        self.actualizar_campanita()
 
     def init_ui(self):
         w = QWidget(); self.setCentralWidget(w); main_l = QVBoxLayout(w)
@@ -152,10 +196,15 @@ class PlataformaLogistica(QMainWindow):
         self.lbl_sucursal_grande = QLabel(self.sucursal_actual.upper()); self.lbl_sucursal_grande.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.lbl_sucursal_grande.setStyleSheet("font-size: 28px; font-weight: bold; color: #1565c0;")
         
+        self.btn_alertas = QPushButton("🔔 ALERTAS")
+        self.btn_alertas.setStyleSheet("background-color: #6c757d !important; color: white !important; font-weight: bold !important; padding: 8px 15px !important; border-radius: 4px !important;")
+        self.btn_alertas.clicked.connect(self.abrir_gestor_avisos)
+        
         btn_tracking = QPushButton("🔍 TRACKING"); btn_tracking.clicked.connect(self.abrir_tracking)
         btn_ayuda = QPushButton("❓ AYUDA (Manual)"); btn_ayuda.setStyleSheet("background-color: #ff9800 !important; color: white !important; font-weight: bold !important;"); btn_ayuda.clicked.connect(self.mostrar_ayuda_inteligente)
         
-        l_top.addWidget(QLabel("🏢 SUCURSAL:")); l_top.addWidget(self.combo_sucursal); l_top.addStretch(); l_top.addWidget(self.lbl_sucursal_grande); l_top.addStretch(); l_top.addWidget(btn_tracking); l_top.addWidget(btn_ayuda); l_top.addWidget(QLabel("  ")); l_top.addWidget(QLabel(f"👤 {self.usuario.username}")); main_l.addWidget(top)
+        l_top.addWidget(QLabel("🏢 SUCURSAL:")); l_top.addWidget(self.combo_sucursal); l_top.addStretch(); l_top.addWidget(self.lbl_sucursal_grande); l_top.addStretch()
+        l_top.addWidget(self.btn_alertas); l_top.addWidget(btn_tracking); l_top.addWidget(btn_ayuda); l_top.addWidget(QLabel("  ")); l_top.addWidget(QLabel(f"👤 {self.usuario.username}")); main_l.addWidget(top)
         
         self.tabs = QTabWidget()
         css_pestanas = """
@@ -193,6 +242,7 @@ class PlataformaLogistica(QMainWindow):
         
         self.setup_monitor(); self.setup_ruta(); self.setStatusBar(QStatusBar())
         QTimer.singleShot(2500, self.verificar_alertas_stock)
+        self.actualizar_campanita()
     
     def verificar_alertas_stock(self):
         try:
@@ -1045,7 +1095,6 @@ class PlataformaLogistica(QMainWindow):
                 worksheet.set_column('G:G', 20)
                 worksheet.set_column('H:H', 10)
             
-            import os
             os.startfile(ruta_excel)
             self.toast.mostrar("✅ Stock histórico exportado correctamente")
         except Exception as e:
@@ -1068,7 +1117,6 @@ class PlataformaLogistica(QMainWindow):
             
             crear_pdf_stock_historico(ruta_pdf, self.resultados_stock_hist, fecha_corte, sucursal, proveedor, self.usuario.username, datetime.now().strftime('%d/%m/%Y %H:%M'))
             
-            import os
             os.startfile(ruta_pdf)
             self.toast.mostrar("✅ PDF de Stock Histórico generado")
         except Exception as e:

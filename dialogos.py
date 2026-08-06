@@ -4,12 +4,12 @@ from PyQt6.QtWidgets import (QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QCombo
                              QHeaderView, QMessageBox, QDateEdit, QGroupBox, 
                              QFormLayout, QWidget, QSpinBox, QDoubleSpinBox, 
                              QRadioButton, QButtonGroup, QCheckBox, QDialog, 
-                             QTimeEdit, QAbstractItemView, QFileDialog)
+                             QTimeEdit, QAbstractItemView, QFileDialog, QTextBrowser, QTextEdit, QTabWidget)
 from PyQt6.QtCore import Qt, QDate, QTimer, QTime
 from PyQt6.QtGui import QColor, QFont
 from sqlalchemy import extract, desc, text
 
-from database import Operacion, Historial, ClientePrincipal, DestinoFrecuente, Estados, Urgencia, HistorialTarifas, Usuario
+from database import Operacion, Historial, ClientePrincipal, DestinoFrecuente, Estados, Urgencia, HistorialTarifas, Usuario, AvisoInterno
 
 class ToastNotification(QLabel):
     def __init__(self, parent):
@@ -251,7 +251,6 @@ class ConfirmarEntregaDialog(QDialog):
             QMessageBox.warning(self, "Error", "Debe indicar quién recibió.")
             return
             
-        # Validación de integridad temporal: prevención de registro de entregas en fechas futuras
         fecha_ingresada = self.in_fecha.date().toPyDate()
         if fecha_ingresada > datetime.now().date():
             QMessageBox.warning(self, "Alerta de Fecha", "⚠️ ¡ERROR!\nNo puedes confirmar una entrega en una fecha futura.")
@@ -551,3 +550,173 @@ class EditarUsuarioDialog(QDialog):
             "conf": self.chk_conf.isChecked(),
             "rend": self.chk_rend.isChecked()
         }
+
+# ==========================================
+# MÓDULO DE ALERTAS Y TICKETING
+# ==========================================
+class AvisosPendientesDialog(QDialog):
+    def __init__(self, avisos, session, parent=None):
+        super().__init__(parent)
+        self.avisos = avisos
+        self.session = session
+        self.setWindowTitle("🚨 TIENES AVISOS IMPORTANTES")
+        # El CustomizeWindowHint saca la cruz de cerrar, obligando al usuario a darle al boton
+        self.setWindowFlags(Qt.WindowType.Dialog | Qt.WindowType.CustomizeWindowHint | Qt.WindowType.WindowTitleHint) 
+        self.setGeometry(400, 200, 550, 450)
+        self.setStyleSheet("background-color: #fff3cd;")
+        
+        layout = QVBoxLayout(self)
+        lbl_tit = QLabel("⚠️ Avisos Pendientes de Lectura")
+        lbl_tit.setStyleSheet("font-size: 20px; font-weight: bold; color: #856404; margin-bottom: 10px;")
+        layout.addWidget(lbl_tit)
+        
+        self.browser = QTextBrowser()
+        self.browser.setStyleSheet("background-color: white; border: 1px solid #ffeeba; font-size: 14px;")
+        
+        html = ""
+        for av in self.avisos:
+            html += f"<div style='border-bottom: 2px dashed #ccc; padding-bottom: 15px; margin-bottom: 15px;'>"
+            html += f"<span style='color: #0d6efd;'><b>De:</b> {av.emisor.upper()}</span> &nbsp;|&nbsp; <b>Fecha:</b> {av.fecha_creacion.strftime('%d/%m/%Y %H:%M')}<br><br>"
+            html += f"<span style='color: #333; font-size: 16px;'>{av.mensaje}</span>"
+            html += f"</div>"
+            
+        self.browser.setHtml(html)
+        layout.addWidget(self.browser)
+        
+        btn_leido = QPushButton("✓ ENTENDIDO / MARCAR COMO LEÍDO")
+        btn_leido.setStyleSheet("background-color: #28a745; color: white; font-weight: bold; font-size: 15px; padding: 15px;")
+        btn_leido.clicked.connect(self.marcar_leidos)
+        layout.addWidget(btn_leido)
+        
+    def marcar_leidos(self):
+        try:
+            for av in self.avisos:
+                av.leido = True
+                av.fecha_lectura = datetime.now()
+            self.session.commit()
+            self.accept()
+        except Exception as e:
+            self.session.rollback()
+            QMessageBox.critical(self, "Error", f"No se pudo guardar la confirmación: {e}")
+
+class GestorAvisosDialog(QDialog):
+    def __init__(self, session, usuario_actual, parent=None):
+        super().__init__(parent)
+        self.session = session
+        self.usuario_actual = usuario_actual
+        self.setWindowTitle("🔔 Gestor de Avisos Internos")
+        self.setGeometry(300, 150, 800, 550)
+        
+        layout = QVBoxLayout(self)
+        self.tabs = QTabWidget()
+        layout.addWidget(self.tabs)
+        
+        # PESTAÑA 1: NUEVO AVISO
+        tab_nuevo = QWidget()
+        lay_nuevo = QVBoxLayout(tab_nuevo)
+        form = QFormLayout()
+        
+        self.in_receptor = QComboBox()
+        self.in_receptor.addItem("TODOS")
+        try:
+            usuarios_db = self.session.query(Usuario).all()
+            for u in usuarios_db:
+                self.in_receptor.addItem(u.username)
+        except: pass
+        
+        self.in_fecha = QDateEdit(QDate.currentDate())
+        self.in_fecha.setCalendarPopup(True)
+        
+        self.in_mensaje = QTextEdit()
+        self.in_mensaje.setPlaceholderText("Escriba el aviso o alerta aquí (Ej: El lunes recordar pedir el remito de C Y E)...")
+        
+        form.addRow("Para quién es el aviso:", self.in_receptor)
+        form.addRow("Programar para el día:", self.in_fecha)
+        form.addRow("Mensaje:", self.in_mensaje)
+        lay_nuevo.addLayout(form)
+        
+        btn_enviar = QPushButton("📤 ENVIAR AVISO")
+        btn_enviar.setStyleSheet("background-color: #0d6efd; color: white; font-weight: bold; padding: 12px; font-size: 14px;")
+        btn_enviar.clicked.connect(self.enviar_aviso)
+        lay_nuevo.addWidget(btn_enviar)
+        
+        self.tabs.addTab(tab_nuevo, "➕ Crear Nuevo Aviso")
+        
+        # PESTAÑA 2: HISTORIAL
+        tab_historial = QWidget()
+        lay_hist = QVBoxLayout(tab_historial)
+        self.tabla_hist = QTableWidget()
+        self.tabla_hist.setColumnCount(6)
+        self.tabla_hist.setHorizontalHeaderLabels(["Creación", "Para", "Programado", "Mensaje", "Estado", "Leído el"])
+        self.tabla_hist.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
+        self.tabla_hist.setColumnWidth(0, 120)
+        self.tabla_hist.setColumnWidth(1, 100)
+        self.tabla_hist.setColumnWidth(2, 100)
+        self.tabla_hist.setColumnWidth(3, 300)
+        self.tabla_hist.setColumnWidth(4, 120)
+        self.tabla_hist.horizontalHeader().setStretchLastSection(True)
+        self.tabla_hist.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        self.tabla_hist.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        lay_hist.addWidget(self.tabla_hist)
+        
+        btn_act = QPushButton("🔄 Actualizar Historial")
+        btn_act.clicked.connect(self.cargar_historial)
+        lay_hist.addWidget(btn_act)
+        
+        self.tabs.addTab(tab_historial, "📜 Historial de Avisos")
+        
+        self.cargar_historial()
+        
+    def enviar_aviso(self):
+        msg = self.in_mensaje.toPlainText().strip()
+        if not msg:
+            QMessageBox.warning(self, "Error", "El mensaje no puede estar vacío.")
+            return
+        try:
+            nuevo_aviso = AvisoInterno(
+                emisor=self.usuario_actual,
+                receptor=self.in_receptor.currentText(),
+                fecha_programada=self.in_fecha.date().toPyDate(),
+                mensaje=msg,
+                leido=False
+            )
+            self.session.add(nuevo_aviso)
+            self.session.commit()
+            QMessageBox.information(self, "Éxito", "Aviso programado correctamente.")
+            self.in_mensaje.clear()
+            self.cargar_historial()
+            self.tabs.setCurrentIndex(1) # Salta al historial para que lo vea guardado
+        except Exception as e:
+            self.session.rollback()
+            QMessageBox.critical(self, "Error", f"Fallo al guardar: {e}")
+            
+    def cargar_historial(self):
+        try:
+            # Mostramos los enviados por el usuario actual o recibidos por el usuario actual
+            avisos = self.session.query(AvisoInterno).filter(
+                (AvisoInterno.emisor == self.usuario_actual) | 
+                (AvisoInterno.receptor == self.usuario_actual) | 
+                (AvisoInterno.receptor == "TODOS")
+            ).order_by(AvisoInterno.id.desc()).limit(100).all()
+            
+            self.tabla_hist.setRowCount(0)
+            for r, av in enumerate(avisos):
+                self.tabla_hist.insertRow(r)
+                self.tabla_hist.setItem(r, 0, QTableWidgetItem(av.fecha_creacion.strftime("%d/%m/%y %H:%M")))
+                self.tabla_hist.setItem(r, 1, QTableWidgetItem(av.receptor.upper()))
+                self.tabla_hist.setItem(r, 2, QTableWidgetItem(av.fecha_programada.strftime("%d/%m/%Y")))
+                self.tabla_hist.setItem(r, 3, QTableWidgetItem(av.mensaje))
+                
+                if av.leido:
+                    it_est = QTableWidgetItem("🟢 LEÍDO")
+                    it_est.setForeground(QColor("green"))
+                    fecha_lec = av.fecha_lectura.strftime("%d/%m %H:%M") if av.fecha_lectura else "-"
+                else:
+                    it_est = QTableWidgetItem("🔴 PENDIENTE")
+                    it_est.setForeground(QColor("red"))
+                    fecha_lec = "-"
+                    
+                self.tabla_hist.setItem(r, 4, it_est)
+                self.tabla_hist.setItem(r, 5, QTableWidgetItem(fecha_lec))
+        except Exception as e: 
+            self.session.rollback()
