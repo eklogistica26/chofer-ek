@@ -245,10 +245,23 @@ class PlataformaLogistica(QMainWindow):
             self.lista_proveedores = [c.nombre for c in clientes_db] if clientes_db else ["Andreani", "DHL", "Directo", "JetPaq", "MercadoLibre", "Otro"]
             
             if hasattr(self, 'tab_ingreso'):
-                self.tab_ingreso.in_loc_combo.clear(); self.tab_ingreso.in_loc_combo.addItems(sorted([z[0] for z in zs]))
-                self.tab_ingreso.in_cliente_retiro.clear(); self.tab_ingreso.in_cliente_retiro.addItem("--- Buscar Cliente ---")
+                self.tab_ingreso.in_loc_combo.blockSignals(True)
+                self.tab_ingreso.in_loc_combo.clear()
+                self.tab_ingreso.in_loc_combo.addItems(sorted([z[0] for z in zs]))
+                self.tab_ingreso.in_loc_combo.blockSignals(False)
+                
+                self.tab_ingreso.in_cliente_retiro.blockSignals(True)
+                self.tab_ingreso.in_cliente_retiro.clear()
+                self.tab_ingreso.in_cliente_retiro.addItem("--- Buscar Cliente ---")
                 for c in clis: self.tab_ingreso.in_cliente_retiro.addItem(f"{c.id} - {c.nombre}", c.id)
-                self.tab_ingreso.in_prov.clear(); self.tab_ingreso.in_prov.addItems(self.lista_proveedores)
+                self.tab_ingreso.in_cliente_retiro.blockSignals(False)
+                
+                self.tab_ingreso.in_prov.blockSignals(True)
+                self.tab_ingreso.in_prov.clear()
+                self.tab_ingreso.in_prov.addItem("--- SELECCIONE CLIENTE ---")
+                self.tab_ingreso.in_prov.addItems(self.lista_proveedores)
+                self.tab_ingreso.in_prov.setCurrentIndex(0)
+                self.tab_ingreso.in_prov.blockSignals(False)
 
             if hasattr(self, 'combo_masivo_chofer'): self.combo_masivo_chofer.clear(); self.combo_masivo_chofer.addItems(nombres_choferes)
             if hasattr(self, 'mon_chofer_combo'): self.mon_chofer_combo.clear(); self.mon_chofer_combo.addItem("Todos"); self.mon_chofer_combo.addItems(nombres_choferes)
@@ -987,8 +1000,8 @@ class PlataformaLogistica(QMainWindow):
             QApplication.restoreOverrideCursor()
 
     def exportar_stock_historico_excel(self):
-        import pandas as pd
         try:
+            import pandas as pd
             if self.tabla_stock_hist.rowCount() == 0:
                 QMessageBox.warning(self, "Aviso", "No hay datos para exportar. Calcule el stock primero.")
                 return
@@ -1032,6 +1045,7 @@ class PlataformaLogistica(QMainWindow):
                 worksheet.set_column('G:G', 20)
                 worksheet.set_column('H:H', 10)
             
+            import os
             os.startfile(ruta_excel)
             self.toast.mostrar("✅ Stock histórico exportado correctamente")
         except Exception as e:
@@ -1054,6 +1068,7 @@ class PlataformaLogistica(QMainWindow):
             
             crear_pdf_stock_historico(ruta_pdf, self.resultados_stock_hist, fecha_corte, sucursal, proveedor, self.usuario.username, datetime.now().strftime('%d/%m/%Y %H:%M'))
             
+            import os
             os.startfile(ruta_pdf)
             self.toast.mostrar("✅ PDF de Stock Histórico generado")
         except Exception as e:
