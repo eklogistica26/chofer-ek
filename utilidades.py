@@ -252,12 +252,10 @@ def crear_pdf_reporte(nombre_archivo, resultados, sucursal_filtro, usuario, fech
         elements.append(Image(logo_path, width=65, height=40, hAlign='CENTER'))
         elements.append(Spacer(1, 10))
 
-    # 🔥 TÍTULO EN AZUL COMO PEDISTE 🔥
     titulo_style = ParagraphStyle(name='TituloCentro', parent=styles['Heading1'], alignment=TA_CENTER, fontSize=16, textColor=colors.HexColor("#0d6efd"))
     sub_style = ParagraphStyle(name='SubCentro', parent=styles['Normal'], alignment=TA_CENTER, fontSize=10)
     estilo_filtro = ParagraphStyle(name='Filtro', parent=styles['Normal'], fontSize=9, leading=11, alignment=TA_CENTER, textColor=colors.darkblue)
     
-    # 🔥 SUCURSAL DINÁMICA SEGÚN EL FILTRO 🔥
     elements.append(Paragraph(f"REPORTE GENERAL - SUCURSAL: {sucursal_filtro.upper()}", titulo_style))
     elements.append(Paragraph(f"Generado el: {fecha_generacion} por {usuario}", sub_style))
     elements.append(Spacer(1, 5))
@@ -271,7 +269,6 @@ def crear_pdf_reporte(nombre_archivo, resultados, sucursal_filtro, usuario, fech
     estilo_subtotal = ParagraphStyle(name='CeldaSub', parent=styles['Normal'], fontSize=9, alignment=TA_RIGHT, fontName='Helvetica-Bold')
     estilo_head = ParagraphStyle(name='Encabezado', parent=styles['Normal'], fontSize=7, alignment=TA_CENTER, fontName='Helvetica-Bold', textColor=colors.whitesmoke)
 
-    # 🔥 LAS 11 COLUMNAS EXACTAS DE LA VISTA PREVIA 🔥
     data = [[
         Paragraph('FECHA', estilo_head),
         Paragraph('SUC', estilo_head),
@@ -308,17 +305,16 @@ def crear_pdf_reporte(nombre_archivo, resultados, sucursal_filtro, usuario, fech
         Paragraph(f"$ {total_dinero:,.2f}", estilo_subtotal)
     ])
     
-    # Cálculos matemáticos precisos para que las 11 columnas entren perfecto en una hoja A4 Horizontal
     t = Table(data, colWidths=[55, 35, 75, 95, 75, 140, 85, 70, 30, 45, 65], repeatRows=1)
     t.setStyle(TableStyle([
         ('GRID', (0,0), (-1,-1), 0.5, colors.grey), 
-        ('BACKGROUND', (0,0), (-1,0), colors.HexColor("#0d6efd")), # Encabezado azul
+        ('BACKGROUND', (0,0), (-1,0), colors.HexColor("#0d6efd")), 
         ('ALIGN', (0,0), (-1,-1), 'CENTER'), 
         ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
         ('BACKGROUND', (0,-1), (-1,-1), colors.whitesmoke),
         ('TOPPADDING', (0,0), (-1,-1), 3),
         ('BOTTOMPADDING', (0,0), (-1,-1), 3),
-        ('SPAN', (0, -1), (7, -1)), # Combina las celdas vacías de la última fila
+        ('SPAN', (0, -1), (7, -1)), 
     ]))
     elements.append(t)
     
@@ -327,9 +323,7 @@ def crear_pdf_reporte(nombre_archivo, resultados, sucursal_filtro, usuario, fech
         canvas.drawCentredString(page_width / 2.0, 15, f"Generado por: {usuario} | Pág. {doc.page}"); canvas.restoreState()
     doc.build(elements, onFirstPage=add_footer, onLaterPages=add_footer)
 
-# 🔥 NUEVO GENERADOR DE FACTURACIÓN: HOJA APAISADA + CALCULO DE IVA 🔥
 def crear_pdf_facturacion(nombre_archivo, data_filas, prov_nombre, periodo_str, usuario, fecha_generacion):
-    # 1. Hoja Apaisada (landscape) para que entren todas las columnas sin cortar los bordes
     doc = SimpleDocTemplate(nombre_archivo, pagesize=landscape(A4), rightMargin=20, leftMargin=20, topMargin=25, bottomMargin=25)
     elements = []
     styles = getSampleStyleSheet()
@@ -345,7 +339,6 @@ def crear_pdf_facturacion(nombre_archivo, data_filas, prov_nombre, periodo_str, 
     elements.append(Paragraph(f"RENDICIÓN {prov_nombre.upper()}", title_style))
     elements.append(Paragraph(f"Período: {periodo_str}", client_style))
     
-    # 2. Estilos específicos para la tabla
     estilo_centro = ParagraphStyle(name='Cent', parent=styles['Normal'], fontSize=8, alignment=TA_CENTER)
     estilo_izq = ParagraphStyle(name='Izq', parent=styles['Normal'], fontSize=8, alignment=TA_LEFT, wordWrap='CJK')
     estilo_der = ParagraphStyle(name='Der', parent=styles['Normal'], fontSize=8, alignment=TA_RIGHT)
@@ -354,32 +347,29 @@ def crear_pdf_facturacion(nombre_archivo, data_filas, prov_nombre, periodo_str, 
     
     processed_data = []
     
-    # Convertimos los textos sueltos en Párrafos procesables por ReportLab
     for i, row in enumerate(data_filas):
         new_row = []
-        es_totales = (i >= len(data_filas) - 4) # Detecta las últimas 4 filas (Separador, Subtotal, IVA, Total Final)
+        es_totales = (i >= len(data_filas) - 4) 
         
         for j, cell in enumerate(row):
             cell_str = str(cell) if cell is not None else ""
             
-            if i == 0: # Fila Título
+            if i == 0: 
                 new_row.append(Paragraph(cell_str, estilo_head))
-            elif es_totales: # Fila de IVA y Totales
+            elif es_totales: 
                 new_row.append(Paragraph(cell_str, estilo_tot_der))
-            else: # Filas de datos normales
-                if j in [1, 2]: # Guia, Zona -> Alineado a la izquierda
+            else: 
+                if j in [1, 2]: 
                     new_row.append(Paragraph(cell_str, estilo_izq))
-                elif j >= 4: # Montos -> Alineado a la derecha
+                elif j >= 4: 
                     new_row.append(Paragraph(cell_str, estilo_der))
-                else: # Fecha y Bultos -> Centrados
+                else: 
                     new_row.append(Paragraph(cell_str, estilo_centro))
                     
         processed_data.append(new_row)
         
-    # 3. Anchos fijos y calculados matemáticamente para llenar exacto la hoja A4 Horizontal (Total = 795 pts)
     t = Table(processed_data, colWidths=[75, 190, 120, 60, 85, 85, 85, 95], repeatRows=1)
     
-    # Estilo base de la grilla
     t_style = [
         ('GRID', (0,0), (-1,-1), 0.5, colors.black), 
         ('BACKGROUND', (0,0), (-1,0), colors.lightgrey), 
@@ -388,24 +378,20 @@ def crear_pdf_facturacion(nombre_archivo, data_filas, prov_nombre, periodo_str, 
         ('BOTTOMPADDING', (0,0), (-1,-1), 4),
     ]
     
-    # 4. Estilos condicionales para la zona del IVA y totales al final de la página
     if len(data_filas) >= 5: 
         t_style.extend([
-            # Borrar bordes de la fila vacía (-4) para que funcione como "Espacio en blanco"
             ('LINEABOVE', (0,-4), (-1,-4), 0, colors.white),
             ('LINEBELOW', (0,-4), (-1,-4), 0, colors.white),
             ('LINEBEFORE', (0,-4), (-1,-4), 0, colors.white),
             ('LINEAFTER', (0,-4), (-1,-4), 0, colors.white),
             ('BACKGROUND', (0,-4), (-1,-4), colors.white),
             
-            # Pintar de gris y enmarcar la zona de resultados (-3 a -1)
             ('BACKGROUND', (0,-3), (-1,-1), colors.whitesmoke), 
             ('LINEABOVE', (0,-3), (-1,-3), 1.5, colors.black), 
             
-            # Combinar las columnas vacías para que el texto encaje hermoso a la derecha
-            ('SPAN', (0, -3), (3, -3)), # SUBTOTALES
-            ('SPAN', (0, -2), (5, -2)), # IVA
-            ('SPAN', (0, -1), (5, -1)), # TOTAL FACTURA
+            ('SPAN', (0, -3), (3, -3)), 
+            ('SPAN', (0, -2), (5, -2)), 
+            ('SPAN', (0, -1), (5, -1)), 
         ])
         
     t.setStyle(TableStyle(t_style))
@@ -577,21 +563,17 @@ def crear_pdf_general_tarifas(ruta_output, titulo_doc, data, usuario_nombre):
     from reportlab.lib.styles import getSampleStyleSheet
     from datetime import datetime
 
-    # Usamos formato apaisado (landscape) para que entren más columnas
     doc = SimpleDocTemplate(ruta_output, pagesize=landscape(A4))
     elements = []
     styles = getSampleStyleSheet()
 
-    # Título
     elements.append(Paragraph(f"<b>{titulo_doc}</b>", styles['Title']))
     elements.append(Spacer(1, 12))
     
-    # Info de impresión
     fecha_hoy = datetime.now().strftime("%d/%m/%Y %H:%M")
     elements.append(Paragraph(f"Impreso por: {usuario_nombre} | Fecha: {fecha_hoy}", styles['Normal']))
     elements.append(Spacer(1, 20))
 
-    # Crear Tabla
     t = Table(data, hAlign='LEFT')
     t.setStyle(TableStyle([
         ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor("#0d47a1")),
@@ -609,3 +591,76 @@ def crear_pdf_general_tarifas(ruta_output, titulo_doc, data, usuario_nombre):
     elements.append(t)
     doc.build(elements)
     
+def crear_pdf_stock_historico(nombre_archivo, ops, fecha_corte, sucursal, proveedor, usuario, fecha_generacion):
+    doc = SimpleDocTemplate(nombre_archivo, pagesize=landscape(A4), rightMargin=15, leftMargin=15, topMargin=20, bottomMargin=20)
+    elements = []
+    styles = getSampleStyleSheet()
+    
+    logo_path = "eklogo.png" if os.path.exists("eklogo.png") else ("logo.png" if os.path.exists("logo.png") else None)
+    if logo_path:
+        elements.append(Image(logo_path, width=65, height=40, hAlign='CENTER'))
+        elements.append(Spacer(1, 10))
+
+    titulo_style = ParagraphStyle(name='TituloCentro', parent=styles['Heading1'], alignment=TA_CENTER, fontSize=16, textColor=colors.HexColor("#0d6efd"))
+    sub_style = ParagraphStyle(name='SubCentro', parent=styles['Normal'], alignment=TA_CENTER, fontSize=11)
+    
+    elements.append(Paragraph("REPORTE DE STOCK FÍSICO (VIAJE EN EL TIEMPO)", titulo_style))
+    elements.append(Spacer(1, 5))
+    elements.append(Paragraph(f"<b>Fecha de Corte:</b> {fecha_corte} &nbsp;|&nbsp; <b>Sucursal:</b> {sucursal.upper()} &nbsp;|&nbsp; <b>Proveedor:</b> {proveedor.upper()}", sub_style))
+    elements.append(Paragraph(f"Generado el: {fecha_generacion} por {usuario}", sub_style))
+    elements.append(Spacer(1, 15))
+    
+    estilo_celda = ParagraphStyle(name='CeldaTabla', parent=styles['Normal'], fontSize=8, leading=9, alignment=TA_CENTER)
+    estilo_izq = ParagraphStyle(name='CeldaIzq', parent=styles['Normal'], fontSize=8, leading=9, alignment=TA_LEFT, wordWrap='CJK')
+    estilo_head = ParagraphStyle(name='Encabezado', parent=styles['Normal'], fontSize=8, alignment=TA_CENTER, fontName='Helvetica-Bold', textColor=colors.whitesmoke)
+
+    data = [[
+        Paragraph('F. INGRESO', estilo_head),
+        Paragraph('SUCURSAL', estilo_head),
+        Paragraph('GUÍA / REMITO', estilo_head),
+        Paragraph('PROVEEDOR', estilo_head),
+        Paragraph('DESTINATARIO', estilo_head),
+        Paragraph('DOMICILIO', estilo_head),
+        Paragraph('ZONA', estilo_head),
+        Paragraph('BULTOS', estilo_head)
+    ]]
+    
+    total_bultos = 0
+    for op in ops:
+        bultos_val = op.bultos or 1
+        total_bultos += bultos_val
+        data.append([
+            Paragraph(op.fecha_ingreso.strftime("%d/%m/%Y") if op.fecha_ingreso else "-", estilo_celda),
+            Paragraph(op.sucursal[:10] if op.sucursal else "-", estilo_celda),
+            Paragraph(op.guia_remito or "-", estilo_celda),
+            Paragraph(op.proveedor[:20] if op.proveedor else "-", estilo_celda),
+            Paragraph(op.destinatario[:35] if op.destinatario else "-", estilo_izq),
+            Paragraph(op.domicilio[:40] if op.domicilio else "-", estilo_izq),
+            Paragraph(op.localidad[:15] if op.localidad else "-", estilo_celda),
+            Paragraph(str(bultos_val), estilo_celda)
+        ])
+        
+    estilo_subtotal = ParagraphStyle(name='CeldaSub', parent=styles['Normal'], fontSize=10, alignment=TA_CENTER, fontName='Helvetica-Bold')
+    data.append([
+        '', '', '', '', '', '', 
+        Paragraph('TOTALES:', estilo_subtotal), 
+        Paragraph(f"{len(ops)} Guías<br/>{total_bultos} Bultos", estilo_subtotal)
+    ])
+    
+    t = Table(data, colWidths=[65, 60, 100, 100, 150, 200, 80, 50], repeatRows=1)
+    t.setStyle(TableStyle([
+        ('GRID', (0,0), (-1,-1), 0.5, colors.grey), 
+        ('BACKGROUND', (0,0), (-1,0), colors.HexColor("#0d6efd")), 
+        ('ALIGN', (0,0), (-1,-1), 'CENTER'), 
+        ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
+        ('BACKGROUND', (0,-1), (-1,-1), colors.whitesmoke),
+        ('TOPPADDING', (0,0), (-1,-1), 3),
+        ('BOTTOMPADDING', (0,0), (-1,-1), 3),
+        ('SPAN', (0, -1), (5, -1)), 
+    ]))
+    elements.append(t)
+    
+    def add_footer(canvas, doc): 
+        canvas.saveState(); canvas.setFont('Helvetica', 8); page_width, _ = landscape(A4)
+        canvas.drawCentredString(page_width / 2.0, 15, f"Generado por: {usuario} | Pág. {doc.page}"); canvas.restoreState()
+    doc.build(elements, onFirstPage=add_footer, onLaterPages=add_footer)

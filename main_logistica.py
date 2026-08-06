@@ -23,7 +23,7 @@ from sqlalchemy import text, extract, desc, func
 
 from database import get_session, Usuario
 
-print(">>> Iniciando Plataforma Ultra Rápida con Hilos de Carga...")
+print(">>> Inicializando servicios de plataforma...")
 
 def detector_temprano(exc_type, exc_value, exc_traceback):
     err_msg = "".join(traceback.format_exception(exc_type, exc_value, exc_traceback))
@@ -97,8 +97,8 @@ class PlataformaLogistica(QMainWindow):
         global ToastNotification, ConfirmarEntregaDialog, ReprogramarAdminDialog, HistorialHojasRutaDialog, EditarOperacionDialog, CambiarFechaDialog, TrackingDialog
         from dialogos import ToastNotification, ConfirmarEntregaDialog, ReprogramarAdminDialog, HistorialHojasRutaDialog, EditarOperacionDialog, CambiarFechaDialog
         
-        global crear_pdf_ruta, crear_pdf_tercerizados, crear_pdf_reporte
-        from utilidades import crear_pdf_ruta, crear_pdf_tercerizados, crear_pdf_reporte
+        global crear_pdf_ruta, crear_pdf_tercerizados, crear_pdf_reporte, crear_pdf_stock_historico
+        from utilidades import crear_pdf_ruta, crear_pdf_tercerizados, crear_pdf_reporte, crear_pdf_stock_historico
 
         _, self.session = get_session()
         
@@ -197,7 +197,7 @@ class PlataformaLogistica(QMainWindow):
     def verificar_alertas_stock(self):
         try:
             from datetime import timedelta
-            limite = datetime.now().date() - timedelta(days=3) # Avisa si lleva 3 días o más
+            limite = datetime.now().date() - timedelta(days=3)
             ops_viejas = self.session.query(Operacion).filter(
                 Operacion.estado.in_([Estados.EN_DEPOSITO, 'EN DEPÓSITO']),
                 Operacion.sucursal == self.sucursal_actual,
@@ -238,7 +238,6 @@ class PlataformaLogistica(QMainWindow):
             nombres_choferes = [c[0].strip().upper() for c in chs if c[0]]
             clis = self.session.query(ClienteRetiro).filter(ClienteRetiro.sucursal == self.sucursal_actual).order_by(ClienteRetiro.nombre).all()
             
-            # Extraemos todos los choferes históricos reales (incluye tercerizados) y unificamos mayúsculas
             chs_operaciones = self.session.query(Operacion.chofer_asignado).filter(Operacion.chofer_asignado != None).distinct().all()
             nombres_historicos = sorted(list(set([c[0].strip().upper() for c in chs_operaciones if c[0] and c[0].strip()])))
             
@@ -259,9 +258,18 @@ class PlataformaLogistica(QMainWindow):
                 self.rep_chofer.clear(); self.rep_chofer.addItem("Todos"); self.rep_chofer.addItem("Sin Asignar")
                 self.rep_chofer.addItems(nombres_historicos)
                 self.rep_cliente.clear(); self.rep_cliente.addItem("Todos"); self.rep_cliente.addItems(self.lista_proveedores)
-                # 🔥 SE AGREGAN LAS ZONAS AL COMBO DE REPORTES 🔥
                 if hasattr(self, 'rep_zona'):
                     self.rep_zona.clear(); self.rep_zona.addItem("Todas"); self.rep_zona.addItems(sorted([z[0] for z in zs]))
+                    
+            if hasattr(self, 'combo_prov_stock'):
+                curr_prov_stock = self.combo_prov_stock.currentText()
+                self.combo_prov_stock.blockSignals(True)
+                self.combo_prov_stock.clear()
+                self.combo_prov_stock.addItem("Todos")
+                self.combo_prov_stock.addItems(self.lista_proveedores)
+                if curr_prov_stock in ["Todos"] + self.lista_proveedores:
+                    self.combo_prov_stock.setCurrentText(curr_prov_stock)
+                self.combo_prov_stock.blockSignals(False)
                     
             if hasattr(self, 'tab_cierre'):
                 self.tab_cierre.cierre_prov.clear(); self.tab_cierre.cierre_prov.addItem("Todos"); self.tab_cierre.cierre_prov.addItems([p for p in self.lista_proveedores if p.lower() != "jetpaq"])
@@ -274,7 +282,6 @@ class PlataformaLogistica(QMainWindow):
             if "DHL" in proveedor_str.upper():
                 p_val = float(peso) if peso else 0.0
                 
-                # 🔥 REGLA ANTI-CERO: Si pesa 0 Kg, el costo es $0 automático 🔥
                 if p_val <= 0.0:
                     return 0.0
                     
@@ -295,7 +302,6 @@ class PlataformaLogistica(QMainWindow):
                 return base + costo_exc
             else:
                 loc_limpia = loc.strip()
-                # ... ACÁ ABAJO DEJÁS INTACTO TU CÓDIGO ORIGINAL ...
                 t = self.session.query(Tarifa).filter(Tarifa.localidad.ilike(loc_limpia), Tarifa.sucursal == suc).first()
                 if not t: return 0.0
                 if cant_comun > 0 and cant_frio > 0:
@@ -360,14 +366,13 @@ class PlataformaLogistica(QMainWindow):
         btn_refresh.setStyleSheet("background-color: #1565c0; color: white; font-weight: bold; padding: 4px 12px; border-radius: 4px;")
         btn_refresh.clicked.connect(lambda: {self.cargar_monitor_global(), self.cargar_novedades()})
         
-        # Agrupamos el combo y el botón en una misma línea horizontal
         h_chofer_btn = QHBoxLayout()
         h_chofer_btn.setContentsMargins(0, 0, 0, 0)
         h_chofer_btn.addWidget(self.mon_chofer_combo)
         h_chofer_btn.addWidget(btn_refresh)
         
         filtros_layout.addRow("Fecha:", self.mon_date)
-        filtros_layout.addRow("Chofer:", h_chofer_btn) # Acá inyectamos la línea combinada
+        filtros_layout.addRow("Chofer:", h_chofer_btn) 
         
         self.lbl_mini_dash = QLabel("Cargando métricas...")
         self.lbl_mini_dash.setStyleSheet("""
@@ -378,7 +383,7 @@ class PlataformaLogistica(QMainWindow):
             font-size: 13px;
         """)
         self.lbl_mini_dash.setWordWrap(True)
-        self.lbl_mini_dash.setMinimumWidth(750) # 🔥 ENSANCHADO AL MÁXIMO 🔥
+        self.lbl_mini_dash.setMinimumWidth(750) 
 
         top_bar.addLayout(filtros_layout)
         top_bar.addStretch() 
@@ -450,13 +455,11 @@ class PlataformaLogistica(QMainWindow):
             if chofer_sel != "Todos": query = query.filter(Operacion.chofer_asignado == chofer_sel)
             ops = query.order_by(Operacion.id.desc()).all()
             
-            # 🔥 CORTAFUEGOS ANTI-FANTASMAS 🔥
-            # Evita que las guías entregadas ayer aparezcan hoy por culpa de una edición en facturación
             ops_limpias = []
             for op in ops:
                 if op.estado in [getattr(Estados, 'ENTREGADO', 'ENTREGADO'), getattr(Estados, 'DEVUELTO_ORIGEN', 'DEVUELTO A ORIGEN')] and op.fecha_entrega:
                     if op.fecha_entrega.date() < fecha_sel:
-                        continue # Es historia vieja, la saltamos
+                        continue 
                 ops_limpias.append(op)
             ops = ops_limpias
 
@@ -480,7 +483,6 @@ class PlataformaLogistica(QMainWindow):
             for r, op in enumerate(ops):
                 estado_visual = op.estado; bg_color = QColor("#ffffff"); txt_color_main = QColor("#000000"); txt_color_estado = QColor("#000000") 
                 
-                # 🔥 LÓGICA DE COLORES BLINDADA 🔥
                 if op.estado == getattr(Estados, 'ENTREGADO', 'ENTREGADO'): bg_color = QColor("#d4edda"); txt_color_estado = QColor("#155724")
                 elif op.estado == getattr(Estados, 'EN_REPARTO', 'EN REPARTO'): bg_color = QColor("#fff3cd"); txt_color_estado = QColor("#856404")
                 elif op.estado == getattr(Estados, 'DEVUELTO_ORIGEN', 'DEVUELTO A ORIGEN'): bg_color = QColor("#ffe8d6"); txt_color_estado = QColor("#fd7e14")
@@ -552,6 +554,7 @@ class PlataformaLogistica(QMainWindow):
             print(f"Error en monitor: {e}")
             self.session.rollback()
             self.tabla_monitor.setUpdatesEnabled(True); self.tabla_monitor.blockSignals(False)
+            
     def setup_ruta(self):
         l = QVBoxLayout(self.tab_ruta); top_row1 = QHBoxLayout(); top_row2 = QHBoxLayout()
         
@@ -611,7 +614,6 @@ class PlataformaLogistica(QMainWindow):
             self.tabla_ruta.blockSignals(True); self.tabla_ruta.setRowCount(0); 
             estados_deposito = [Estados.EN_DEPOSITO, 'EN DEPOSITO', 'En Depósito', 'En Deposito', 'EN DEPÓSITO']
             
-            # 🔥 REGLA DE ORO: Traer absolutamente TODO lo que esté en depósito físico, sin filtros de fecha 🔥
             ops = self.session.query(Operacion).filter(
                 Operacion.estado.in_(estados_deposito), 
                 Operacion.sucursal == self.sucursal_actual
@@ -796,10 +798,19 @@ class PlataformaLogistica(QMainWindow):
         except Exception: self.session.rollback()
 
     def setup_reportes(self):
-        layout = QVBoxLayout(self.tab_reportes); filtros = QGroupBox("Filtros"); flayout = QHBoxLayout()
-        self.rep_fecha_desde = QDateEdit(QDate.currentDate().addDays(-30)); self.rep_fecha_hasta = QDateEdit(QDate.currentDate()); self.rep_fecha_desde.setCalendarPopup(True); self.rep_fecha_hasta.setCalendarPopup(True)
+        layout = QVBoxLayout(self.tab_reportes)
+        self.tabs_reportes_internos = QTabWidget()
+        layout.addWidget(self.tabs_reportes_internos)
         
-        # 🔥 ESTILO AVANZADO: Botón compacto, pero lista desplegable súper ancha 🔥
+        # --- SUB PESTAÑA 1: DASHBOARD GERENCIAL ---
+        tab_dashboard = QWidget()
+        lay_dash = QVBoxLayout(tab_dashboard)
+        
+        filtros = QGroupBox("Filtros")
+        flayout = QHBoxLayout()
+        self.rep_fecha_desde = QDateEdit(QDate.currentDate().addDays(-30)); self.rep_fecha_desde.setCalendarPopup(True)
+        self.rep_fecha_hasta = QDateEdit(QDate.currentDate()); self.rep_fecha_hasta.setCalendarPopup(True)
+        
         estilo_combos = "QComboBox { min-width: 130px; padding: 4px; font-weight: bold; } QComboBox QAbstractItemView { min-width: 250px; background-color: white; selection-background-color: #1565c0; }"
         
         self.rep_sucursal = QComboBox(); self.rep_sucursal.addItems(["Todas", "Mendoza", "San Juan"]); self.rep_sucursal.setStyleSheet(estilo_combos)
@@ -809,19 +820,20 @@ class PlataformaLogistica(QMainWindow):
         self.rep_tipo = QComboBox(); self.rep_tipo.addItems(["Todos", "Entrega", "Retiro", "Flete", "Cargo Extra"]); self.rep_tipo.setStyleSheet(estilo_combos)
         self.rep_facturado = QComboBox(); self.rep_facturado.addItems(["Todos", "Facturado", "NO Facturado"]); self.rep_facturado.setStyleSheet(estilo_combos)
         
-       # 🔥 NUEVO FILTRO DE ZONA 🔥
         self.rep_zona = QComboBox(); self.rep_zona.addItem("Todas"); self.rep_zona.setStyleSheet(estilo_combos)
         
-        # 🔥 NUEVO FILTRO DE TIPO DE CARGA 🔥
         self.rep_carga = QComboBox(); self.rep_carga.addItems(["Todas", "Ambiente", "Frozen", "Combinado"]); self.rep_carga.setStyleSheet(estilo_combos)
         
-        btn_buscar = QPushButton("🔍 Generar"); btn_buscar.clicked.connect(self.generar_reporte_avanzado)
-        btn_excel = QPushButton("Excel"); btn_excel.setStyleSheet("background-color: #28a745 !important; color: white !important;"); btn_excel.clicked.connect(self.exportar_reporte_excel)
-        btn_pdf_rep = QPushButton("PDF"); btn_pdf_rep.setStyleSheet("background-color: #dc3545 !important; color: white !important;"); btn_pdf_rep.clicked.connect(self.generar_pdf_rep)
+        btn_buscar = QPushButton("🔍 Generar")
+        btn_buscar.clicked.connect(self.generar_reporte_avanzado)
+        btn_excel = QPushButton("Excel")
+        btn_excel.setStyleSheet("background-color: #28a745 !important; color: white !important;")
+        btn_excel.clicked.connect(self.exportar_reporte_excel)
+        btn_pdf_rep = QPushButton("PDF")
+        btn_pdf_rep.setStyleSheet("background-color: #dc3545 !important; color: white !important;")
+        btn_pdf_rep.clicked.connect(self.generar_pdf_rep)
         
-        # 🔥 FIX VISUAL: Repartimos los filtros en DOS filas para que no se aprieten 🔥
         lay_main_filtros = QVBoxLayout()
-        
         row1 = QHBoxLayout()
         row1.addWidget(QLabel("Desde:")); row1.addWidget(self.rep_fecha_desde)
         row1.addWidget(QLabel("Hasta:")); row1.addWidget(self.rep_fecha_hasta)
@@ -867,8 +879,190 @@ class PlataformaLogistica(QMainWindow):
         html_inicial = "<div style='padding: 20px; font-size: 16px; color: #6c757d; text-align: center;'>Seleccione los filtros arriba y presione <b>Generar</b> para visualizar el Dashboard Gerencial.</div>"
         self.panel_resumen.setHtml(html_inicial)
         
-        layout.addWidget(filtros); layout.addWidget(self.tabla_reportes); layout.addWidget(self.panel_resumen)
+        lay_dash.addWidget(filtros); lay_dash.addWidget(self.tabla_reportes); lay_dash.addWidget(self.panel_resumen)
+        self.tabs_reportes_internos.addTab(tab_dashboard, "📊 Dashboard Gerencial")
         
+        # --- SUB PESTAÑA 2: STOCK HISTÓRICO (EL VIAJE EN EL TIEMPO) ---
+        tab_stock = QWidget()
+        lay_stock = QVBoxLayout(tab_stock)
+        
+        top_stock = QHBoxLayout()
+        self.date_stock_hist = QDateEdit(QDate.currentDate())
+        self.date_stock_hist.setCalendarPopup(True)
+        self.combo_suc_stock = QComboBox()
+        self.combo_suc_stock.addItems(["Todas", "Mendoza", "San Juan"])
+        
+        self.combo_prov_stock = QComboBox()
+        self.combo_prov_stock.addItem("Todos")
+        self.combo_prov_stock.addItems(self.lista_proveedores)
+        
+        btn_calc_stock = QPushButton("🔍 Calcular Stock a Fecha")
+        btn_calc_stock.setStyleSheet("background-color: #0d6efd; color: white; font-weight: bold; padding: 6px;")
+        btn_calc_stock.clicked.connect(self.calcular_stock_historico)
+        
+        btn_excel_stock = QPushButton("📊 Exportar a Excel")
+        btn_excel_stock.setStyleSheet("background-color: #28a745; color: white; font-weight: bold; padding: 6px;")
+        btn_excel_stock.clicked.connect(self.exportar_stock_historico_excel)
+        
+        btn_pdf_stock = QPushButton("🖨️ Exportar a PDF")
+        btn_pdf_stock.setStyleSheet("background-color: #dc3545; color: white; font-weight: bold; padding: 6px;")
+        btn_pdf_stock.clicked.connect(self.exportar_stock_historico_pdf)
+        
+        top_stock.addWidget(QLabel("<b>Ver stock físico al final del día:</b>"))
+        top_stock.addWidget(self.date_stock_hist)
+        top_stock.addWidget(QLabel("Sucursal:"))
+        top_stock.addWidget(self.combo_suc_stock)
+        top_stock.addWidget(QLabel("Proveedor:"))
+        top_stock.addWidget(self.combo_prov_stock)
+        top_stock.addWidget(btn_calc_stock)
+        top_stock.addWidget(btn_excel_stock)
+        top_stock.addWidget(btn_pdf_stock)
+        top_stock.addStretch()
+        
+        lay_stock.addLayout(top_stock)
+        
+        self.tabla_stock_hist = QTableWidget()
+        self.tabla_stock_hist.setColumnCount(8)
+        self.tabla_stock_hist.setHorizontalHeaderLabels(["F. Ingreso", "Sucursal", "Guía / Remito", "Proveedor", "Destinatario", "Domicilio", "Zona", "Bultos"])
+        self.tabla_stock_hist.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
+        self.tabla_stock_hist.setColumnWidth(0, 90)
+        self.tabla_stock_hist.setColumnWidth(1, 90)
+        self.tabla_stock_hist.setColumnWidth(2, 140)
+        self.tabla_stock_hist.setColumnWidth(3, 130)
+        self.tabla_stock_hist.setColumnWidth(4, 180)
+        self.tabla_stock_hist.setColumnWidth(5, 250)
+        self.tabla_stock_hist.setColumnWidth(6, 120)
+        self.tabla_stock_hist.horizontalHeader().setStretchLastSection(True)
+        self.tabla_stock_hist.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        self.tabla_stock_hist.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        
+        self.lbl_resumen_stock = QLabel("Total de Guías en Depósito: 0")
+        self.lbl_resumen_stock.setStyleSheet("font-size: 15px; font-weight: bold; margin-top: 10px; color: #1565c0;")
+        
+        lay_stock.addWidget(self.tabla_stock_hist)
+        lay_stock.addWidget(self.lbl_resumen_stock)
+        
+        self.tabs_reportes_internos.addTab(tab_stock, "📦 Stock Histórico (Viaje en el Tiempo)")
+
+    def calcular_stock_historico(self):
+        try:
+            self.tabla_stock_hist.setRowCount(0)
+            fecha_corte = self.date_stock_hist.date().toPyDate()
+            sucursal = self.combo_suc_stock.currentText()
+            proveedor = self.combo_prov_stock.currentText()
+            
+            query = self.session.query(Operacion).filter(
+                func.date(Operacion.fecha_ingreso) <= fecha_corte
+            )
+            
+            if sucursal != "Todas":
+                query = query.filter(Operacion.sucursal == sucursal)
+                
+            if proveedor != "Todos":
+                query = query.filter(Operacion.proveedor.ilike(proveedor))
+                
+            ops = query.all()
+            stock_en_fecha = []
+            
+            for op in ops:
+                if op.fecha_entrega and op.fecha_entrega.date() <= fecha_corte:
+                    continue
+                stock_en_fecha.append(op)
+            
+            stock_en_fecha.sort(key=lambda x: x.fecha_ingreso)
+            self.resultados_stock_hist = stock_en_fecha
+            
+            for row, op in enumerate(stock_en_fecha):
+                self.tabla_stock_hist.insertRow(row)
+                self.tabla_stock_hist.setItem(row, 0, QTableWidgetItem(op.fecha_ingreso.strftime("%d/%m/%Y") if op.fecha_ingreso else "-"))
+                self.tabla_stock_hist.setItem(row, 1, QTableWidgetItem(op.sucursal or "-"))
+                self.tabla_stock_hist.setItem(row, 2, QTableWidgetItem(op.guia_remito or "-"))
+                self.tabla_stock_hist.setItem(row, 3, QTableWidgetItem(op.proveedor or "-"))
+                self.tabla_stock_hist.setItem(row, 4, QTableWidgetItem(op.destinatario or "-"))
+                self.tabla_stock_hist.setItem(row, 5, QTableWidgetItem(op.domicilio or "-"))
+                self.tabla_stock_hist.setItem(row, 6, QTableWidgetItem(op.localidad or "-"))
+                self.tabla_stock_hist.setItem(row, 7, QTableWidgetItem(str(op.bultos or 1)))
+            
+            self.lbl_resumen_stock.setText(f"Total de Guías en Depósito al {fecha_corte.strftime('%d/%m/%Y')}: {len(stock_en_fecha)}")
+        except Exception as e:
+            self.session.rollback()
+            QMessageBox.critical(self, "Error", f"Ocurrió un error al calcular el stock: {str(e)}")
+
+    def exportar_stock_historico_excel(self):
+        import pandas as pd
+        try:
+            if self.tabla_stock_hist.rowCount() == 0:
+                QMessageBox.warning(self, "Aviso", "No hay datos para exportar. Calcule el stock primero.")
+                return
+            
+            data = []
+            for r in range(self.tabla_stock_hist.rowCount()):
+                data.append({
+                    "Fecha Ingreso": self.tabla_stock_hist.item(r, 0).text(),
+                    "Sucursal": self.tabla_stock_hist.item(r, 1).text(),
+                    "Guía / Remito": self.tabla_stock_hist.item(r, 2).text(),
+                    "Proveedor": self.tabla_stock_hist.item(r, 3).text(),
+                    "Destinatario": self.tabla_stock_hist.item(r, 4).text(),
+                    "Domicilio": self.tabla_stock_hist.item(r, 5).text(),
+                    "Zona / Localidad": self.tabla_stock_hist.item(r, 6).text(),
+                    "Bultos": self.tabla_stock_hist.item(r, 7).text(),
+                })
+            
+            df = pd.DataFrame(data)
+            descargas_dir = os.path.join(os.path.expanduser('~'), 'Downloads')
+            fecha_corte = self.date_stock_hist.date().toPyDate().strftime("%d-%m-%Y")
+            
+            suc_str = self.combo_suc_stock.currentText()
+            prov_str = self.combo_prov_stock.currentText().replace(" ", "_")
+            
+            ruta_excel = os.path.join(descargas_dir, f"Stock_Historico_{fecha_corte}_{suc_str}_{prov_str}.xlsx")
+            
+            with pd.ExcelWriter(ruta_excel, engine='xlsxwriter') as writer:
+                df.to_excel(writer, index=False, sheet_name='Stock Histórico')
+                workbook  = writer.book
+                worksheet = writer.sheets['Stock Histórico']
+                
+                formato_header = workbook.add_format({'bold': True, 'bg_color': '#1565C0', 'font_color': 'white', 'border': 1})
+                for col_num, value in enumerate(df.columns.values):
+                    worksheet.write(0, col_num, value, formato_header)
+                    
+                worksheet.set_column('A:A', 15)
+                worksheet.set_column('B:B', 15)
+                worksheet.set_column('C:C', 20)
+                worksheet.set_column('D:E', 25)
+                worksheet.set_column('F:F', 35)
+                worksheet.set_column('G:G', 20)
+                worksheet.set_column('H:H', 10)
+            
+            import os
+            os.startfile(ruta_excel)
+            self.toast.mostrar("✅ Stock histórico exportado correctamente")
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Error al generar Excel: {str(e)}")
+            
+    def exportar_stock_historico_pdf(self):
+        try:
+            if not hasattr(self, 'resultados_stock_hist') or not self.resultados_stock_hist:
+                QMessageBox.warning(self, "Aviso", "No hay datos para exportar. Calcule el stock primero.")
+                return
+                
+            descargas_dir = os.path.join(os.path.expanduser('~'), 'Downloads')
+            fecha_corte = self.date_stock_hist.date().toPyDate().strftime("%d/%m/%Y")
+            fecha_file = self.date_stock_hist.date().toPyDate().strftime("%d-%m-%Y")
+            sucursal = self.combo_suc_stock.currentText()
+            proveedor = self.combo_prov_stock.currentText()
+            
+            prov_str = proveedor.replace(" ", "_")
+            ruta_pdf = os.path.join(descargas_dir, f"Stock_Historico_{fecha_file}_{sucursal}_{prov_str}.pdf")
+            
+            crear_pdf_stock_historico(ruta_pdf, self.resultados_stock_hist, fecha_corte, sucursal, proveedor, self.usuario.username, datetime.now().strftime('%d/%m/%Y %H:%M'))
+            
+            import os
+            os.startfile(ruta_pdf)
+            self.toast.mostrar("✅ PDF de Stock Histórico generado")
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Error al generar PDF: {str(e)}")
+
     def construir_query_reportes(self):
         f_desde = self.rep_fecha_desde.date().toPyDate(); f_hasta = self.rep_fecha_hasta.date().toPyDate()
         fecha_ref = func.coalesce(Operacion.fecha_entrega, Operacion.fecha_ingreso)
@@ -876,7 +1070,6 @@ class PlataformaLogistica(QMainWindow):
         
         if self.rep_sucursal.currentText() != "Todas": query = query.filter(Operacion.sucursal == self.rep_sucursal.currentText())
         
-        # Filtro de Choferes corregido (Abarca Tercerizados y "Sin Asignar" para Cargos Fijos)
         chof_filtro = self.rep_chofer.currentText()
         if chof_filtro != "Todos": 
             if chof_filtro == "Sin Asignar":
@@ -887,11 +1080,9 @@ class PlataformaLogistica(QMainWindow):
         if self.rep_cliente.currentText() != "Todos": query = query.filter(Operacion.proveedor.ilike(self.rep_cliente.currentText()))
         if self.rep_estado.currentText() != "Todos": query = query.filter(Operacion.estado == self.rep_estado.currentText())
         
-        # 🔥 APLICAR FILTRO DE ZONA 🔥
         if hasattr(self, 'rep_zona') and self.rep_zona.currentText() != "Todas":
             query = query.filter(Operacion.localidad.ilike(self.rep_zona.currentText()))
             
-        # 🔥 APLICAR FILTRO DE CARGA (SOPORTA HISTORIAL VIEJO Y NUEVO) 🔥
         if hasattr(self, 'rep_carga') and self.rep_carga.currentText() != "Todas":
             carga_sel = self.rep_carga.currentText()
             if carga_sel == "Ambiente":
@@ -1026,7 +1217,6 @@ class PlataformaLogistica(QMainWindow):
             descargas_dir = os.path.join(os.path.expanduser('~'), 'Downloads')
             if not os.path.exists(descargas_dir): os.makedirs(descargas_dir, exist_ok=True)
             
-            # 🔥 AHORA LEEMOS LA SUCURSAL DEL FILTRO, NO LA SUCURSAL DE TU USUARIO 🔥
             sucursal_filtro = self.rep_sucursal.currentText()
             
             ruta_pdf = os.path.join(descargas_dir, f"Reporte_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{sucursal_filtro}.pdf")
@@ -1077,12 +1267,12 @@ class PlataformaLogistica(QMainWindow):
                 
                 formato_texto = workbook.add_format({'num_format': '@', 'align': 'left'})
                 
-                worksheet.set_column('E:E', 20, formato_texto) # Guia
-                worksheet.set_column('A:B', 14) # Fechas
-                worksheet.set_column('C:D', 20) # Suc, Cliente
-                worksheet.set_column('F:F', 20) # Chofer
-                worksheet.set_column('G:I', 30) # Destinatario, Domicilio, Zona
-                worksheet.set_column('J:M', 15) # Tipo Carga, Bultos, Peso, Estado
+                worksheet.set_column('E:E', 20, formato_texto) 
+                worksheet.set_column('A:B', 14) 
+                worksheet.set_column('C:D', 20) 
+                worksheet.set_column('F:F', 20) 
+                worksheet.set_column('G:I', 30) 
+                worksheet.set_column('J:M', 15) 
                 
             try: os.startfile(ruta_excel)
             except: pass
@@ -1179,7 +1369,6 @@ class PlataformaLogistica(QMainWindow):
 
             res_prov = self.session.execute(text("SELECT proveedor, COUNT(*) FROM operaciones WHERE EXTRACT(MONTH FROM fecha_ingreso) = :m AND EXTRACT(YEAR FROM fecha_ingreso) = :y AND sucursal = :s GROUP BY proveedor ORDER BY COUNT(*) DESC"), {"m": mes_sel, "y": anio_sel, "s": self.sucursal_actual}).fetchall()
             
-            # 🔥 CÁLCULO DE HORAS DE CHOFER EN CALLE 🔥
             sql_horas = text("""
                 SELECT chofer_asignado, DATE(fecha_salida), MIN(fecha_salida), MAX(COALESCE(fecha_entrega, fecha_salida))
                 FROM operaciones
@@ -1194,7 +1383,7 @@ class PlataformaLogistica(QMainWindow):
                 chof = r[0]; inicio = r[2]; fin = r[3]
                 if inicio and fin and fin > inicio:
                     diff_horas = (fin - inicio).total_seconds() / 3600.0
-                    if diff_horas > 14: diff_horas = 14 # Filtro para evitar errores si dejaron App abierta
+                    if diff_horas > 14: diff_horas = 14 
                     if chof not in horas_por_chofer: 
                         horas_por_chofer[chof] = 0.0; dias_por_chofer[chof] = 0
                     horas_por_chofer[chof] += diff_horas
@@ -1284,7 +1473,6 @@ class TrackingDialog(QDialog):
         self.usuario = usuario
         self.setWindowTitle("🔍 Rastreo de Guía y Auditoría Total")
         
-        # 🔥 FIX WINDOWS 11: PERMITIR MAXIMIZAR Y MINIMIZAR 🔥
         self.setWindowFlags(Qt.WindowType.Window | Qt.WindowType.WindowMinMaxButtonsHint | Qt.WindowType.WindowCloseButtonHint)
         self.resize(900, 650)
         self.setStyleSheet("background-color: white;")
@@ -1314,11 +1502,9 @@ class TrackingDialog(QDialog):
         self.lbl_info.setStyleSheet("font-size: 14px; color: #333; padding: 12px; border: 1px solid #ccc; background: #f8f9fa; border-radius: 5px;")
         self.lbl_info.setWordWrap(True)
         
-        # 🔥 NUEVO SISTEMA DE PESTAÑAS (TRACKING VS AUDITORÍA) 🔥
         self.tabs = QTabWidget()
         self.tabs.setStyleSheet("QTabBar::tab { padding: 8px 15px; font-weight: bold; }")
         
-        # --- TAB 1: TRACKING CLIENTE ---
         self.tab_cliente = QWidget()
         lay_cli = QVBoxLayout(self.tab_cliente)
         self.tabla_cli = QTableWidget()
@@ -1329,7 +1515,6 @@ class TrackingDialog(QDialog):
         self.tabla_cli.horizontalHeader().setStretchLastSection(True)
         lay_cli.addWidget(self.tabla_cli)
         
-        # --- TAB 2: AUDITORÍA INTERNA ---
         self.tab_auditoria = QWidget()
         lay_aud = QVBoxLayout(self.tab_auditoria)
         self.tabla_aud = QTableWidget()
@@ -1396,7 +1581,6 @@ class TrackingDialog(QDialog):
         else:
             fac_str = "SÍ" if op.facturado else "NO PAGA"; color_fac = "green" if op.facturado else "red"
             
-        # 🔥 NUEVO: ESTADO DE CONTROL Y PROVEEDOR 🔥
         ctrl_str = "✔️ SÍ (Auditada)" if getattr(op, 'controlada', False) else "❌ NO"
         color_ctrl = "green" if getattr(op, 'controlada', False) else "red"
             
@@ -1444,13 +1628,11 @@ class TrackingDialog(QDialog):
         self.tabla_cli.setRowCount(0)
         self.tabla_aud.setRowCount(0)
         
-        # Filtramos qué va a qué tabla
         row_cli = 0; row_aud = 0
         for m in movs: 
             accion = m.accion.upper()
             es_auditoria_pura = "CONTROL" in accion or "EDICIÓN" in accion or "FACTURACIÓN" in accion
             
-            # Llenar Auditoría (Acá va TODO)
             self.tabla_aud.insertRow(row_aud)
             self.tabla_aud.setItem(row_aud, 0, QTableWidgetItem(m.fecha_hora.strftime("%d/%m/%y %H:%M:%S")))
             self.tabla_aud.setItem(row_aud, 1, QTableWidgetItem(m.usuario))
@@ -1460,7 +1642,6 @@ class TrackingDialog(QDialog):
             self.tabla_aud.setItem(row_aud, 3, QTableWidgetItem(m.detalle or ""))
             row_aud += 1
             
-            # Llenar Tracking Físico (Omitimos cosas de facturación/edición)
             if not es_auditoria_pura:
                 self.tabla_cli.insertRow(row_cli)
                 self.tabla_cli.setItem(row_cli, 0, QTableWidgetItem(m.fecha_hora.strftime("%d/%m/%Y %H:%M")))

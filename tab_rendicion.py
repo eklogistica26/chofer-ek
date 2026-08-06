@@ -34,7 +34,6 @@ def enviar_email_desktop(session, destinatario, guia, rutas_fotos, proveedor):
         if res: email_prov = res[0]
     except: pass
     
-    # 🔥 SOPORTE MULTIPLE EMAIL: Separa por comas o punto y coma automáticamente 🔥
     destinatarios_lista = []
     if email_prov:
         correos_limpios = str(email_prov).replace(',', ' ').replace(';', ' ')
@@ -157,9 +156,14 @@ class TabRendicion(QWidget):
         top.addWidget(QLabel("<b>GUIAS EN REPARTO:</b>")); top.addStretch(); top.addWidget(btn_mark); top.addWidget(btn_confirmar); top.addWidget(btn_pendiente); top.addWidget(btn_ref)
         admin_bar = QHBoxLayout(); 
         btn_deshacer = QPushButton("↩️ DESHACER (Admin)"); btn_deshacer.clicked.connect(self.deshacer_estado)
+        
+        # 🔥 EL BOTÓN "DEVUELTO A ORIGEN" AHORA ES VISIBLE PARA TODOS 🔥
         btn_dev_origen = QPushButton("🔙 DEVUELTO A ORIGEN"); btn_dev_origen.setStyleSheet("background-color: #fd7e14; color: white; font-weight: bold;"); btn_dev_origen.clicked.connect(self.marcar_devuelto_origen)
-        if not getattr(self.main.usuario, 'es_admin_total', False): btn_deshacer.hide(); btn_dev_origen.hide()
         admin_bar.addWidget(btn_deshacer); admin_bar.addWidget(btn_dev_origen); admin_bar.addStretch()
+        
+        if not getattr(self.main.usuario, 'es_admin_total', False): 
+            btn_deshacer.hide() # Solo ocultamos el botón de deshacer para operadores comunes
+            
         self.txt_filtro_rendir = QLineEdit(); self.txt_filtro_rendir.setPlaceholderText("🔎 Filtrar por Chofer, Guía..."); self.txt_filtro_rendir.textChanged.connect(self.filtrar_tabla_rendicion)
         top.insertWidget(2, self.txt_filtro_rendir)
         
@@ -267,7 +271,6 @@ class TabRendicion(QWidget):
             no_entregados_db = self.main.session.execute(sql_no_ent, {"c": chofer, "f": fecha}).fetchall()
             no_entregados = [list(r) for r in no_entregados_db]
             
-            # 🔥 CORRECCIÓN 1: Sólo agregar guías "En Reparto" si consultamos EL DÍA DE HOY 🔥
             if fecha == datetime.now().date():
                 sql_en_calle = text("""
                     SELECT guia_remito, destinatario, 'EN CALLE (Aún no gestionado)', tipo_servicio, proveedor 
@@ -317,7 +320,6 @@ class TabRendicion(QWidget):
                 self.tabla_res_fallos.setItem(r, 2, QTableWidgetItem(row_data[1] or "-"))
                 self.tabla_res_fallos.setItem(r, 3, QTableWidgetItem(row_data[2] or "-"))
                 
-            # 🔥 CORRECCIÓN 2: Título actualizado 🔥
             self.lbl_res_fallos.setText(f"⚠️ PENDIENTES / REPROGRAMADOS ({len(no_entregados)})")
         except Exception as e: 
             self.main.session.rollback()
@@ -336,7 +338,6 @@ class TabRendicion(QWidget):
             QMessageBox.warning(self, "Sin datos", "No hay actividad.")
             return
             
-        # 🔥 CORRECCIÓN 3: Se agrega la hora exacta al string que va al PDF 🔥
         hora_actual = datetime.now().strftime("%H:%M")
         fecha_con_hora = f"{fecha_str} - (Impreso a las {hora_actual} hs)"
         
@@ -347,6 +348,7 @@ class TabRendicion(QWidget):
         crear_pdf_resumen_diario(ruta_pdf, chofer, fecha_con_hora, self.datos_resumen_exitos, self.datos_resumen_fallos, self.main.sucursal_actual, self.main.usuario.username)
         try: os.startfile(ruta_pdf)
         except: pass
+
     def filtrar_tabla_rendicion(self, texto):
         texto = texto.lower()
         for r in range(self.tabla_rendicion.rowCount()):
