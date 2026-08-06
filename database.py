@@ -8,7 +8,7 @@ load_dotenv()
 
 DATABASE_URL = os.getenv("DB_URL")
 if not DATABASE_URL:
-    raise ValueError("❌ ERROR CRÍTICO: No se encontró la variable DB_URL en el archivo .env")
+    raise ValueError("ERROR CRÍTICO: No se encontró la variable DB_URL en el archivo .env")
 
 engine = create_engine(
     DATABASE_URL, 
@@ -28,7 +28,7 @@ class Estados:
     EN_DEPOSITO = "EN DEPOSITO"
     EN_REPARTO = "EN REPARTO"
     ENTREGADO = "ENTREGADO"
-    DEVUELTO_ORIGEN = "DEVUELTO A ORIGEN" # <--- ESTA ES LA LÍNEA VITAL
+    DEVUELTO_ORIGEN = "DEVUELTO A ORIGEN" # Estado de devolución al remitente
     LISTA_TODOS = ["EN DEPOSITO", "EN REPARTO", "ENTREGADO", "DEVUELTO A ORIGEN"]
 
 class Urgencia:
@@ -53,7 +53,7 @@ class Usuario(Base):
     ver_crm = Column(Boolean, default=True)          
     ver_estadisticas = Column(Boolean, default=True) 
     ver_configuracion = Column(Boolean, default=False)
-    ver_flota = Column(Boolean, default=True) # 🔥 PERMISO DE FLOTA 🔥
+    ver_flota = Column(Boolean, default=True) # Permiso de acceso al módulo de flota
 
 class Tarifa(Base):
     __tablename__ = "tarifas"
@@ -151,7 +151,8 @@ class Operacion(Base):
     monto_feriado = Column(Float, default=0.0)
     monto_contingencia = Column(Float, default=0.0)
     monto_espera = Column(Float, default=0.0)
-    # 🔥 NUEVAS COLUMNAS DE AUDITORÍA Y LOGÍSTICA INVERSA 🔥
+    
+    # Columnas de auditoría y logística inversa
     controlada = Column(Boolean, default=False)
     papel_enviado = Column(Boolean, default=False)
     lote_papel = Column(String(100), nullable=True)
@@ -176,6 +177,20 @@ class ReciboPago(Base):
     monto = Column(Float, default=0.0)
     detalle = Column(String(200))
     usuario = Column(String(50))
+
+# ==========================================
+# MÓDULO DE COMUNICACIÓN INTERNA (TICKETING)
+# ==========================================
+class AvisoInterno(Base):
+    __tablename__ = "avisos_internos"
+    id = Column(Integer, primary_key=True, index=True)
+    emisor = Column(String(50), nullable=False)
+    receptor = Column(String(50), nullable=False) # Puede ser un username o "TODOS"
+    fecha_creacion = Column(DateTime, default=datetime.now)
+    fecha_programada = Column(Date, nullable=False) # El día que debe saltar la alerta
+    mensaje = Column(Text, nullable=False)
+    leido = Column(Boolean, default=False)
+    fecha_lectura = Column(DateTime, nullable=True)
 
 class Vehiculo(Base):
     __tablename__ = "vehiculos"
