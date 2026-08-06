@@ -99,7 +99,10 @@ class TabIngreso(QWidget):
         self.in_codigo_rapido = QLineEdit(); self.in_codigo_rapido.setPlaceholderText("Buscar ID..."); self.in_codigo_rapido.setFixedWidth(80); self.in_codigo_rapido.returnPressed.connect(self.buscar_destino_por_codigo)
         dest_layout.addWidget(self.in_destinos_frecuentes); dest_layout.addWidget(self.in_codigo_rapido)
         
-        self.in_dest = QLineEdit(); self.in_cel = QLineEdit(); self.in_cel.setPlaceholderText("Ej: 261-155..."); self.in_dom = QLineEdit(); self.in_loc_combo = QComboBox()
+        self.in_dest = QLineEdit()
+        self.in_dom = QLineEdit() 
+        self.in_cel = QLineEdit(); self.in_cel.setPlaceholderText("Ej: 261-155...")
+        self.in_loc_combo = QComboBox()
         
         self.in_obs_ingreso = QLineEdit()
         self.in_obs_ingreso.setPlaceholderText("Observaciones internas, precintos, indicaciones...")
@@ -244,7 +247,7 @@ class TabIngreso(QWidget):
         h_header_ingreso.addStretch()
         
         self.tabla_ingresos = QTableWidget(); self.tabla_ingresos.setColumnCount(8); 
-        self.tabla_ingresos.setHorizontalHeaderLabels(["ID", "Serv", "Guía", "Proveedor", "Destino", "Domicilio", "Zona", "Bultos/Hs"]); self.tabla_ingresos.hideColumn(0); 
+        self.tabla_ingresos.setHorizontalHeaderLabels(["ID", "Serv", "Guía", "Cliente", "Destino", "Domicilio", "Zona", "Bultos/Hs"]); self.tabla_ingresos.hideColumn(0); 
         self.tabla_ingresos.setStyleSheet(ESTILO_TABLAS_BLANCAS)
         self.pintor_ingreso = PintorCeldasDelegate(self.tabla_ingresos)
         self.tabla_ingresos.setItemDelegate(self.pintor_ingreso)
@@ -402,8 +405,11 @@ class TabIngreso(QWidget):
     def guardar_ingreso(self):
         fecha_seleccionada = self.in_fecha.date().toPyDate()
         if fecha_seleccionada > datetime.now().date():
-            QMessageBox.warning(self, "Alerta de Fecha", "⚠️ ¡ERROR!\nNo puedes seleccionar una fecha de entrega en el futuro.")
-            return
+            respuesta = QMessageBox.question(self, "Confirmar Fecha Futura", 
+                "⚠️ ATENCIÓN: Estás seleccionando una fecha programada para el futuro.\n\n¿Estás seguro de que deseas guardar esta guía con esa fecha?", 
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+            if respuesta == QMessageBox.StandardButton.No:
+                return
             
         prov = self.in_prov.currentText().strip().upper()
         if "SELECCIONE CLIENTE" in prov or not prov:
@@ -502,7 +508,6 @@ class TabIngreso(QWidget):
                         continue
                     peso_txt = d.get('peso', 0.0); bultos_txt = d['bultos']; precio = self.main.obtener_precio(self.main.sucursal_actual, bultos_txt, 0, proveedor="DHL EXPRESS", peso=peso_txt, bultos_totales=bultos_txt)
                     
-                    # Persistencia automática de fecha de ingreso del sistema
                     op = Operacion(fecha_ingreso=datetime.now(), fecha_entrega=datetime.combine(d['fecha_ingreso'], datetime.min.time()), sucursal=self.main.sucursal_actual, guia_remito=d['guia'], proveedor="DHL EXPRESS", destinatario=d['destinatario'][:100].upper(), domicilio=d['domicilio'][:150].upper(), localidad=self.main.sucursal_actual.upper(), celular=d['celular'][:50], bultos=bultos_txt, bultos_frio=0, peso=peso_txt, tipo_carga="AMBIENTE", tipo_urgencia=Urgencia.CLASICO, monto_servicio=precio, estado=Estados.EN_DEPOSITO, tipo_servicio="Entrega (Reparto)")
                     self.main.session.add(op); hist = Historial(operacion=op, usuario=self.main.usuario.username, accion="INGRESO IMPORTADO", detalle="Carga masiva por TXT DHL"); self.main.session.add(hist); agregadas += 1
                 self.main.session.commit(); QApplication.restoreOverrideCursor(); self.main.setWindowTitle(f"E.K. LOGISTICA (NUBE) - Usuario: {self.main.usuario.username.upper()}")
