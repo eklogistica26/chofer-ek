@@ -405,8 +405,9 @@ class TabIngreso(QWidget):
     def guardar_ingreso(self):
         fecha_seleccionada = self.in_fecha.date().toPyDate()
         if fecha_seleccionada > datetime.now().date():
+            fecha_str = fecha_seleccionada.strftime("%d/%m/%Y")
             respuesta = QMessageBox.question(self, "Confirmar Fecha Futura", 
-                "⚠️ ATENCIÓN: Estás seleccionando una fecha programada para el futuro.\n\n¿Estás seguro de que deseas guardar esta guía con esa fecha?", 
+                f"⚠️ ATENCIÓN: Estás programando una entrega para una fecha en el futuro ({fecha_str}).\n\n¿Estás seguro de que deseas guardar esta guía con esta fecha?", 
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
             if respuesta == QMessageBox.StandardButton.No:
                 return
@@ -479,11 +480,41 @@ class TabIngreso(QWidget):
                     except: pass
             except Exception: pass
             if hasattr(self.main, 'cargar_ruta'): self.main.cargar_ruta()
-            self.in_guia.clear(); self.in_dest.clear(); self.in_cel.clear(); self.in_dom.clear(); self.in_monto_recaudar.setValue(0); self.in_info_intercambio.clear(); self.chk_cr.setChecked(False); self.in_cliente_retiro.setCurrentIndex(0); self.in_bultos_simple.setValue(1); self.in_peso_manual.setValue(0); self.in_precio_flete.setValue(0); self.radio_ida.setChecked(True); self.in_cant_comun.setValue(1); self.in_cant_frio.setValue(1); self.radio_comun.setChecked(True); self.cambiar_interfaz_tipo(); self.chk_contingencia.setChecked(False); self.in_monto_contingencia.setValue(1500.0)
-            self.in_obs_ingreso.clear() 
-            self.in_prov.setCurrentIndex(0) 
             
-            self.cargar_destinos_frecuentes_combo(prov); self.cargar_movimientos_dia(); self.in_destinos_frecuentes.setCurrentIndex(0); self.configurar_autocompletado_global(); self.main.toast.mostrar(mensaje_toast)
+            # Limpieza total del formulario de ingreso
+            self.in_fecha.setDate(QDate.currentDate())
+            self.in_guia.clear()
+            self.in_dest.clear()
+            self.in_cel.clear()
+            self.in_dom.clear()
+            self.in_monto_recaudar.setValue(0)
+            self.in_info_intercambio.clear()
+            self.chk_cr.setChecked(False)
+            self.in_cliente_retiro.setCurrentIndex(0)
+            self.in_bultos_simple.setValue(1)
+            self.in_peso_manual.setValue(0)
+            self.in_precio_flete.setValue(0)
+            self.radio_ida.setChecked(True)
+            self.in_cant_comun.setValue(1)
+            self.in_cant_frio.setValue(1)
+            self.radio_comun.setChecked(True)
+            self.cambiar_interfaz_tipo()
+            self.chk_contingencia.setChecked(False)
+            self.in_monto_contingencia.setValue(1500.0)
+            self.in_obs_ingreso.clear() 
+            
+            self.in_prov.blockSignals(True)
+            self.in_prov.setCurrentIndex(0) 
+            self.in_prov.blockSignals(False)
+            self.cargar_destinos_frecuentes_combo("--- SELECCIONE CLIENTE ---")
+            self.actualizar_interfaz_peso()
+            if self.in_loc_combo.count() > 0:
+                self.in_loc_combo.setCurrentIndex(0)
+            
+            self.cargar_movimientos_dia()
+            self.in_destinos_frecuentes.setCurrentIndex(0)
+            self.configurar_autocompletado_global()
+            self.main.toast.mostrar(mensaje_toast)
             if hasattr(self.main, 'cargar_monitor_global'): self.main.cargar_monitor_global()
         except Exception: self.main.session.rollback(); QMessageBox.warning(self, "Micro-corte", "La conexión parpadeó. Intenta de nuevo.")
 
