@@ -605,7 +605,7 @@ class GestorAvisosDialog(QDialog):
         self.session = session
         self.usuario_actual = usuario_actual
         self.setWindowTitle("🔔 Gestor de Avisos Internos")
-        self.setGeometry(300, 150, 800, 550)
+        self.setGeometry(300, 150, 850, 550)
         
         layout = QVBoxLayout(self)
         self.tabs = QTabWidget()
@@ -646,22 +646,31 @@ class GestorAvisosDialog(QDialog):
         tab_historial = QWidget()
         lay_hist = QVBoxLayout(tab_historial)
         self.tabla_hist = QTableWidget()
-        self.tabla_hist.setColumnCount(6)
-        self.tabla_hist.setHorizontalHeaderLabels(["Creación", "Para", "Programado", "Mensaje", "Estado", "Leído el"])
+        self.tabla_hist.setColumnCount(7)
+        self.tabla_hist.setHorizontalHeaderLabels(["Creación", "De", "Para", "Programado", "Mensaje", "Estado", "Leído el"])
         self.tabla_hist.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
-        self.tabla_hist.setColumnWidth(0, 120)
-        self.tabla_hist.setColumnWidth(1, 100)
-        self.tabla_hist.setColumnWidth(2, 100)
-        self.tabla_hist.setColumnWidth(3, 300)
-        self.tabla_hist.setColumnWidth(4, 120)
+        self.tabla_hist.setColumnWidth(0, 110)
+        self.tabla_hist.setColumnWidth(1, 80)
+        self.tabla_hist.setColumnWidth(2, 80)
+        self.tabla_hist.setColumnWidth(3, 80)
+        self.tabla_hist.setColumnWidth(4, 250)
+        self.tabla_hist.setColumnWidth(5, 100)
         self.tabla_hist.horizontalHeader().setStretchLastSection(True)
         self.tabla_hist.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.tabla_hist.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         lay_hist.addWidget(self.tabla_hist)
         
+        h_btn_hist = QHBoxLayout()
         btn_act = QPushButton("🔄 Actualizar Historial")
         btn_act.clicked.connect(self.cargar_historial)
-        lay_hist.addWidget(btn_act)
+        
+        btn_borrar = QPushButton("🗑️ Borrar Aviso Seleccionado")
+        btn_borrar.setStyleSheet("background-color: #dc3545; color: white; font-weight: bold;")
+        btn_borrar.clicked.connect(self.borrar_aviso)
+        
+        h_btn_hist.addWidget(btn_act)
+        h_btn_hist.addWidget(btn_borrar)
+        lay_hist.addLayout(h_btn_hist)
         
         self.tabs.addTab(tab_historial, "📜 Historial de Avisos")
         
@@ -685,14 +694,13 @@ class GestorAvisosDialog(QDialog):
             QMessageBox.information(self, "Éxito", "Aviso programado correctamente.")
             self.in_mensaje.clear()
             self.cargar_historial()
-            self.tabs.setCurrentIndex(1) # Salta al historial para que lo vea guardado
+            self.tabs.setCurrentIndex(1)
         except Exception as e:
             self.session.rollback()
             QMessageBox.critical(self, "Error", f"Fallo al guardar: {e}")
             
     def cargar_historial(self):
         try:
-            # Mostramos los enviados por el usuario actual o recibidos por el usuario actual
             avisos = self.session.query(AvisoInterno).filter(
                 (AvisoInterno.emisor == self.usuario_actual) | 
                 (AvisoInterno.receptor == self.usuario_actual) | 
@@ -702,10 +710,15 @@ class GestorAvisosDialog(QDialog):
             self.tabla_hist.setRowCount(0)
             for r, av in enumerate(avisos):
                 self.tabla_hist.insertRow(r)
-                self.tabla_hist.setItem(r, 0, QTableWidgetItem(av.fecha_creacion.strftime("%d/%m/%y %H:%M")))
-                self.tabla_hist.setItem(r, 1, QTableWidgetItem(av.receptor.upper()))
-                self.tabla_hist.setItem(r, 2, QTableWidgetItem(av.fecha_programada.strftime("%d/%m/%Y")))
-                self.tabla_hist.setItem(r, 3, QTableWidgetItem(av.mensaje))
+                
+                it_fecha = QTableWidgetItem(av.fecha_creacion.strftime("%d/%m/%y %H:%M"))
+                it_fecha.setData(Qt.ItemDataRole.UserRole, av.id) 
+                
+                self.tabla_hist.setItem(r, 0, it_fecha)
+                self.tabla_hist.setItem(r, 1, QTableWidgetItem(av.emisor.upper()))
+                self.tabla_hist.setItem(r, 2, QTableWidgetItem(av.receptor.upper()))
+                self.tabla_hist.setItem(r, 3, QTableWidgetItem(av.fecha_programada.strftime("%d/%m/%Y")))
+                self.tabla_hist.setItem(r, 4, QTableWidgetItem(av.mensaje))
                 
                 if av.leido:
                     it_est = QTableWidgetItem("🟢 LEÍDO")
@@ -716,7 +729,37 @@ class GestorAvisosDialog(QDialog):
                     it_est.setForeground(QColor("red"))
                     fecha_lec = "-"
                     
-                self.tabla_hist.setItem(r, 4, it_est)
-                self.tabla_hist.setItem(r, 5, QTableWidgetItem(fecha_lec))
+                self.tabla_hist.setItem(r, 5, it_est)
+                self.tabla_hist.setItem(r, 6, QTableWidgetItem(fecha_lec))
         except Exception as e: 
             self.session.rollback()
+
+    def borrar_aviso(self):
+        r = self.tabla_hist.currentRow()
+        if r < 0:
+            QMessageBox.warning(self, "Atención", "Seleccione un aviso de la lista para borrar.")
+            return
+            
+        id_aviso = self.tabla_hist.item(r, 0).data(Qt.ItemDataRole.UserRole)
+        if not id_aviso: return
+        
+        try:
+            aviso = self.session.query(AvisoInterno).get(id_aviso)
+            if not aviso:
+                QMessageBox.warning(self, "Error", "El aviso ya no existe en la base de datos.")
+                self.cargar_historial()
+                return
+                
+            if aviso.emisor != self.usuario_actual:
+                QMessageBox.warning(self, "Acceso Denegado", "❌ Solo el creador del aviso puede eliminarlo.")
+                return
+                
+            reply = QMessageBox.question(self, "Confirmar", "¿Seguro que desea eliminar este aviso permanentemente?", QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+            if reply == QMessageBox.StandardButton.Yes:
+                self.session.delete(aviso)
+                self.session.commit()
+                QMessageBox.information(self, "Éxito", "Aviso eliminado correctamente.")
+                self.cargar_historial()
+        except Exception as e:
+            self.session.rollback()
+            QMessageBox.critical(self, "Error", f"Fallo al borrar: {e}")
