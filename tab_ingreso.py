@@ -73,15 +73,16 @@ class TabIngreso(QWidget):
         
         self.in_fecha = QDateEdit(QDate.currentDate())
         self.in_fecha.setCalendarPopup(True)
-        # 🔥 LISTA VIP: Agregá acá los nombres de los que pueden cambiar la fecha 🔥
-        usuarios_permitidos = ["gaston", "angel"]
-        self.in_fecha.setEnabled(self.main.usuario.es_admin_total or self.main.usuario.username.lower() in usuarios_permitidos)
+        self.in_fecha.setEnabled(True) 
         self.in_fecha.dateChanged.connect(self.cargar_movimientos_dia)
         
         self.lbl_guia = QLabel("Guía / Remito:"); self.in_guia = QLineEdit()
         self.lbl_cli_ret = QLabel("Buscar Cliente:"); self.in_cliente_retiro = QComboBox(); self.in_cliente_retiro.setEditable(True); self.in_cliente_retiro.completer().setFilterMode(Qt.MatchFlag.MatchContains); self.in_cliente_retiro.currentIndexChanged.connect(self.cargar_datos_cliente); self.lbl_cli_ret.hide(); self.in_cliente_retiro.hide()
         
-        self.in_prov = QComboBox(); self.in_prov.addItems(self.main.lista_proveedores); self.in_prov.setEditable(False)
+        self.in_prov = QComboBox()
+        self.in_prov.addItem("--- SELECCIONE CLIENTE ---")
+        self.in_prov.addItems(self.main.lista_proveedores)
+        self.in_prov.setEditable(False)
         self.in_prov.currentTextChanged.connect(self.cargar_destinos_frecuentes_combo)
         self.in_prov.currentTextChanged.connect(self.actualizar_interfaz_peso)
         
@@ -100,21 +101,20 @@ class TabIngreso(QWidget):
         
         self.in_dest = QLineEdit(); self.in_cel = QLineEdit(); self.in_cel.setPlaceholderText("Ej: 261-155..."); self.in_dom = QLineEdit(); self.in_loc_combo = QComboBox()
         
-        # 🔥 NUEVO CAMPO: Observaciones de Ingreso 🔥
         self.in_obs_ingreso = QLineEdit()
         self.in_obs_ingreso.setPlaceholderText("Observaciones internas, precintos, indicaciones...")
         
         fl.addRow("Tipo:", self.in_serv)
         fl.addRow(self.lbl_cli_ret, self.in_cliente_retiro)
-        fl.addRow("Fecha:", self.in_fecha)
+        fl.addRow("Fecha Entrega:", self.in_fecha) 
         fl.addRow(self.lbl_guia, self.in_guia)
-        fl.addRow("Proveedor:", self.in_prov)
+        fl.addRow("Cliente:", self.in_prov) 
         fl.addRow("📍 Destinos Fijos:", dest_layout)
         fl.addRow("Destinatario:", self.in_dest)
-        fl.addRow("Celular:", self.in_cel)
-        fl.addRow("Domicilio:", self.in_dom)
+        fl.addRow("Domicilio:", self.in_dom) 
+        fl.addRow("Celular:", self.in_cel)   
         fl.addRow("Zona:", self.in_loc_combo)
-        fl.addRow("📝 Obs. de Ingreso:", self.in_obs_ingreso) # <-- AÑADIDO AL LAYOUT
+        fl.addRow("📝 Obs. de Ingreso:", self.in_obs_ingreso) 
         p_datos.setLayout(fl)
         
         gb_tipo = QGroupBox("Configuración de Carga")
@@ -240,12 +240,7 @@ class TabIngreso(QWidget):
         btn_ref_ingreso = QPushButton("🔄 Actualizar")
         btn_ref_ingreso.clicked.connect(self.cargar_movimientos_dia)
         
-        btn_exportar_stock = QPushButton("📊 Exportar Stock a Excel")
-        btn_exportar_stock.setStyleSheet("background-color: #28a745; color: white; font-weight: bold; padding: 4px 10px;")
-        btn_exportar_stock.clicked.connect(self.exportar_stock_excel)
-        
         h_header_ingreso.addWidget(btn_ref_ingreso)
-        h_header_ingreso.addWidget(btn_exportar_stock)
         h_header_ingreso.addStretch()
         
         self.tabla_ingresos = QTableWidget(); self.tabla_ingresos.setColumnCount(8); 
@@ -353,7 +348,6 @@ class TabIngreso(QWidget):
         if is_flete: self.widget_carga_normal.hide(); self.widget_carga_flete.show(); self.group_cr.hide(); self.chk_cr.setChecked(False) 
         else: self.widget_carga_normal.show(); self.widget_carga_flete.hide(); self.group_cr.show()
         
-        # 🔥 FORZAMOS A QUE EVALÚE SI DEBE MOSTRAR EL PESO PARA DHL TANTO EN ENTREGA COMO RETIRO 🔥
         self.actualizar_interfaz_peso()
 
     def cargar_datos_cliente(self):
@@ -377,7 +371,7 @@ class TabIngreso(QWidget):
 
     def buscar_destino_por_codigo(self):
         codigo = self.in_codigo_rapido.text().strip(); prov = self.in_prov.currentText()
-        if not codigo or not prov or prov == "JetPaq": return
+        if not codigo or "SELECCIONE" in prov or prov == "JetPaq": return
         try:
             id_buscado = int(codigo); destino = self.main.session.query(DestinoFrecuente).get(id_buscado)
             if destino:
@@ -406,17 +400,27 @@ class TabIngreso(QWidget):
         self.in_dest.setStyleSheet(""); self.in_dom.setStyleSheet(""); self.in_loc_combo.setStyleSheet(""); self.in_prov.setStyleSheet("")
 
     def guardar_ingreso(self):
+        fecha_seleccionada = self.in_fecha.date().toPyDate()
+        if fecha_seleccionada > datetime.now().date():
+            QMessageBox.warning(self, "Alerta de Fecha", "⚠️ ¡ERROR!\nNo puedes seleccionar una fecha de entrega en el futuro.")
+            return
+            
+        prov = self.in_prov.currentText().strip().upper()
+        if "SELECCIONE CLIENTE" in prov or not prov:
+            QMessageBox.warning(self, "Falta Dato", "⚠️ Debe seleccionar un Cliente de la lista desplegable.")
+            return
+            
         if not self.in_guia.text().strip() and "Entrega" in self.in_serv.currentText(): QMessageBox.warning(self, "Falta Dato", "Debe ingresar el N° de Guía/Remito."); return
         if not self.in_dest.text().strip(): QMessageBox.warning(self, "Falta Dato", "Falta el Destinatario."); return
         if not self.in_dom.text().strip(): QMessageBox.warning(self, "Falta Dato", "Falta el Domicilio."); return
         if not self.in_loc_combo.currentText(): QMessageBox.warning(self, "Falta Dato", "Seleccione una Zona."); return
+        
         try:
             servicio = self.in_serv.currentText()
             loc = self.in_loc_combo.currentText().strip().upper()
             peso_manual = self.in_peso_manual.value()
-            prov = self.in_prov.currentText().strip().upper()
             guia_final = self.in_guia.text().strip().upper()
-            obs_ing = self.in_obs_ingreso.text().strip().upper() # 🔥 EXTRAEMOS LA NOTA 🔥
+            obs_ing = self.in_obs_ingreso.text().strip().upper()
             
             dest_texto = self.in_dest.text().strip().upper()
             if "[" in dest_texto:
@@ -453,11 +457,10 @@ class TabIngreso(QWidget):
                     self.main.session.add(nuevo_dest); self.main.session.flush() 
                 else: mensaje_toast = "✅ GUARDADO (Destino ya existía, se evitó duplicarlo)"
             
-            # 🔥 CORRECCIÓN HORARIA: Le sumamos la hora actual para que el reporte no lo tire al día de ayer 🔥
-            fecha_ingreso_real = datetime.combine(self.in_fecha.date().toPyDate(), datetime.now().time())
+            fecha_ingreso_real = datetime.now() 
+            fecha_entrega_asignada = datetime.combine(fecha_seleccionada, datetime.now().time()) if fecha_seleccionada != datetime.now().date() else None
             
-            # 🔥 GUARDAMOS EL OBJETO CON ESTADO INICIAL, FECHA CORRECTA Y OBSERVACIONES 🔥
-            op = Operacion(fecha_ingreso=fecha_ingreso_real, sucursal=self.main.sucursal_actual, guia_remito=guia_final, proveedor=prov, destinatario=dest_texto, celular=cel_texto, domicilio=dom_texto, localidad=loc, bultos=bultos_total, bultos_frio=c_frio, peso=peso_manual, tipo_carga=tipo_carga_txt, tipo_urgencia=Urgencia.CLASICO, monto_servicio=precio, estado=Estados.EN_DEPOSITO, es_contra_reembolso=tiene_cr, monto_recaudacion=monto_cr, info_intercambio=info_cr, tipo_servicio=servicio, observaciones_ingreso=obs_ing)
+            op = Operacion(fecha_ingreso=fecha_ingreso_real, fecha_entrega=fecha_entrega_asignada, sucursal=self.main.sucursal_actual, guia_remito=guia_final, proveedor=prov, destinatario=dest_texto, celular=cel_texto, domicilio=dom_texto, localidad=loc, bultos=bultos_total, bultos_frio=c_frio, peso=peso_manual, tipo_carga=tipo_carga_txt, tipo_urgencia=Urgencia.CLASICO, monto_servicio=precio, estado=Estados.EN_DEPOSITO, es_contra_reembolso=tiene_cr, monto_recaudacion=monto_cr, info_intercambio=info_cr, tipo_servicio=servicio, observaciones_ingreso=obs_ing)
             
             self.main.session.add(op); self.main.session.flush(); 
             self.main.log_movimiento(op, "INGRESO A DEPOSITO", f"Carga inicial. Obs: {obs_ing}") 
@@ -471,7 +474,8 @@ class TabIngreso(QWidget):
             except Exception: pass
             if hasattr(self.main, 'cargar_ruta'): self.main.cargar_ruta()
             self.in_guia.clear(); self.in_dest.clear(); self.in_cel.clear(); self.in_dom.clear(); self.in_monto_recaudar.setValue(0); self.in_info_intercambio.clear(); self.chk_cr.setChecked(False); self.in_cliente_retiro.setCurrentIndex(0); self.in_bultos_simple.setValue(1); self.in_peso_manual.setValue(0); self.in_precio_flete.setValue(0); self.radio_ida.setChecked(True); self.in_cant_comun.setValue(1); self.in_cant_frio.setValue(1); self.radio_comun.setChecked(True); self.cambiar_interfaz_tipo(); self.chk_contingencia.setChecked(False); self.in_monto_contingencia.setValue(1500.0)
-            self.in_obs_ingreso.clear() # 🔥 LIMPIAMOS LA CASILLA 🔥
+            self.in_obs_ingreso.clear() 
+            self.in_prov.setCurrentIndex(0) 
             
             self.cargar_destinos_frecuentes_combo(prov); self.cargar_movimientos_dia(); self.in_destinos_frecuentes.setCurrentIndex(0); self.configurar_autocompletado_global(); self.main.toast.mostrar(mensaje_toast)
             if hasattr(self.main, 'cargar_monitor_global'): self.main.cargar_monitor_global()
@@ -497,7 +501,9 @@ class TabIngreso(QWidget):
                         guias_omitidas_detalle.append(d['guia'])
                         continue
                     peso_txt = d.get('peso', 0.0); bultos_txt = d['bultos']; precio = self.main.obtener_precio(self.main.sucursal_actual, bultos_txt, 0, proveedor="DHL EXPRESS", peso=peso_txt, bultos_totales=bultos_txt)
-                    op = Operacion(fecha_ingreso=d['fecha_ingreso'], sucursal=self.main.sucursal_actual, guia_remito=d['guia'], proveedor="DHL EXPRESS", destinatario=d['destinatario'][:100].upper(), domicilio=d['domicilio'][:150].upper(), localidad=self.main.sucursal_actual.upper(), celular=d['celular'][:50], bultos=bultos_txt, bultos_frio=0, peso=peso_txt, tipo_carga="AMBIENTE", tipo_urgencia=Urgencia.CLASICO, monto_servicio=precio, estado=Estados.EN_DEPOSITO, tipo_servicio="Entrega (Reparto)")
+                    
+                    # Persistencia automática de fecha de ingreso del sistema
+                    op = Operacion(fecha_ingreso=datetime.now(), fecha_entrega=datetime.combine(d['fecha_ingreso'], datetime.min.time()), sucursal=self.main.sucursal_actual, guia_remito=d['guia'], proveedor="DHL EXPRESS", destinatario=d['destinatario'][:100].upper(), domicilio=d['domicilio'][:150].upper(), localidad=self.main.sucursal_actual.upper(), celular=d['celular'][:50], bultos=bultos_txt, bultos_frio=0, peso=peso_txt, tipo_carga="AMBIENTE", tipo_urgencia=Urgencia.CLASICO, monto_servicio=precio, estado=Estados.EN_DEPOSITO, tipo_servicio="Entrega (Reparto)")
                     self.main.session.add(op); hist = Historial(operacion=op, usuario=self.main.usuario.username, accion="INGRESO IMPORTADO", detalle="Carga masiva por TXT DHL"); self.main.session.add(hist); agregadas += 1
                 self.main.session.commit(); QApplication.restoreOverrideCursor(); self.main.setWindowTitle(f"E.K. LOGISTICA (NUBE) - Usuario: {self.main.usuario.username.upper()}")
                 
@@ -541,93 +547,3 @@ class TabIngreso(QWidget):
                 elif bultos_fr == bultos_tot: det_b += " (F)"
                 self.tabla_ingresos.setItem(row, 7, QTableWidgetItem(det_b))
         except Exception: self.main.session.rollback()
-
-    def exportar_stock_excel(self):
-        import pandas as pd
-        from datetime import datetime
-        try:
-            QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
-            
-            # 🔥 REGLA DE ORO: Traer absolutamente TODO lo que esté en depósito, sin importar la fecha 🔥
-            ops = self.main.session.query(Operacion).filter(
-                Operacion.estado.in_([Estados.EN_DEPOSITO, 'EN DEPÓSITO']), 
-                Operacion.sucursal == self.main.sucursal_actual
-            ).order_by(Operacion.id.desc()).all()
-            
-            if not ops:
-                QApplication.restoreOverrideCursor()
-                QMessageBox.information(self, "Stock", "No hay guías en depósito actualmente.")
-                return
-                
-            data = []
-            for op in ops:
-                dias_deposito = (datetime.now().date() - op.fecha_ingreso).days if op.fecha_ingreso else 0
-                data.append({
-                    "Días en Depósito": dias_deposito,
-                    "Fecha Ingreso": op.fecha_ingreso.strftime("%d/%m/%Y") if op.fecha_ingreso else "-",
-                    "Guía / Remito": op.guia_remito or "-",
-                    "Proveedor": op.proveedor or "-",
-                    "Destinatario": op.destinatario or "-",
-                    "Domicilio": op.domicilio or "-",
-                    "Localidad": op.localidad or "-",
-                    "Bultos": op.bultos or 1,
-                    "Servicio": op.tipo_servicio or "-"
-                })
-            
-            df = pd.DataFrame(data)
-            
-            descargas_dir = os.path.join(os.path.expanduser('~'), 'Downloads')
-            os.makedirs(descargas_dir, exist_ok=True)
-            ruta_excel = os.path.join(descargas_dir, f"Stock_Deposito_{self.main.sucursal_actual}_{datetime.now().strftime('%d%m%Y_%H%M')}.xlsx")
-            
-            with pd.ExcelWriter(ruta_excel, engine='xlsxwriter') as writer:
-                df.to_excel(writer, index=False, sheet_name='Stock_EK')
-                workbook  = writer.book
-                worksheet = writer.sheets['Stock_EK']
-                
-                # 🔥 CREAMOS LOS ESTILOS PREMIUM 🔥
-                formato_header = workbook.add_format({
-                    'bold': True, 'text_wrap': True, 'valign': 'vcenter', 'align': 'center',
-                    'fg_color': '#1565C0', 'font_color': 'white', 'border': 1
-                })
-                
-                formato_texto = workbook.add_format({'num_format': '@', 'align': 'left', 'valign': 'vcenter'})
-                formato_centro = workbook.add_format({'align': 'center', 'valign': 'vcenter'})
-                
-                # Colores para el semáforo
-                formato_alerta_roja = workbook.add_format({'bg_color': '#f8d7da', 'font_color': '#721c24', 'align': 'center', 'valign': 'vcenter', 'bold': True})
-                formato_alerta_ama = workbook.add_format({'bg_color': '#fff3cd', 'font_color': '#856404', 'align': 'center', 'valign': 'vcenter', 'bold': True})
-                formato_ok = workbook.add_format({'bg_color': '#d4edda', 'font_color': '#155724', 'align': 'center', 'valign': 'vcenter', 'bold': True})
-
-                # 1. Aplicamos el formato al encabezado
-                for col_num, value in enumerate(df.columns.values):
-                    worksheet.write(0, col_num, value, formato_header)
-                
-                # 2. Ajustamos los anchos de las columnas para que no salga todo apretado
-                worksheet.set_column('A:A', 18, formato_centro) # Dias
-                worksheet.set_column('B:B', 15, formato_centro) # Fecha
-                worksheet.set_column('C:C', 20, formato_texto)  # Guia
-                worksheet.set_column('D:E', 25, formato_texto)  # Prov, Dest
-                worksheet.set_column('F:F', 35, formato_texto)  # Domicilio
-                worksheet.set_column('G:G', 20, formato_texto)  # Loc
-                worksheet.set_column('H:H', 10, formato_centro) # Bultos
-                worksheet.set_column('I:I', 20, formato_centro) # Servicio
-
-                # 3. Congelamos la primera fila y ponemos autofiltros
-                worksheet.freeze_panes(1, 0)
-                worksheet.autofilter(0, 0, len(df), len(df.columns) - 1)
-                
-                # 4. Magia del Semáforo Condicional para la columna A ("Días")
-                worksheet.conditional_format(f'A2:A{len(df)+1}', {'type': 'cell', 'criteria': '>=', 'value': 5, 'format': formato_alerta_roja})
-                worksheet.conditional_format(f'A2:A{len(df)+1}', {'type': 'cell', 'criteria': 'between', 'minimum': 2, 'maximum': 4, 'format': formato_alerta_ama})
-                worksheet.conditional_format(f'A2:A{len(df)+1}', {'type': 'cell', 'criteria': '<', 'value': 2, 'format': formato_ok})
-
-            QApplication.restoreOverrideCursor()
-            try: os.startfile(ruta_excel)
-            except: pass
-            self.main.toast.mostrar(f"✅ Stock exportado con diseño ({len(ops)} guías)")
-            
-        except Exception as e:
-            QApplication.restoreOverrideCursor()
-            self.main.session.rollback()
-            QMessageBox.critical(self, "Error", f"Error al exportar stock: {e}")

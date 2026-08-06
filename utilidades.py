@@ -604,7 +604,7 @@ def crear_pdf_stock_historico(nombre_archivo, ops, fecha_corte, sucursal, provee
     titulo_style = ParagraphStyle(name='TituloCentro', parent=styles['Heading1'], alignment=TA_CENTER, fontSize=16, textColor=colors.HexColor("#0d6efd"))
     sub_style = ParagraphStyle(name='SubCentro', parent=styles['Normal'], alignment=TA_CENTER, fontSize=11)
     
-    elements.append(Paragraph("REPORTE DE STOCK FÍSICO (VIAJE EN EL TIEMPO)", titulo_style))
+    elements.append(Paragraph("REPORTE DE STOCK FÍSICO HISTÓRICO", titulo_style))
     elements.append(Spacer(1, 5))
     elements.append(Paragraph(f"<b>Fecha de Corte:</b> {fecha_corte} &nbsp;|&nbsp; <b>Sucursal:</b> {sucursal.upper()} &nbsp;|&nbsp; <b>Proveedor:</b> {proveedor.upper()}", sub_style))
     elements.append(Paragraph(f"Generado el: {fecha_generacion} por {usuario}", sub_style))
