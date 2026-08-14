@@ -1015,10 +1015,11 @@ class PlataformaLogistica(QMainWindow):
             sucursal = self.combo_suc_stock.currentText()
             proveedor = self.combo_prov_stock.currentText()
             
+            # 1. CONSULTA TOTALMENTE LIMPIA DE SQL - SOLO SUCURSAL Y PROVEEDOR
             query = self.session.query(Operacion)
             
             if sucursal != "Todas":
-                query = query.filter(Operacion.sucursal.ilike(sucursal))
+                query = query.filter(Operacion.sucursal.ilike(f"%{sucursal}%"))
                 
             if proveedor != "Todos":
                 if "DHL" in proveedor.upper():
@@ -1032,29 +1033,41 @@ class PlataformaLogistica(QMainWindow):
             stock_en_fecha = []
             
             for op in todas_las_operaciones:
-                if not op.fecha_ingreso:
+                # --- MOTOR DE FILTRADO EN PYTHON PURO ---
+                
+                # 1. Fecha de Ingreso: Si entró después de la fecha de corte, no era stock.
+                if op.fecha_ingreso:
+                    f_ing = op.fecha_ingreso.date() if isinstance(op.fecha_ingreso, datetime) else op.fecha_ingreso
+                    if f_ing > fecha_corte:
+                        continue
+                
+                estado_str = str(op.estado).strip().upper() if op.estado else ""
+                
+                # 2. Descartar definitivamente devoluciones a origen
+                if "ORIGEN" in estado_str or "DEVUELT" in estado_str:
                     continue
                     
-                f_ingreso = op.fecha_ingreso.date() if isinstance(op.fecha_ingreso, datetime) else op.fecha_ingreso
-                if f_ingreso > fecha_corte:
-                    continue
-                
-                estado_str = str(op.estado).upper() if op.estado else ""
-                
-                if op.fecha_entrega:
-                    f_entrega = op.fecha_entrega.date() if isinstance(op.fecha_entrega, datetime) else op.fecha_entrega
-                    if f_entrega <= fecha_corte:
-                        continue 
-                else:
-                    if "ENTREGADO" in estado_str:
-                        continue 
+                # 3. Validar entregados
+                if "ENTREGADO" in estado_str:
+                    if op.fecha_entrega:
+                        f_ent = op.fecha_entrega.date() if isinstance(op.fecha_entrega, datetime) else op.fecha_entrega
+                        # Si se entregó antes o en la misma fecha de corte, ya había salido del stock
+                        if f_ent <= fecha_corte:
+                            continue
+                    else:
+                        # Está entregado pero no tiene fecha, lo excluimos por seguridad (ya no está físicamente)
+                        continue
                         
-                if "ORIGEN" in estado_str or "DEVUELTO A ORIGEN" in estado_str:
-                    continue 
-
+                # Si superó todos los filtros, está FÍSICAMENTE en el depósito o en manos del chofer (En Reparto) en esa fecha
                 stock_en_fecha.append(op)
                 
-            stock_en_fecha.sort(key=lambda x: x.fecha_ingreso or datetime.min.date())
+            # Ordenamos para visualizar prolijo (usamos una mini función interna para no chocar con tipos de fecha nulos)
+            def get_sort_date(x):
+                if not x.fecha_ingreso:
+                    return datetime.min.date()
+                return x.fecha_ingreso.date() if isinstance(x.fecha_ingreso, datetime) else x.fecha_ingreso
+
+            stock_en_fecha.sort(key=get_sort_date)
             self.resultados_stock_hist = stock_en_fecha
             
             for row, op in enumerate(stock_en_fecha):
