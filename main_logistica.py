@@ -1095,7 +1095,6 @@ class PlataformaLogistica(QMainWindow):
                 worksheet.set_column('G:G', 20)
                 worksheet.set_column('H:H', 10)
             
-            import os
             os.startfile(ruta_excel)
             self.toast.mostrar("✅ Stock histórico exportado correctamente")
         except Exception as e:
@@ -1118,7 +1117,6 @@ class PlataformaLogistica(QMainWindow):
             
             crear_pdf_stock_historico(ruta_pdf, self.resultados_stock_hist, fecha_corte, sucursal, proveedor, self.usuario.username, datetime.now().strftime('%d/%m/%Y %H:%M'))
             
-            import os
             os.startfile(ruta_pdf)
             self.toast.mostrar("✅ PDF de Stock Histórico generado")
         except Exception as e:
