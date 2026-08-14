@@ -1017,17 +1017,30 @@ class PlataformaLogistica(QMainWindow):
             sucursal = self.combo_suc_stock.currentText()
             proveedor = self.combo_prov_stock.currentText()
             
+            # Condición 1: Que haya ingresado antes o durante la fecha de corte
             query = self.session.query(Operacion).filter(
-                func.date(Operacion.fecha_ingreso) <= fecha_corte,
+                func.date(Operacion.fecha_ingreso) <= fecha_corte
+            )
+            
+            # Condición 2: Que no esté entregado (o se entregó DESPUÉS de la fecha de corte)
+            # Condición 3: Excluir TODO lo que sea "Devuelto a Origen" de forma robusta
+            query = query.filter(
                 (Operacion.fecha_entrega == None) | (func.date(Operacion.fecha_entrega) > fecha_corte),
-                Operacion.estado != getattr(Estados, 'DEVUELTO_ORIGEN', 'DEVUELTO A ORIGEN')
+                ~Operacion.estado.ilike('%ORIGEN%')
             )
             
             if sucursal != "Todas":
                 query = query.filter(Operacion.sucursal == sucursal)
                 
+            # Filtro Inteligente de Proveedor
             if proveedor != "Todos":
-                query = query.filter(Operacion.proveedor.ilike(f"%{proveedor}%"))
+                if "DHL" in proveedor.upper():
+                    # Si elige "DHL Express" pero en la DB dice "DHL", esto lo atrapa
+                    query = query.filter(Operacion.proveedor.ilike("%DHL%"))
+                elif "JETPAQ" in proveedor.upper():
+                    query = query.filter(Operacion.proveedor.ilike("%JETPAQ%"))
+                else:
+                    query = query.filter(Operacion.proveedor.ilike(f"%{proveedor}%"))
                 
             query = query.order_by(Operacion.fecha_ingreso.asc())
             stock_en_fecha = query.all()
