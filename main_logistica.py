@@ -106,9 +106,7 @@ class PlataformaLogistica(QMainWindow):
         self.init_ui()
         self.tabs.currentChanged.connect(self.al_cambiar_pestana)
         
-        # Ejecuta la comprobación de alertas pendientes de forma silenciosa al arrancar
         QTimer.singleShot(1500, self.revisar_avisos_inicio)
-        
         self.timer = QTimer(); self.timer.timeout.connect(self.actualizar_tablas_automatico); self.timer.start(15000) 
 
     def safe_rollback(self):
@@ -137,7 +135,7 @@ class PlataformaLogistica(QMainWindow):
         try: self.session.execute(text("SELECT 1")).fetchall()
         except Exception: self.safe_rollback()
         if self.isActiveWindow():
-            self.actualizar_campanita() # Actualizamos la campanita de notificaciones
+            self.actualizar_campanita() 
             idx = self.tabs.currentIndex()
             if idx == 0: self.cargar_monitor_global(); self.cargar_novedades()
             elif idx == 1: self.tab_ingreso.cargar_movimientos_dia() 
@@ -1017,33 +1015,46 @@ class PlataformaLogistica(QMainWindow):
             sucursal = self.combo_suc_stock.currentText()
             proveedor = self.combo_prov_stock.currentText()
             
-            # Condición 1: Que haya ingresado antes o durante la fecha de corte
-            query = self.session.query(Operacion).filter(
-                func.date(Operacion.fecha_ingreso) <= fecha_corte
-            )
-            
-            # Condición 2: Que no esté entregado (o se entregó DESPUÉS de la fecha de corte)
-            # Condición 3: Excluir TODO lo que sea "Devuelto a Origen" de forma robusta
-            query = query.filter(
-                (Operacion.fecha_entrega == None) | (func.date(Operacion.fecha_entrega) > fecha_corte),
-                ~Operacion.estado.ilike('%ORIGEN%')
-            )
+            query = self.session.query(Operacion)
             
             if sucursal != "Todas":
-                query = query.filter(Operacion.sucursal == sucursal)
+                query = query.filter(Operacion.sucursal.ilike(sucursal))
                 
-            # Filtro Inteligente de Proveedor
             if proveedor != "Todos":
                 if "DHL" in proveedor.upper():
-                    # Si elige "DHL Express" pero en la DB dice "DHL", esto lo atrapa
                     query = query.filter(Operacion.proveedor.ilike("%DHL%"))
                 elif "JETPAQ" in proveedor.upper():
                     query = query.filter(Operacion.proveedor.ilike("%JETPAQ%"))
                 else:
                     query = query.filter(Operacion.proveedor.ilike(f"%{proveedor}%"))
+                    
+            todas_las_operaciones = query.all()
+            stock_en_fecha = []
+            
+            for op in todas_las_operaciones:
+                if not op.fecha_ingreso:
+                    continue
+                    
+                f_ingreso = op.fecha_ingreso.date() if isinstance(op.fecha_ingreso, datetime) else op.fecha_ingreso
+                if f_ingreso > fecha_corte:
+                    continue
                 
-            query = query.order_by(Operacion.fecha_ingreso.asc())
-            stock_en_fecha = query.all()
+                estado_str = str(op.estado).upper() if op.estado else ""
+                
+                if op.fecha_entrega:
+                    f_entrega = op.fecha_entrega.date() if isinstance(op.fecha_entrega, datetime) else op.fecha_entrega
+                    if f_entrega <= fecha_corte:
+                        continue 
+                else:
+                    if "ENTREGADO" in estado_str:
+                        continue 
+                        
+                if "ORIGEN" in estado_str or "DEVUELTO A ORIGEN" in estado_str:
+                    continue 
+
+                stock_en_fecha.append(op)
+                
+            stock_en_fecha.sort(key=lambda x: x.fecha_ingreso or datetime.min.date())
             self.resultados_stock_hist = stock_en_fecha
             
             for row, op in enumerate(stock_en_fecha):
