@@ -986,8 +986,8 @@ class PlataformaLogistica(QMainWindow):
         lay_stock.addLayout(top_stock)
         
         self.tabla_stock_hist = QTableWidget()
-        self.tabla_stock_hist.setColumnCount(8)
-        self.tabla_stock_hist.setHorizontalHeaderLabels(["F. Ingreso", "Sucursal", "Guía / Remito", "Proveedor", "Destinatario", "Domicilio", "Zona", "Bultos"])
+        self.tabla_stock_hist.setColumnCount(9)
+        self.tabla_stock_hist.setHorizontalHeaderLabels(["F. Ingreso", "Sucursal", "Guía / Remito", "Proveedor", "Destinatario", "Domicilio", "Zona", "Bultos", "Estado"])
         self.tabla_stock_hist.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
         self.tabla_stock_hist.setColumnWidth(0, 90)
         self.tabla_stock_hist.setColumnWidth(1, 90)
@@ -996,6 +996,7 @@ class PlataformaLogistica(QMainWindow):
         self.tabla_stock_hist.setColumnWidth(4, 180)
         self.tabla_stock_hist.setColumnWidth(5, 250)
         self.tabla_stock_hist.setColumnWidth(6, 120)
+        self.tabla_stock_hist.setColumnWidth(7, 80)
         self.tabla_stock_hist.horizontalHeader().setStretchLastSection(True)
         self.tabla_stock_hist.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.tabla_stock_hist.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
@@ -1018,14 +1019,15 @@ class PlataformaLogistica(QMainWindow):
             
             query = self.session.query(Operacion).filter(
                 func.date(Operacion.fecha_ingreso) <= fecha_corte,
-                (Operacion.fecha_entrega == None) | (func.date(Operacion.fecha_entrega) > fecha_corte)
+                (Operacion.fecha_entrega == None) | (func.date(Operacion.fecha_entrega) > fecha_corte),
+                Operacion.estado != getattr(Estados, 'DEVUELTO_ORIGEN', 'DEVUELTO A ORIGEN')
             )
             
             if sucursal != "Todas":
                 query = query.filter(Operacion.sucursal == sucursal)
                 
             if proveedor != "Todos":
-                query = query.filter(Operacion.proveedor.ilike(proveedor))
+                query = query.filter(Operacion.proveedor.ilike(f"%{proveedor}%"))
                 
             query = query.order_by(Operacion.fecha_ingreso.asc())
             stock_en_fecha = query.all()
@@ -1041,6 +1043,12 @@ class PlataformaLogistica(QMainWindow):
                 self.tabla_stock_hist.setItem(row, 5, QTableWidgetItem(op.domicilio or "-"))
                 self.tabla_stock_hist.setItem(row, 6, QTableWidgetItem(op.localidad or "-"))
                 self.tabla_stock_hist.setItem(row, 7, QTableWidgetItem(str(op.bultos or 1)))
+                
+                item_est = QTableWidgetItem(op.estado or "S/D")
+                if op.estado == getattr(Estados, 'EN_REPARTO', 'EN REPARTO'):
+                    item_est.setForeground(QColor("#856404"))
+                    item_est.setBackground(QColor("#fff3cd"))
+                self.tabla_stock_hist.setItem(row, 8, item_est)
             
             self.lbl_resumen_stock.setText(f"Total de Guías en Depósito al {fecha_corte.strftime('%d/%m/%Y')}: {len(stock_en_fecha)}")
         except Exception as e:
@@ -1067,6 +1075,7 @@ class PlataformaLogistica(QMainWindow):
                     "Domicilio": self.tabla_stock_hist.item(r, 5).text(),
                     "Zona / Localidad": self.tabla_stock_hist.item(r, 6).text(),
                     "Bultos": self.tabla_stock_hist.item(r, 7).text(),
+                    "Estado": self.tabla_stock_hist.item(r, 8).text(),
                 })
             
             df = pd.DataFrame(data)
@@ -1094,6 +1103,7 @@ class PlataformaLogistica(QMainWindow):
                 worksheet.set_column('F:F', 35)
                 worksheet.set_column('G:G', 20)
                 worksheet.set_column('H:H', 10)
+                worksheet.set_column('I:I', 15)
             
             os.startfile(ruta_excel)
             self.toast.mostrar("✅ Stock histórico exportado correctamente")
