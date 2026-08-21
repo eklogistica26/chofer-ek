@@ -14,7 +14,7 @@ from database import Operacion, Historial, Estados, ReciboPago
 from utilidades import crear_pdf_facturacion, crear_pdf_despacho_papeles
 from dialogos import CargarPagoDialog
 
-# 🔥 NUEVA VENTANA PARA CARGO FIJO CON FECHA 🔥
+# Ventana de diálogo para agregar un cargo fijo o extra con fecha
 class NuevoCargoFijoDialog(QDialog):
     def __init__(self, proveedores, parent=None):
         super().__init__(parent)
@@ -338,7 +338,7 @@ class AjusteAvanzadoFacturacionDialog(QDialog):
         form_extras.addRow("📝 Nota de Ajuste (Va al PDF):", self.in_obs_fact)
         layout.addLayout(form_extras)
         
-        # 🔥 PRECIO BASE AHORA ES EDITABLE 🔥
+        # Configuración del campo de precio base editable
         layout.addWidget(QLabel("<b>💵 Precio Base (Calculado / Manual):</b>"))
         self.in_precio_base = QDoubleSpinBox()
         self.in_precio_base.setRange(0, 10000000)
@@ -371,13 +371,12 @@ class AjusteAvanzadoFacturacionDialog(QDialog):
         self.btn_finde.clicked.connect(self.aplicar_finde)
         self.btn_feriado.clicked.connect(self.aplicar_feriado)
         
-        # Conectamos el precio base a la sumatoria final
         self.in_precio_base.valueChanged.connect(self.recalcular_solo_total)
         
         self.base_calculada = 0.0
         self.evaluar_reglas_y_recalcular()
         
-        # 🔥 Rescatamos el precio base real que tenía en la base de datos sin pisarlo 🔥
+        # Recuperación del precio base real desde la base de datos excluyendo extras
         m_finde_db = getattr(op, 'monto_finde', 0.0) or 0.0
         m_feriado_db = getattr(op, 'monto_feriado', 0.0) or 0.0
         m_esp_db = getattr(op, 'monto_espera', 0.0) or 0.0
@@ -431,7 +430,6 @@ class AjusteAvanzadoFacturacionDialog(QDialog):
         self.recalcular()
 
     def aplicar_finde(self): 
-        # Usa el precio de la casilla por si lo editaste manual
         self.in_finde.setValue(self.in_precio_base.value() * 1.0) 
         
     def aplicar_feriado(self): 
@@ -468,7 +466,6 @@ class AjusteAvanzadoFacturacionDialog(QDialog):
             self.in_finde.setValue(self.base_calculada)
             self.in_finde.blockSignals(False)
             
-        # Refleja el cálculo del motor en la casilla manual
         self.in_precio_base.blockSignals(True)
         self.in_precio_base.setValue(self.base_calculada)
         self.in_precio_base.blockSignals(False)
@@ -491,7 +488,6 @@ class TabFacturacion(QWidget):
         self.tabs_fact = QTabWidget()
         l.addWidget(self.tabs_fact)
         
-        # --- TAB 1: CALCULAR RENDICIÓN ---
         tab_rendicion = QWidget()
         layout_rend = QVBoxLayout(tab_rendicion)
         panel = QFrame()
@@ -577,14 +573,14 @@ class TabFacturacion(QWidget):
         self.btn_seleccionar_todo.setStyleSheet("background-color: #17a2b8; color: white; padding: 8px; font-weight: bold;")
         self.btn_seleccionar_todo.clicked.connect(self.toggle_seleccionar_todo)
         
-        # 🔥 BOTÓN PARA ELIMINAR GUÍAS DEFINTIVAMENTE 🔥
+        # Inicialización del botón para eliminar guías definitivamente
         self.btn_eliminar_fac = QPushButton("🗑️ Eliminar Guías")
         self.btn_eliminar_fac.setStyleSheet("background-color: #dc3545; color: white; padding: 8px; font-weight: bold;")
         self.btn_eliminar_fac.clicked.connect(self.eliminar_guias_facturacion)
         
         lay_abajo.addWidget(self.btn_deshacer_fac)
         lay_abajo.addWidget(self.btn_seleccionar_todo)
-        lay_abajo.addWidget(self.btn_eliminar_fac) # <-- Agregado al panel
+        lay_abajo.addWidget(self.btn_eliminar_fac)
         lay_abajo.addStretch()
         lay_abajo.addWidget(self.lbl_resumen)
         
@@ -593,7 +589,6 @@ class TabFacturacion(QWidget):
         layout_rend.addLayout(lay_abajo)
         self.tabs_fact.addTab(tab_rendicion, "1. Calcular Rendición")
         
-        # --- TAB 2: CUENTAS CORRIENTES ---
         tab_cta = QWidget()
         layout_cta = QVBoxLayout(tab_cta)
         top_cta = QHBoxLayout()
@@ -624,7 +619,6 @@ class TabFacturacion(QWidget):
         layout_cta.addWidget(self.tabla_ctacte)
         self.tabs_fact.addTab(tab_cta, "2. Cuentas Corrientes")
 
-        # --- TAB 3: DESPACHO PAPELES ---
         tab_despacho = QWidget()
         layout_despacho = QVBoxLayout(tab_despacho)
         
@@ -658,20 +652,29 @@ class TabFacturacion(QWidget):
         self.combo_prov_papel.setStyleSheet("font-weight: bold; padding: 4px;")
         btn_cargar_papeles = QPushButton("🔄 Traer Pendientes de Envío")
         btn_cargar_papeles.clicked.connect(self.cargar_papeles_pendientes)
+        
+        # --- NUEVO BOTÓN: Seleccionar / Deseleccionar Todo en Papeles ---
+        self.btn_seleccionar_papeles = QPushButton("☑️ Deseleccionar Todo")
+        self.btn_seleccionar_papeles.setStyleSheet("background-color: #17a2b8; color: white; font-weight: bold; padding: 4px 10px; border-radius: 4px;")
+        self.btn_seleccionar_papeles.clicked.connect(self.toggle_seleccionar_papeles)
+        
         lay_lote.addWidget(self.combo_prov_papel)
         lay_lote.addWidget(btn_cargar_papeles)
+        lay_lote.addWidget(self.btn_seleccionar_papeles) # Agregado a la interfaz
         lay_lote.addStretch()
         layout_despacho.addWidget(frame_lote)
         
         self.tabla_papeles = QTableWidget()
-        self.tabla_papeles.setColumnCount(5)
-        self.tabla_papeles.setHorizontalHeaderLabels(["Sel.", "F. Entrega", "Guía / Remito", "Proveedor", "Destinatario"])
+        # --- MODIFICADO: Se agregan 6 columnas para incluir Sucursal ---
+        self.tabla_papeles.setColumnCount(6)
+        self.tabla_papeles.setHorizontalHeaderLabels(["Sel.", "Sucursal", "F. Entrega", "Guía / Remito", "Proveedor", "Destinatario"])
         self.tabla_papeles.setStyleSheet(ESTILO_TABLAS_BLANCAS)
         header_papeles = self.tabla_papeles.horizontalHeader()
         self.tabla_papeles.setColumnWidth(0, 40)
-        self.tabla_papeles.setColumnWidth(1, 100)
-        self.tabla_papeles.setColumnWidth(2, 180)
-        self.tabla_papeles.setColumnWidth(3, 220)
+        self.tabla_papeles.setColumnWidth(1, 90)  # Ancho de Sucursal
+        self.tabla_papeles.setColumnWidth(2, 100) # Ancho de F. Entrega
+        self.tabla_papeles.setColumnWidth(3, 180) # Ancho Guía
+        self.tabla_papeles.setColumnWidth(4, 180) # Ancho Proveedor
         header_papeles.setStretchLastSection(True)
         self.tabla_papeles.verticalHeader().setDefaultSectionSize(35)
         self.tabla_papeles.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
@@ -692,7 +695,6 @@ class TabFacturacion(QWidget):
         
         self.tabs_fact.addTab(tab_despacho, "3. Despacho Papeles")
 
-        # --- TAB 4: AUDITORÍA DHL (XLSX) ---
         tab_auditoria = QWidget()
         layout_audit = QVBoxLayout(tab_auditoria)
         header_audit = QFrame()
@@ -747,6 +749,22 @@ class TabFacturacion(QWidget):
         except Exception as e: 
             self.main.session.rollback()
 
+    # --- NUEVA FUNCIÓN: Lógica del botón Seleccionar Todo de Papeles ---
+    def toggle_seleccionar_papeles(self):
+        self.tabla_papeles.blockSignals(True)
+        marcar = True
+        if "Deseleccionar" in self.btn_seleccionar_papeles.text(): 
+            marcar = False
+            self.btn_seleccionar_papeles.setText("☑️ Seleccionar Todo")
+        else: 
+            self.btn_seleccionar_papeles.setText("☑️ Deseleccionar Todo")
+            
+        estado = Qt.CheckState.Checked if marcar else Qt.CheckState.Unchecked
+        for r in range(self.tabla_papeles.rowCount()):
+            it = self.tabla_papeles.item(r, 0)
+            if it: it.setCheckState(estado)
+        self.tabla_papeles.blockSignals(False)
+
     def cargar_papeles_pendientes(self):
         prov = self.combo_prov_papel.currentText()
         try:
@@ -768,14 +786,23 @@ class TabFacturacion(QWidget):
                 chk.setFlags(Qt.ItemFlag.ItemIsUserCheckable | Qt.ItemFlag.ItemIsEnabled)
                 chk.setCheckState(Qt.CheckState.Checked)
                 f_ent = op.fecha_entrega.strftime("%d/%m/%Y") if op.fecha_entrega else "-"
+                
+                # --- MODIFICADO: Se agregan los datos a la columna Sucursal ---
+                sucursal_papel = (op.sucursal or "S/D").upper()
+                
                 self.tabla_papeles.setItem(row, 0, chk)
-                self.tabla_papeles.setItem(row, 1, QTableWidgetItem(f_ent))
-                self.tabla_papeles.setItem(row, 2, QTableWidgetItem(op.guia_remito or ""))
-                self.tabla_papeles.setItem(row, 3, QTableWidgetItem(op.proveedor or ""))
-                self.tabla_papeles.setItem(row, 4, QTableWidgetItem(op.destinatario or ""))
+                self.tabla_papeles.setItem(row, 1, QTableWidgetItem(sucursal_papel))
+                self.tabla_papeles.setItem(row, 2, QTableWidgetItem(f_ent))
+                self.tabla_papeles.setItem(row, 3, QTableWidgetItem(op.guia_remito or ""))
+                self.tabla_papeles.setItem(row, 4, QTableWidgetItem(op.proveedor or ""))
+                self.tabla_papeles.setItem(row, 5, QTableWidgetItem(op.destinatario or ""))
                 
             if not self.resultados_papeles: 
                 QMessageBox.information(self, "Aviso", f"No hay papeles pendientes de envío para {prov}.")
+            
+            # Reiniciar botón de selección al cargar
+            self.btn_seleccionar_papeles.setText("☑️ Deseleccionar Todo")
+            
         except Exception as e: 
             self.main.session.rollback()
 
@@ -887,13 +914,11 @@ class TabFacturacion(QWidget):
             self.calcular_cierre()
             self.cargar_ctas_ctes()
             
-    # 🔥 NUEVO MÉTODO PARA ELIMINAR GUÍAS DEFINITIVAMENTE 🔥
     def eliminar_guias_facturacion(self):
         ids = []
         for r in range(self.tabla_cierre.rowCount()):
             it = self.tabla_cierre.item(r, 0)
             if it and it.checkState() == Qt.CheckState.Checked:
-                # Extraemos el ID que está "oculto" en la memoria del CheckBox
                 op_id = it.data(Qt.ItemDataRole.UserRole)
                 if op_id:
                     ids.append(op_id)
@@ -922,7 +947,7 @@ class TabFacturacion(QWidget):
     def agregar_cargo_fijo(self):
         proveedores = [self.cierre_prov.itemText(i) for i in range(self.cierre_prov.count()) if self.cierre_prov.itemText(i) != "Todos"]
         
-        # 🔥 AHORA LLAMA A LA VENTANA NUEVA CON FECHA 🔥
+        # Instanciación de la ventana de cargo fijo con fecha
         dlg = NuevoCargoFijoDialog(proveedores, self)
         
         if dlg.exec() == QDialog.DialogCode.Accepted:
@@ -1029,7 +1054,7 @@ class TabFacturacion(QWidget):
                 op.monto_espera = dlg.in_doble_visita.value()
                 op.observaciones_facturacion = dlg.in_obs_fact.text().strip().upper()
                 
-                # 🔥 GUARDA EL PRECIO FINAL DEL ESPEJO 🔥
+                # Actualización del monto del servicio al precio final ajustado
                 op.monto_servicio = dlg.precio_final
                 
                 self.main.log_movimiento(op, "EDICIÓN DE FACTURACIÓN", f"Precio ajustado a ${dlg.precio_final}")
@@ -1143,7 +1168,7 @@ class TabFacturacion(QWidget):
             self.mapa_filas_cierre = {}
             total_ops = len(self.resultados_cierre)
             
-            # 🔥 1. CAMBIAMOS "None" POR "Cancelar" PARA QUE EL BOTÓN SEA VISIBLE 🔥
+            # Configuración del diálogo de progreso con opción de cancelación
             progreso = QProgressDialog("Preparando datos de facturación...", "Cancelar", 0, total_ops, self)
             progreso.setWindowTitle("⏳ Calculando Facturación")
             progreso.setWindowModality(Qt.WindowModality.WindowModal)
@@ -1152,7 +1177,7 @@ class TabFacturacion(QWidget):
             hubo_reparacion = False 
             
             for row, op in enumerate(self.resultados_cierre):
-                # 🔥 2. LE ENSEÑAMOS A ESCUCHAR EL BOTÓN Y FRENAR DE GOLPE 🔥
+                # Manejo de interrupción del proceso por parte del usuario
                 if progreso.wasCanceled():
                     break
                     
@@ -1389,7 +1414,7 @@ class TabFacturacion(QWidget):
             
             self.lbl_info_audit.setText(f"✅ Rango detectado: {min_date.strftime('%d/%m')} al {max_date.strftime('%d/%m')} | Guías en Excel: {len(guias_excel)}")
             
-            # 🔥 CORRECCIÓN HORARIA PARA SUPABASE 🔥
+            # Ajuste de zona horaria local para la consulta a la base de datos
             ops_db = self.main.session.query(Operacion).filter(
                 Operacion.proveedor.ilike('%DHL%'), 
                 text("DATE(COALESCE(fecha_entrega, fecha_ingreso) - INTERVAL '3 hours') >= :f_min").bindparams(f_min=min_date),
@@ -1411,14 +1436,14 @@ class TabFacturacion(QWidget):
             faltan_en_plataforma_inicial = sorted(list(guias_excel - guias_db))
             sobran_en_plataforma = sorted(list(guias_db - guias_excel))
             
-            # 🔥 MAGIA: DIAGNÓSTICO INTELIGENTE DE FALTANTES 🔥
+            # Algoritmo de diagnóstico y clasificación de guías faltantes o fuera de rango
             faltan_totalmente = []
             estan_mal_cargadas = []
             
             if faltan_en_plataforma_inicial:
                 from datetime import timedelta
                 f_limite = min_date - timedelta(days=45)
-                # Buscamos en toda la base sin filtros estrictos para ver si está perdida por ahí
+                
                 ops_recientes = self.main.session.query(Operacion).filter(
                     text("DATE(fecha_ingreso - INTERVAL '3 hours') >= :f_lim").bindparams(f_lim=f_limite)
                 ).all()
@@ -1433,14 +1458,13 @@ class TabFacturacion(QWidget):
                     if guia in mapa_guias_recientes:
                         op_e = mapa_guias_recientes[guia]
                         f_i = op_e.fecha_ingreso.strftime('%d/%m') if op_e.fecha_ingreso else 'S/D'
-                        # Te avisa exactamente DÓNDE y CÓMO se cargó
+                        # Indica los metadatos de carga de la operación
                         estan_mal_cargadas.append(f"{guia} -> (Fue cargada: {f_i} | Suc: {op_e.sucursal} | Prov: {op_e.proveedor})")
                     else:
                         faltan_totalmente.append(guia)
             
             QApplication.restoreOverrideCursor()
             
-            # --- ARMADO VISUAL DE LA VENTANA DE RESULTADOS ---
             dlg = QDialog(self)
             dlg.setWindowTitle("🕵️ Auditoría de Carga - Control Interno")
             dlg.resize(1100, 650)
@@ -1454,7 +1478,6 @@ class TabFacturacion(QWidget):
             
             h_lay = QHBoxLayout()
             
-            # COLUMNA 1: FALTAN O MAL CARGADAS
             v_izq = QVBoxLayout()
             v_izq.addWidget(QLabel(f"🔴 <b>FALTAN TOTALMENTE ({len(faltan_totalmente)})</b>"))
             text_izq = QTextBrowser()
@@ -1462,7 +1485,6 @@ class TabFacturacion(QWidget):
             text_izq.setStyleSheet("background-color: #f8d7da; color: #721c24; font-weight: bold; font-family: 'Consolas'; font-size: 15px;")
             v_izq.addWidget(text_izq)
             
-            # EL NUEVO CARTEL NARANJA
             if estan_mal_cargadas:
                 v_izq.addWidget(QLabel(f"🟠 <b>ESTÁN EN EL SISTEMA, PERO FUERA DE RANGO/SUCURSAL ({len(estan_mal_cargadas)})</b>"))
                 text_mal = QTextBrowser()
@@ -1472,7 +1494,6 @@ class TabFacturacion(QWidget):
                 
             h_lay.addLayout(v_izq)
             
-            # COLUMNA 2: SOBRANTES
             v_der = QVBoxLayout()
             v_der.addWidget(QLabel(f"🟡 <b>SOBRAN EN EL SISTEMA ({len(sobran_en_plataforma)})</b>"))
             text_der = QTextBrowser()
