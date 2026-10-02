@@ -1341,13 +1341,15 @@ class TabFacturacion(QWidget):
         os.makedirs(descargas_dir, exist_ok=True)
         ruta_pdf = os.path.join(descargas_dir, f"Facturacion_{prov_nombre}_{mes_nombre}_{anio_num}.pdf")
         
-        data_filas = [['FECHA', 'GUÍA', 'ZONA', 'BULTOS', 'BASE ($)', 'FINDE ($)', 'EXTRAS ($)', 'TOTAL ($)']]
+        # --- MODIFICADO: Agregamos Ingreso, Entrega y Destino (10 columnas en total) ---
+        data_filas = [['F. INGRESO', 'F. ENTREGA', 'GUÍA', 'DESTINO', 'ZONA', 'BULTOS', 'BASE ($)', 'FINDE ($)', 'EXTRAS ($)', 'TOTAL ($)']]
         
         for r in range(self.tabla_cierre.rowCount()):
             it_sel = self.tabla_cierre.item(r, 0)
             if it_sel and it_sel.checkState() == Qt.CheckState.Checked:
-                fecha = self.tabla_cierre.item(r, 2).text()
-                if fecha == "-": fecha = self.tabla_cierre.item(r, 1).text()
+                # Ahora extraemos las dos fechas directamente de las columnas 1 y 2
+                f_ingreso = self.tabla_cierre.item(r, 1).text()
+                f_entrega = self.tabla_cierre.item(r, 2).text()
                 
                 guia = self.tabla_cierre.item(r, 4).text()
                 op_id = it_sel.data(Qt.ItemDataRole.UserRole)
@@ -1356,13 +1358,16 @@ class TabFacturacion(QWidget):
                     obs_fac = getattr(op_db, 'observaciones_facturacion', '') or ''
                     if obs_fac: guia = f"{guia}\n[{obs_fac}]"
                 
+                destino = self.tabla_cierre.item(r, 5).text() # Destinatario
                 zona = self.tabla_cierre.item(r, 6).text()
                 bultos = self.tabla_cierre.item(r, 7).text()
                 base_txt = self.tabla_cierre.item(r, 9).text()
                 finde_txt = self.tabla_cierre.item(r, 10).text()
                 extras_txt = self.tabla_cierre.item(r, 11).text()
                 total_txt = self.tabla_cierre.item(r, 12).text()
-                data_filas.append([fecha, guia, zona[:15].upper(), bultos, base_txt, finde_txt, extras_txt, total_txt])
+                
+                # Agregamos las 10 columnas a la fila del PDF
+                data_filas.append([f_ingreso, f_entrega, guia, destino[:25].upper(), zona[:15].upper(), bultos, base_txt, finde_txt, extras_txt, total_txt])
                 
                 if marcar_facturado:
                     op_id = it_sel.data(Qt.ItemDataRole.UserRole)
@@ -1383,10 +1388,11 @@ class TabFacturacion(QWidget):
         iva = tf * 0.21
         total_final_iva = tf + iva
         
-        data_filas.append(['', '', '', '', '', '', '', ''])
-        data_filas.append(['SUBTOTALES:', '', '', '', f"$ {tb:,.2f}", f"$ {te:,.2f}", '-', f"$ {tf:,.2f}"])
-        data_filas.append(['', '', '', '', '', '', 'IVA (21%):', f"$ {iva:,.2f}"])
-        data_filas.append(['', '', '', '', '', '', 'TOTAL FACTURA:', f"$ {total_final_iva:,.2f}"])
+        # --- MODIFICADO: Ajustamos los espacios vacíos del final para que calcen con las 10 columnas ---
+        data_filas.append(['', '', '', '', '', '', '', '', '', ''])
+        data_filas.append(['SUBTOTALES:', '', '', '', '', '', f"$ {tb:,.2f}", f"$ {te:,.2f}", '-', f"$ {tf:,.2f}"])
+        data_filas.append(['', '', '', '', '', '', '', '', 'IVA (21%):', f"$ {iva:,.2f}"])
+        data_filas.append(['', '', '', '', '', '', '', '', 'TOTAL FACTURA:', f"$ {total_final_iva:,.2f}"])
         
         crear_pdf_facturacion(ruta_pdf, data_filas, prov_nombre, f"{mes_nombre} {anio_num}", self.main.usuario.username, datetime.now().strftime('%d/%m/%Y %H:%M'))
         try: 

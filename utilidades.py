@@ -324,7 +324,13 @@ def crear_pdf_reporte(nombre_archivo, resultados, sucursal_filtro, usuario, fech
     doc.build(elements, onFirstPage=add_footer, onLaterPages=add_footer)
 
 def crear_pdf_facturacion(nombre_archivo, data_filas, prov_nombre, periodo_str, usuario, fecha_generacion):
-    doc = SimpleDocTemplate(nombre_archivo, pagesize=landscape(A4), rightMargin=20, leftMargin=20, topMargin=25, bottomMargin=25)
+    from reportlab.lib import colors
+    from reportlab.lib.pagesizes import A4, landscape
+    from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, Image
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    from reportlab.lib.enums import TA_CENTER, TA_RIGHT, TA_LEFT
+    
+    doc = SimpleDocTemplate(nombre_archivo, pagesize=landscape(A4), rightMargin=15, leftMargin=15, topMargin=25, bottomMargin=25)
     elements = []
     styles = getSampleStyleSheet()
     
@@ -339,11 +345,12 @@ def crear_pdf_facturacion(nombre_archivo, data_filas, prov_nombre, periodo_str, 
     elements.append(Paragraph(f"RENDICIÓN {prov_nombre.upper()}", title_style))
     elements.append(Paragraph(f"Período: {periodo_str}", client_style))
     
-    estilo_centro = ParagraphStyle(name='Cent', parent=styles['Normal'], fontSize=8, alignment=TA_CENTER)
-    estilo_izq = ParagraphStyle(name='Izq', parent=styles['Normal'], fontSize=8, alignment=TA_LEFT, wordWrap='CJK')
+    # Hemos reducido un poco el tamaño de letra para que las 10 columnas quepan perfecto
+    estilo_centro = ParagraphStyle(name='Cent', parent=styles['Normal'], fontSize=7, alignment=TA_CENTER)
+    estilo_izq = ParagraphStyle(name='Izq', parent=styles['Normal'], fontSize=7, alignment=TA_LEFT, wordWrap='CJK')
     estilo_der = ParagraphStyle(name='Der', parent=styles['Normal'], fontSize=8, alignment=TA_RIGHT)
-    estilo_head = ParagraphStyle(name='Head', parent=styles['Normal'], fontSize=9, fontName='Helvetica-Bold', alignment=TA_CENTER)
-    estilo_tot_der = ParagraphStyle(name='TotDer', parent=styles['Normal'], fontSize=10, fontName='Helvetica-Bold', alignment=TA_RIGHT)
+    estilo_head = ParagraphStyle(name='Head', parent=styles['Normal'], fontSize=8, fontName='Helvetica-Bold', alignment=TA_CENTER)
+    estilo_tot_der = ParagraphStyle(name='TotDer', parent=styles['Normal'], fontSize=9, fontName='Helvetica-Bold', alignment=TA_RIGHT)
     
     processed_data = []
     
@@ -359,16 +366,18 @@ def crear_pdf_facturacion(nombre_archivo, data_filas, prov_nombre, periodo_str, 
             elif es_totales: 
                 new_row.append(Paragraph(cell_str, estilo_tot_der))
             else: 
-                if j in [1, 2]: 
+                # Ajustamos la alineación de las nuevas columnas
+                if j in [2, 3, 4]: # Guía, Destino, Zona
                     new_row.append(Paragraph(cell_str, estilo_izq))
-                elif j >= 4: 
+                elif j >= 6: # Precios (Base, Finde, Extras, Total)
                     new_row.append(Paragraph(cell_str, estilo_der))
-                else: 
+                else: # Fechas y bultos
                     new_row.append(Paragraph(cell_str, estilo_centro))
                     
         processed_data.append(new_row)
         
-    t = Table(processed_data, colWidths=[75, 190, 120, 60, 85, 85, 85, 95], repeatRows=1)
+    # Nuevos anchos milimétricos calculados para las 10 columnas en A4 Horizontal
+    t = Table(processed_data, colWidths=[65, 65, 110, 160, 90, 45, 65, 65, 65, 70], repeatRows=1)
     
     t_style = [
         ('GRID', (0,0), (-1,-1), 0.5, colors.black), 
@@ -389,9 +398,10 @@ def crear_pdf_facturacion(nombre_archivo, data_filas, prov_nombre, periodo_str, 
             ('BACKGROUND', (0,-3), (-1,-1), colors.whitesmoke), 
             ('LINEABOVE', (0,-3), (-1,-3), 1.5, colors.black), 
             
-            ('SPAN', (0, -3), (3, -3)), 
-            ('SPAN', (0, -2), (5, -2)), 
-            ('SPAN', (0, -1), (5, -1)), 
+            # Combinación de celdas para que los totales queden alineados abajo a la derecha
+            ('SPAN', (0, -3), (5, -3)), # Subtotales
+            ('SPAN', (0, -2), (7, -2)), # IVA
+            ('SPAN', (0, -1), (7, -1)), # Total final
         ])
         
     t.setStyle(TableStyle(t_style))
