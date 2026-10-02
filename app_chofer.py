@@ -14,11 +14,11 @@ app.secret_key = "secreto_super_seguro_choferes_ek"
 # Configuración de sesión de usuario (30 días de persistencia)
 app.permanent_session_lifetime = timedelta(days=30)
 
-# --- CONFIGURACIÓN DE SEGURIDAD EXTREMA (BLINDADA) ---
-# Forzamos la URL validada con puerto 6543 y SSL obligatorio, ignorando Vercel
-DATABASE_URL = "postgresql://postgres.gwdypvvyjuqzvpbbzchk:Eklogisticasajetpaq@aws-0-us-west-2.pooler.supabase.com:6543/postgres?sslmode=require"
+# --- CONFIGURACIÓN DE SEGURIDAD EXTREMA (BLINDADA PARA RENDER) ---
+# Forzamos psycopg2 en la URL para evitar el error "No module named psycopg"
+DATABASE_URL = "postgresql+psycopg2://postgres.gwdypvvyjuqzvpbbzchk:Eklogisticasajetpaq@aws-0-us-west-2.pooler.supabase.com:6543/postgres?sslmode=require"
 
-# Forzamos la API de correos por si Vercel pierde la variable
+# Forzamos la API de correos por si Render pierde la variable
 BREVO_API_KEY = os.environ.get("BREVO_API_KEY", "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") 
 EMAIL_REMITENTE = "eklogistica19@gmail.com" 
 NUMERO_BASE_RAW = "2613672674" 
@@ -31,11 +31,11 @@ app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 def hora_arg():
     return datetime.now() - timedelta(hours=3)
 
-# --- MOTOR DE BASE DE DATOS OPTIMIZADO (NullPool) ---
+# --- MOTOR DE BASE DE DATOS OPTIMIZADO PARA LA NUBE ---
 def get_db():
     try: 
-        # NullPool delega el manejo a Supabase y evita congelamientos en la nube
-        engine = create_engine(DATABASE_URL, poolclass=NullPool)
+        # NullPool delega el manejo a Supabase y evita congelamientos en Render
+        engine = create_engine(DATABASE_URL, poolclass=NullPool, connect_args={'connect_timeout': 15})
         return engine.connect()
     except Exception as e:
         return str(e) # Devolvemos el error como texto para que se muestre en pantalla
@@ -374,7 +374,7 @@ def lista_viajes():
                     📦 Guía: <b>{v[1]}</b> &nbsp;|&nbsp; Bultos: {v[5]}
                 </div>
                 <div style="display:flex; gap:10px;">
-                    <a href="{mapa_url}" target="_blank" class="btn btn-outline" style="flex:1; margin-top:0;">🗺️ Mapa</a>
+                    <a href="{mapa_url}" target="_blank" class="btn btn-outline" style="flex:1; margin-top:0;">🗺️️ Mapa</a>
                     <a href="/gestion/{v[0]}" class="btn btn-blue" style="flex:2; margin-top:0;">Gestionar</a>
                 </div>
             </div>
