@@ -10,7 +10,7 @@ import json
 app = Flask(__name__)
 app.secret_key = "secreto_super_seguro_choferes_ek"
 
-# 🔥 CONFIGURACIÓN DE MEMORIA PERMANENTE (30 DÍAS SIN DESLOGUEARSE) 🔥
+# Configuración de sesión de usuario (30 días de persistencia)
 app.permanent_session_lifetime = timedelta(days=30)
 
 # --- CONFIGURACIÓN DE SEGURIDAD ---
@@ -32,10 +32,18 @@ app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 def hora_arg():
     return datetime.now() - timedelta(hours=3)
 
+# --- MOTOR DE BASE DE DATOS GLOBAL (Evita saturar Supabase) ---
+try:
+    engine = create_engine(DATABASE_URL, pool_size=10, max_overflow=20, pool_pre_ping=True)
+except Exception as e:
+    engine = None
+    print("Error inicializando DB:", e)
+
 def get_db():
-    try: return create_engine(DATABASE_URL, pool_pre_ping=True).connect()
+    try: 
+        return engine.connect() if engine else None
     except Exception as e:
-        print("Error de DB:", e)
+        print("Error de conexión:", e)
         return None
 
 def limpiar_telefono_wsp(telefono):
@@ -81,7 +89,7 @@ def get_bottom_nav(active_tab="ruta", num_base=""):
     </div>
     """
 
-# --- MAIL BLINDADO Y ACTUALIZADO CON ANTI-REBOTE POR PESO ---
+# --- SERVICIO DE CORREO CON MANEJO DE ADJUNTOS ---
 def enviar_email(destinatario, guia, rutas_fotos, proveedor, link_mapa="", fecha_entrega=None):
     if not BREVO_API_KEY: return
     conn = get_db()
@@ -118,7 +126,7 @@ def enviar_email(destinatario, guia, rutas_fotos, proveedor, link_mapa="", fecha
 
     url = "https://api.brevo.com/v3/smtp/email"
     
-    # 🔥 MODIFICACIÓN: USA LA FECHA CUSTOM SI EXISTE, SINO LA ACTUAL 🔥
+    # Asignación de fecha personalizada o actual
     if fecha_entrega:
         fecha_hora = fecha_entrega.strftime('%d/%m/%Y %H:%M')
     else:
@@ -684,7 +692,7 @@ def gestion(id_op):
         motivo = request.form.get('motivo', '').strip()
         fecha_repro = request.form.get('fecha_repro', '')
         
-        # 🔥 MODIFICACIÓN: Capturamos la fecha y hora manual si existe 🔥
+        # Captura de fecha y hora manual de entrega
         fecha_hora_entrega_str = request.form.get('fecha_hora_entrega', '')
         fecha_entrega_final = hora_arg()
         if estado_btn == "ENTREGADO" and fecha_hora_entrega_str:
@@ -746,7 +754,7 @@ def gestion(id_op):
                     else:
                         conn.execute(text("UPDATE operaciones SET estado=:e, chofer_asignado=NULL WHERE id=:i"), {"e": estado_db, "i": id_op})
                 else:
-                    # 🔥 MODIFICACIÓN: Usamos la fecha_entrega_final en lugar de hora_arg()
+                    # Actualización de estado con fecha de entrega definitiva
                     conn.execute(text("UPDATE operaciones SET estado=:e, fecha_entrega=:f WHERE id=:i"), {"e": estado_db, "f": fecha_entrega_final, "i": id_op})
                 
                 conn.execute(text("INSERT INTO historial_movimientos (operacion_id, usuario, accion, detalle, fecha_hora) VALUES (:o, :u, :acc, :d, :f)"), {"o": id_op, "u": chofer, "acc": accion_historial, "d": detalle_historial, "f": hora_arg()})
@@ -756,7 +764,7 @@ def gestion(id_op):
             
         if estado_btn == "ENTREGADO" and tiene_foto:
             flash(f"✅ Confirmado. Enviando {len(rutas_fotos)} foto/s y correo...", "success")
-            # 🔥 MODIFICACIÓN: Le pasamos la fecha real a la función de email 🔥
+            # Envío de notificación por correo electrónico con fecha de entrega definitiva
             enviar_email(recibe, op[0], rutas_fotos, op[10], link_mapa=enlace_gps, fecha_entrega=fecha_entrega_final)
         elif estado_btn == "ENTREGADO":
             flash("✅ Confirmado correctamente.", "success")
@@ -976,7 +984,7 @@ def scan():
     """
     return render_template_string(html)
 
-# 🔥 NUEVA PANTALLA: MENÚ FLOTA (VEHÍCULO) 🔥
+# --- MÓDULO DE FLOTA Y VEHÍCULOS ---
 @app.route('/flota')
 def flota():
     chofer = session.get('chofer')
