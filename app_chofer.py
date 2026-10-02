@@ -14,27 +14,12 @@ app.secret_key = "secreto_super_seguro_choferes_ek"
 # Configuración de sesión de usuario (30 días de persistencia)
 app.permanent_session_lifetime = timedelta(days=30)
 
-# --- CONFIGURACIÓN DE SEGURIDAD BLINDADA ---
-DATABASE_URL = os.environ.get("DB_URL") 
-if not DATABASE_URL:
-    try:
-        from dotenv import load_dotenv
-        load_dotenv()
-        DATABASE_URL = os.getenv("DB_URL")
-    except:
-        pass
+# --- CONFIGURACIÓN DE SEGURIDAD EXTREMA (BLINDADA) ---
+# Forzamos la URL validada con puerto 6543 y SSL obligatorio, ignorando Vercel
+DATABASE_URL = "postgresql://postgres.gwdypvvyjuqzvpbbzchk:Eklogisticasajetpaq@aws-0-us-west-2.pooler.supabase.com:6543/postgres?sslmode=require"
 
-# Corrección automática de URL para Supabase Pooler (Puerto 6543)
-if DATABASE_URL:
-    if DATABASE_URL.startswith("postgres://"):
-        DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
-    if "6543" in DATABASE_URL and "sslmode=require" not in DATABASE_URL:
-        if "?" in DATABASE_URL:
-            DATABASE_URL += "&sslmode=require"
-        else:
-            DATABASE_URL += "?sslmode=require"
-
-BREVO_API_KEY = os.environ.get("BREVO_API_KEY", "") 
+# Forzamos la API de correos por si Vercel pierde la variable
+BREVO_API_KEY = os.environ.get("BREVO_API_KEY", "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") 
 EMAIL_REMITENTE = "eklogistica19@gmail.com" 
 NUMERO_BASE_RAW = "2613672674" 
 
@@ -49,12 +34,11 @@ def hora_arg():
 # --- MOTOR DE BASE DE DATOS OPTIMIZADO (NullPool) ---
 def get_db():
     try: 
-        # NullPool delega el manejo a Supabase y evita congelamientos en Vercel/Render
-        engine = create_engine(DATABASE_URL, poolclass=NullPool, pool_pre_ping=True)
+        # NullPool delega el manejo a Supabase y evita congelamientos en la nube
+        engine = create_engine(DATABASE_URL, poolclass=NullPool)
         return engine.connect()
     except Exception as e:
-        print("Error de conexión en get_db:", e)
-        return None
+        return str(e) # Devolvemos el error como texto para que se muestre en pantalla
 
 def limpiar_telefono_wsp(telefono):
     if not telefono: return ""
@@ -66,7 +50,7 @@ NUMERO_BASE_FINAL = limpiar_telefono_wsp(NUMERO_BASE_RAW)
 
 try:
     _conn = get_db()
-    if _conn:
+    if not isinstance(_conn, str) and _conn is not None:
         _conn.execute(text("UPDATE operaciones SET fecha_ingreso = DATE(fecha_salida) WHERE fecha_ingreso IS NULL AND tipo_servicio = 'Entrega (Guardia)'"))
         _conn.commit()
         _conn.close()
@@ -76,7 +60,6 @@ except: pass
 def serve_logo():
     return send_from_directory(BASE_DIR, 'eklogo.png')
 
-# --- MENÚ DE NAVEGACIÓN INFERIOR DINÁMICO ---
 def get_bottom_nav(active_tab="ruta", num_base=""):
     c_ruta = "color: #1976D2; font-weight:bold;" if active_tab == "ruta" else "color: #777;"
     c_flota = "color: #1976D2; font-weight:bold;" if active_tab == "flota" else "color: #777;"
@@ -99,12 +82,11 @@ def get_bottom_nav(active_tab="ruta", num_base=""):
     </div>
     """
 
-# --- SERVICIO DE CORREO CON MANEJO DE ADJUNTOS ---
 def enviar_email(destinatario, guia, rutas_fotos, proveedor, link_mapa="", fecha_entrega=None):
     if not BREVO_API_KEY: return
     conn = get_db()
     email_prov = None
-    if conn:
+    if not isinstance(conn, str) and conn is not None:
         try:
             sql = text("SELECT email_reportes FROM clientes_principales WHERE UPPER(TRIM(nombre)) = UPPER(TRIM(:n))")
             res = conn.execute(sql, {"n": proveedor}).fetchone()
@@ -229,34 +211,44 @@ def index():
         chofer_dni = request.form.get('dni')
         
         conn = get_db()
-        if conn:
-            try:
-                res = conn.execute(text("SELECT dni FROM choferes WHERE nombre = :n"), {"n": chofer_nombre}).fetchone()
-                db_dni = str(res[0]).strip() if res and res[0] else ""
-                
-                if db_dni == str(chofer_dni).strip():
-                    session.permanent = True  
-                    session['chofer'] = chofer_nombre
-                    return redirect(url_for('lista_viajes'))
-                else:
-                    flash("❌ DNI incorrecto para este chofer.", "error")
-            except Exception as e:
-                flash("❌ Error de conexión con el servidor.", "error")
-            finally:
-                conn.close()
-        else:
-            flash("❌ Error de conexión general con la base de datos.", "error")
+        if isinstance(conn, str):
+            flash(f"❌ Error de conexión DB: {conn}", "error")
+            return redirect(url_for('index'))
+        elif conn is None:
+            flash("❌ Error interno de conexión con la base de datos.", "error")
+            return redirect(url_for('index'))
+            
+        try:
+            res = conn.execute(text("SELECT dni FROM choferes WHERE nombre = :n"), {"n": chofer_nombre}).fetchone()
+            db_dni = str(res[0]).strip() if res and res[0] else ""
+            
+            if db_dni == str(chofer_dni).strip():
+                session.permanent = True  
+                session['chofer'] = chofer_nombre
+                return redirect(url_for('lista_viajes'))
+            else:
+                flash("❌ DNI incorrecto para este chofer.", "error")
+        except Exception as e:
+            flash(f"❌ Error interno: {str(e)}", "error")
+        finally:
+            conn.close()
         
         return redirect(url_for('index'))
     
     conn = get_db()
     choferes_data = []
-    if conn:
+    db_error_visible = ""
+    
+    if isinstance(conn, str):
+        db_error_visible = f"<div class='alert alert-error'>⚠️ PROBLEMA DE CONEXIÓN A LA NUBE: {conn}</div>"
+    elif conn is None:
+        db_error_visible = "<div class='alert alert-error'>⚠️ NO SE PUDO ESTABLECER CONEXIÓN.</div>"
+    else:
         try:
             res = conn.execute(text("SELECT nombre, sucursal FROM choferes ORDER BY sucursal, nombre")).fetchall()
             choferes_data = [{"nombre": r[0], "sucursal": str(r[1])} for r in res]
         except Exception as e: 
-            print("Error cargando choferes:", e)
+            db_error_visible = f"<div class='alert alert-error'>⚠️ Error cargando choferes: {str(e)}</div>"
         finally: 
             conn.close()
         
@@ -296,6 +288,7 @@ def index():
                 <h1 style="color: #1565C0; margin-bottom: 5px;">EK ULTIMA MILLA</h1>
                 <p style="color: #777; margin-top: 0;">Portal de Choferes</p>
                 <br>
+                {db_error_visible}
                 {mensajes_html}
                 <form method="POST" style="background: #f9f9f9; padding: 30px; border-radius: 15px; border: 1px solid #eee;">
                     
@@ -338,7 +331,7 @@ def lista_viajes():
     
     conn = get_db()
     viajes = []
-    if conn:
+    if not isinstance(conn, str) and conn is not None:
         try:
             sql = text("SELECT id, guia_remito, destinatario, domicilio, localidad, bultos, estado, proveedor, tipo_servicio FROM operaciones WHERE chofer_asignado = :c AND UPPER(estado) IN ('EN REPARTO', 'PENDIENTE') ORDER BY id ASC")
             viajes = conn.execute(sql, {"c": chofer}).fetchall()
@@ -446,7 +439,7 @@ def guardia():
         tipo_carga = request.form.get('tipo_carga', 'Común')
         tipo_urgencia = request.form.get('tipo_urgencia', 'Normal')
 
-        if conn:
+        if not isinstance(conn, str) and conn is not None:
             try:
                 res_suc = conn.execute(text("SELECT sucursal FROM choferes WHERE nombre = :n"), {"n": chofer}).fetchone()
                 suc_chof = res_suc[0] if res_suc else 'Mendoza'
@@ -477,7 +470,7 @@ def guardia():
 
     clientes_db = []
     destinos_db = []
-    if conn:
+    if not isinstance(conn, str) and conn is not None:
         try:
             res_cli = conn.execute(text("SELECT nombre FROM clientes_principales ORDER BY nombre")).fetchall()
             clientes_db = [c[0] for c in res_cli]
@@ -591,7 +584,7 @@ def historial():
     
     conn = get_db()
     movimientos = []
-    if conn:
+    if not isinstance(conn, str) and conn is not None:
         try:
             sql = text("SELECT detalle, fecha_hora, accion FROM historial_movimientos WHERE usuario = :u AND fecha_hora::date = CURRENT_DATE ORDER BY fecha_hora DESC")
             movimientos = conn.execute(sql, {"u": chofer}).fetchall()
@@ -652,7 +645,7 @@ def gestion(id_op):
     op = None
     exige_foto = False  
     
-    if conn:
+    if not isinstance(conn, str) and conn is not None:
         try:
             sql = text("""
                 SELECT o.guia_remito, o.destinatario, o.domicilio, o.localidad, o.celular, 
@@ -754,7 +747,7 @@ def gestion(id_op):
                 detalle_historial = f"Devuelto a depósito. Motivo: {motivo}{texto_gps_historial}"
         
         conn = get_db()
-        if conn:
+        if not isinstance(conn, str) and conn is not None:
             try:
                 if estado_btn == "Reprogramado":
                     if fecha_repro:
@@ -956,7 +949,7 @@ def scan():
         if codigo:
             chofer_nombre = session['chofer']
             conn = get_db()
-            if conn:
+            if not isinstance(conn, str) and conn is not None:
                 try:
                     sql = text("SELECT id FROM operaciones WHERE (guia_remito = :codigo OR CAST(id AS TEXT) = :codigo) AND chofer_asignado = :chofer AND UPPER(estado) IN ('EN REPARTO', 'PENDIENTE')")
                     result = conn.execute(sql, {"codigo": codigo.strip(), "chofer": chofer_nombre}).fetchone()
@@ -994,7 +987,6 @@ def scan():
     """
     return render_template_string(html)
 
-# --- MÓDULO DE FLOTA Y VEHÍCULOS ---
 @app.route('/flota')
 def flota():
     chofer = session.get('chofer')
@@ -1008,7 +1000,7 @@ def flota():
     
     conn = get_db()
     patente = "Ningún vehículo asignado"
-    if conn:
+    if not isinstance(conn, str) and conn is not None:
         try:
             res_c = conn.execute(text("SELECT id FROM choferes WHERE nombre = :n"), {"n": chofer}).fetchone()
             if res_c:
@@ -1059,7 +1051,7 @@ def update_km():
         nuevo_km = request.form.get('km_actual')
         if nuevo_km and nuevo_km.isdigit():
             conn = get_db()
-            if conn:
+            if not isinstance(conn, str) and conn is not None:
                 try:
                     res_c = conn.execute(text("SELECT id FROM choferes WHERE nombre = :n"), {"n": chofer}).fetchone()
                     if res_c:
@@ -1087,7 +1079,7 @@ def update_km():
         
     km_actual = ""; patente = "Buscando vehículo..."; tiene_vehiculo = False
     conn = get_db()
-    if conn:
+    if not isinstance(conn, str) and conn is not None:
         try:
             res_c = conn.execute(text("SELECT id FROM choferes WHERE nombre = :n"), {"n": chofer}).fetchone()
             if res_c:
@@ -1136,7 +1128,7 @@ def reportar_falla():
         detalle_falla = request.form.get('falla', '').strip()
         if detalle_falla:
             conn = get_db()
-            if conn:
+            if not isinstance(conn, str) and conn is not None:
                 try:
                     res_c = conn.execute(text("SELECT id FROM choferes WHERE nombre = :n"), {"n": chofer}).fetchone()
                     if res_c:
@@ -1162,7 +1154,7 @@ def reportar_falla():
     patente = "Buscando..."
     tiene_vehiculo = False
     conn = get_db()
-    if conn:
+    if not isinstance(conn, str) and conn is not None:
         try:
             res_c = conn.execute(text("SELECT id FROM choferes WHERE nombre = :n"), {"n": chofer}).fetchone()
             if res_c:
