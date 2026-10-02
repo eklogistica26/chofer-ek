@@ -1,5 +1,6 @@
 from flask import Flask, request, render_template_string, redirect, url_for, session, flash, send_from_directory
 from sqlalchemy import create_engine, text
+from sqlalchemy.pool import NullPool
 from datetime import datetime, timedelta
 import os
 import base64
@@ -13,12 +14,25 @@ app.secret_key = "secreto_super_seguro_choferes_ek"
 # Configuración de sesión de usuario (30 días de persistencia)
 app.permanent_session_lifetime = timedelta(days=30)
 
-# --- CONFIGURACIÓN DE SEGURIDAD ---
+# --- CONFIGURACIÓN DE SEGURIDAD BLINDADA ---
 DATABASE_URL = os.environ.get("DB_URL") 
 if not DATABASE_URL:
-    from dotenv import load_dotenv
-    load_dotenv()
-    DATABASE_URL = os.getenv("DB_URL")
+    try:
+        from dotenv import load_dotenv
+        load_dotenv()
+        DATABASE_URL = os.getenv("DB_URL")
+    except:
+        pass
+
+# Corrección automática de URL para Supabase Pooler (Puerto 6543)
+if DATABASE_URL:
+    if DATABASE_URL.startswith("postgres://"):
+        DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
+    if "6543" in DATABASE_URL and "sslmode=require" not in DATABASE_URL:
+        if "?" in DATABASE_URL:
+            DATABASE_URL += "&sslmode=require"
+        else:
+            DATABASE_URL += "?sslmode=require"
 
 BREVO_API_KEY = os.environ.get("BREVO_API_KEY", "") 
 EMAIL_REMITENTE = "eklogistica19@gmail.com" 
@@ -32,18 +46,14 @@ app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 def hora_arg():
     return datetime.now() - timedelta(hours=3)
 
-# --- MOTOR DE BASE DE DATOS GLOBAL (Evita saturar Supabase) ---
-try:
-    engine = create_engine(DATABASE_URL, pool_size=10, max_overflow=20, pool_pre_ping=True)
-except Exception as e:
-    engine = None
-    print("Error inicializando DB:", e)
-
+# --- MOTOR DE BASE DE DATOS OPTIMIZADO (NullPool) ---
 def get_db():
     try: 
-        return engine.connect() if engine else None
+        # NullPool delega el manejo a Supabase y evita congelamientos en Vercel/Render
+        engine = create_engine(DATABASE_URL, poolclass=NullPool, pool_pre_ping=True)
+        return engine.connect()
     except Exception as e:
-        print("Error de conexión:", e)
+        print("Error de conexión en get_db:", e)
         return None
 
 def limpiar_telefono_wsp(telefono):
@@ -126,7 +136,6 @@ def enviar_email(destinatario, guia, rutas_fotos, proveedor, link_mapa="", fecha
 
     url = "https://api.brevo.com/v3/smtp/email"
     
-    # Asignación de fecha personalizada o actual
     if fecha_entrega:
         fecha_hora = fecha_entrega.strftime('%d/%m/%Y %H:%M')
     else:
@@ -235,6 +244,8 @@ def index():
                 flash("❌ Error de conexión con el servidor.", "error")
             finally:
                 conn.close()
+        else:
+            flash("❌ Error de conexión general con la base de datos.", "error")
         
         return redirect(url_for('index'))
     
@@ -244,8 +255,10 @@ def index():
         try:
             res = conn.execute(text("SELECT nombre, sucursal FROM choferes ORDER BY sucursal, nombre")).fetchall()
             choferes_data = [{"nombre": r[0], "sucursal": str(r[1])} for r in res]
-        except: pass
-        finally: conn.close()
+        except Exception as e: 
+            print("Error cargando choferes:", e)
+        finally: 
+            conn.close()
         
     choferes_json = json.dumps(choferes_data)
         
@@ -692,7 +705,6 @@ def gestion(id_op):
         motivo = request.form.get('motivo', '').strip()
         fecha_repro = request.form.get('fecha_repro', '')
         
-        # Captura de fecha y hora manual de entrega
         fecha_hora_entrega_str = request.form.get('fecha_hora_entrega', '')
         fecha_entrega_final = hora_arg()
         if estado_btn == "ENTREGADO" and fecha_hora_entrega_str:
@@ -754,7 +766,6 @@ def gestion(id_op):
                     else:
                         conn.execute(text("UPDATE operaciones SET estado=:e, chofer_asignado=NULL WHERE id=:i"), {"e": estado_db, "i": id_op})
                 else:
-                    # Actualización de estado con fecha de entrega definitiva
                     conn.execute(text("UPDATE operaciones SET estado=:e, fecha_entrega=:f WHERE id=:i"), {"e": estado_db, "f": fecha_entrega_final, "i": id_op})
                 
                 conn.execute(text("INSERT INTO historial_movimientos (operacion_id, usuario, accion, detalle, fecha_hora) VALUES (:o, :u, :acc, :d, :f)"), {"o": id_op, "u": chofer, "acc": accion_historial, "d": detalle_historial, "f": hora_arg()})
@@ -764,7 +775,6 @@ def gestion(id_op):
             
         if estado_btn == "ENTREGADO" and tiene_foto:
             flash(f"✅ Confirmado. Enviando {len(rutas_fotos)} foto/s y correo...", "success")
-            # Envío de notificación por correo electrónico con fecha de entrega definitiva
             enviar_email(recibe, op[0], rutas_fotos, op[10], link_mapa=enlace_gps, fecha_entrega=fecha_entrega_final)
         elif estado_btn == "ENTREGADO":
             flash("✅ Confirmado correctamente.", "success")
